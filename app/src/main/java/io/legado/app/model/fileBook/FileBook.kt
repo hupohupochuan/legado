@@ -17,6 +17,7 @@ import io.legado.app.exception.EmptyFileException
 import io.legado.app.exception.NoBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
+import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.addType
@@ -29,6 +30,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.WebDav
+import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.remote.RemoteBook
@@ -335,7 +337,15 @@ object FileBook : BaseFileBook {
         val inputStream = if (!str.startsWith(BookType.webDavTag)) AnalyzeUrl(
             str, source = source, callTimeout = 0, coroutineContext = currentCoroutineContext()
         ).getInputStreamAwait()
-        else WebDav.fromPath(str.substring(BookType.webDavTag.length)).downloadInputStream()
+        else {
+            val url = str.substring(BookType.webDavTag.length)
+            val webDav = runCatching { WebDav.fromPath(url) }.getOrElse {
+                AppWebDav.authorization?.let { authorization ->
+                    WebDav(url, authorization)
+                } ?: throw WebDavException("没有serverID")
+            }
+            webDav.downloadInputStream()
+        }
         return saveBookFile(inputStream, fileName)
     }
 

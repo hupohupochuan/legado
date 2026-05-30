@@ -12,9 +12,11 @@ node_modules/
 /app/app
 /app/google
 /app/gradle.properties
+/app/signing/
 package-lock.json
 .idea/
 # Kotlin 2.0
 .kotlin/
 .vscode
 .proxyai
+/release签名
