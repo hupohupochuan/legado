@@ -13,6 +13,10 @@ abstract class HorizontalPageDelegate(readView: ReadView) : PageDelegate(readVie
     protected var nextRecorder = CanvasRecorderFactory.create()
     private val slopSquare get() = readView.pageSlopSquare2
 
+    override fun invalidateOnAnim() {
+        readView.postInvalidateOnAnimation()
+    }
+
     override fun setDirection(direction: PageDirection) {
         super.setDirection(direction)
         setBitmap()

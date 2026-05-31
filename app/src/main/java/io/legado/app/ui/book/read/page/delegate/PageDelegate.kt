@@ -64,7 +64,7 @@ abstract class PageDelegate(protected val readView: ReadView) {
         scroller.fling(startX, startY, velocityX, velocityY, minX, maxX, minY, maxY)
         isRunning = true
         isStarted = true
-        readView.invalidate()
+        invalidateOnAnim()
     }
 
     protected fun startScroll(startX: Int, startY: Int, dx: Int, dy: Int, animationSpeed: Int) {
@@ -76,7 +76,7 @@ abstract class PageDelegate(protected val readView: ReadView) {
         scroller.startScroll(startX, startY, dx, dy, duration)
         isRunning = true
         isStarted = true
-        readView.invalidate()
+        invalidateOnAnim()
     }
 
     protected fun stopScroll() {
@@ -96,11 +96,16 @@ abstract class PageDelegate(protected val readView: ReadView) {
 
     open fun computeScroll() {
         if (scroller.computeScrollOffset()) {
-            readView.setTouchPoint(scroller.currX.toFloat(), scroller.currY.toFloat())
+            readView.setTouchPoint(scroller.currX.toFloat(), scroller.currY.toFloat(), false)
+            invalidateOnAnim()
         } else if (isStarted) {
             onAnimStop()
             stopScroll()
         }
+    }
+
+    protected open fun invalidateOnAnim() {
+        readView.invalidate()
     }
 
     open fun onScroll() = Unit
@@ -193,7 +198,7 @@ abstract class PageDelegate(protected val readView: ReadView) {
             readView.post {
                 if (isStarted && isRunning) {
                     setBitmap()
-                    readView.invalidate()
+                    readView.postInvalidateOnAnimation()
                 }
             }
         }
