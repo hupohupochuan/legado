@@ -101,7 +101,7 @@ object ReadBook : CoroutineScope by MainScope() {
         if (isDiffBook){
             ReadTimeRecorder.setBook(ReadTimeRecorder.Source.READ_BOOK, book.name)
         }
-        if (chapterList?.get(0)?.bookUrl != book.bookUrl){
+        if (chapterList?.firstOrNull()?.bookUrl != book.bookUrl){
             chapterList = null
         }
         chapterSize = chapterList?.size ?: appDb.bookChapterDao.getChapterCount(book.bookUrl)

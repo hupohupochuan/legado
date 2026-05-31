@@ -122,7 +122,7 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
                 val end = (book?.simulatedTotalChapterNum() ?: Int.MAX_VALUE) - 1
                 var chapterList =
                     IntentData.chapterList?.subList(0, end + 1)
-                if (chapterList?.get(0)?.bookUrl != book?.bookUrl){
+                if (chapterList?.firstOrNull()?.bookUrl != book?.bookUrl){
                     chapterList = null
                 }
                 when {
