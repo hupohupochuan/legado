@@ -6,7 +6,9 @@ import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
+import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
@@ -209,7 +211,12 @@ class WebService : BaseService() {
             servicePendingIntent<WebService>(IntentAction.stop)
         )
         val notification = builder.build()
-        startForeground(NotificationId.WebService, notification)
+        ServiceCompat.startForeground(
+            this,
+            NotificationId.WebService,
+            notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        )
     }
 
     @SuppressLint("ObsoleteSdkInt")

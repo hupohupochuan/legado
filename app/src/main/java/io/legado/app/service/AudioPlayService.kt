@@ -10,7 +10,9 @@ import android.os.Bundle
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -632,7 +634,12 @@ class AudioPlayService : BaseService(), Player.Listener {
         execute {
             try {
                 val notification = createNotification()
-                startForeground(NotificationId.AudioPlayService, notification.build())
+                ServiceCompat.startForeground(
+                    this@AudioPlayService,
+                    NotificationId.AudioPlayService,
+                    notification.build(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
             } catch (e: Exception) {
                 AppLog.put("创建音频播放通知出错,${e.localizedMessage}", e, true)
                 //创建通知出错不结束服务就会崩溃,服务必须绑定通知

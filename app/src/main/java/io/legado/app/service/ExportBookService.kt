@@ -2,7 +2,9 @@ package io.legado.app.service
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import io.legado.app.R
@@ -137,7 +139,12 @@ class ExportBookService : BaseService() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setGroup(groupKey)
             .setGroupSummary(true)
-        startForeground(NotificationId.ExportBookService, notification.build())
+        ServiceCompat.startForeground(
+            this,
+            NotificationId.ExportBookService,
+            notification.build(),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        )
     }
 
     private fun upExportNotification(finish: Boolean = false) {

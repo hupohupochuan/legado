@@ -77,11 +77,11 @@ val WindowManager.windowSize: DisplayMetrics
         return displayMetrics
     }
 
-@Suppress("DEPRECATION")
 fun Activity.fullScreen() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         window.setDecorFitsSystemWindows(true)
     }
+    @Suppress("DEPRECATION")
     window.decorView.systemUiVisibility =
         View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     window.clearFlags(
@@ -124,9 +124,8 @@ fun Activity.setLightStatusBar(isLightBar: Boolean) {
                 )
             }
         }
-    }
-    @Suppress("DEPRECATION")
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        @Suppress("DEPRECATION")
         val decorView = window.decorView
         val systemUiVisibility = decorView.systemUiVisibility
         if (isLightBar) {
@@ -142,7 +141,6 @@ fun Activity.setLightStatusBar(isLightBar: Boolean) {
 /**
  * 设置导航栏颜色
  */
-@Suppress("DEPRECATION")
 fun Activity.setNavigationBarColorAuto(@ColorInt color: Int) {
     val isLightBor = ColorUtils.isColorLight(color)
     window.navigationBarColor = color
@@ -160,16 +158,17 @@ fun Activity.setNavigationBarColorAuto(@ColorInt color: Int) {
                 )
             }
         }
-    }
-    @Suppress("DEPRECATION")
-    val decorView = window.decorView
-    var systemUiVisibility = decorView.systemUiVisibility
-    systemUiVisibility = if (isLightBor) {
-        systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
     } else {
-        systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
+        @Suppress("DEPRECATION")
+        val decorView = window.decorView
+        var systemUiVisibility = decorView.systemUiVisibility
+        systemUiVisibility = if (isLightBor) {
+            systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        } else {
+            systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
+        }
+        decorView.systemUiVisibility = systemUiVisibility
     }
-    decorView.systemUiVisibility = systemUiVisibility
 }
 
 fun Activity.keepScreenOn(on: Boolean) {

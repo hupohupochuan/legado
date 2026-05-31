@@ -58,20 +58,30 @@ class ClickActionConfigDialog : BaseDialogFragment(R.layout.dialog_click_action_
                         hide(WindowInsets.Type.statusBars())
                     }
                 }
+                @Suppress("DEPRECATION")
+                var flag = (View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
+                if (ReadBookConfig.hideNavigationBar) {
+                    flag = flag or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                }
+                window.decorView.systemUiVisibility = flag
+            } else {
+                @Suppress("DEPRECATION")
+                var flag = (View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
+                if (ReadBookConfig.hideNavigationBar) {
+                    flag = flag or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    flag = flag or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                }
+                if (ReadBookConfig.hideStatusBar) {
+                    flag = flag or View.SYSTEM_UI_FLAG_FULLSCREEN
+                }
+                window.decorView.systemUiVisibility = flag
             }
-            @Suppress("DEPRECATION")
-            var flag = (View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or View.SYSTEM_UI_FLAG_IMMERSIVE
-                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
-            if (ReadBookConfig.hideNavigationBar) {
-                flag = flag or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                flag = flag or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            }
-            if (ReadBookConfig.hideStatusBar) {
-                flag = flag or View.SYSTEM_UI_FLAG_FULLSCREEN
-            }
-            window.decorView.systemUiVisibility = flag
         }
     }
 

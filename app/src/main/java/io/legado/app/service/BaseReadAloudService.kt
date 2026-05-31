@@ -11,8 +11,10 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
+import android.content.pm.ServiceInfo
 import androidx.annotation.CallSuper
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseService
@@ -502,7 +504,12 @@ abstract class BaseReadAloudService : BaseService() {
         execute {
             try {
                 val notification = createNotification()
-                startForeground(NotificationId.ReadAloudService, notification.build())
+                ServiceCompat.startForeground(
+                    this@BaseReadAloudService,
+                    NotificationId.ReadAloudService,
+                    notification.build(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
             } catch (e: Exception) {
                 AppLog.put("创建朗读通知出错,${e.localizedMessage}", e, true)
                 //创建通知出错不结束服务就会崩溃,服务必须绑定通知

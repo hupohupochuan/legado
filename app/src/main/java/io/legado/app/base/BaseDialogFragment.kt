@@ -91,9 +91,12 @@ abstract class BaseDialogFragment(
 
     override fun show(manager: FragmentManager, tag: String?) {
         kotlin.runCatching {
-            //在每个add事务前增加一个remove事务，防止连续的add
-            manager.beginTransaction().remove(this).commit()
-            super.show(manager, tag)
+            val ft = manager.beginTransaction()
+            if (isAdded) {
+                ft.remove(this)
+            }
+            ft.add(this, tag)
+            ft.commitAllowingStateLoss()
         }.onFailure {
             AppLog.put("显示对话框失败 tag:$tag", it)
         }

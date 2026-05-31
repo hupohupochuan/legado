@@ -5,7 +5,7 @@ package io.legado.app.utils
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.PendingIntent
-import android.app.PendingIntent.FLAG_MUTABLE
+import android.app.PendingIntent.FLAG_IMMUTABLE
 import android.app.PendingIntent.FLAG_UPDATE_CURRENT
 import android.app.PendingIntent.getActivity
 import android.app.PendingIntent.getBroadcast
@@ -23,6 +23,7 @@ import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.drawable.Drawable
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
@@ -101,7 +102,7 @@ inline fun <reified T : Service> Context.servicePendingIntent(
     intent.action = action
     configIntent.invoke(intent)
     val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        FLAG_UPDATE_CURRENT or FLAG_MUTABLE
+        FLAG_UPDATE_CURRENT or FLAG_IMMUTABLE
     } else {
         FLAG_UPDATE_CURRENT
     }
@@ -115,7 +116,7 @@ fun Context.activityPendingIntent(
 ): PendingIntent? {
     intent.action = action
     val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        FLAG_UPDATE_CURRENT or FLAG_MUTABLE
+        FLAG_UPDATE_CURRENT or FLAG_IMMUTABLE
     } else {
         FLAG_UPDATE_CURRENT
     }
@@ -131,7 +132,7 @@ inline fun <reified T : Activity> Context.activityPendingIntent(
     intent.action = action
     configIntent.invoke(intent)
     val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        FLAG_UPDATE_CURRENT or FLAG_MUTABLE
+        FLAG_UPDATE_CURRENT or FLAG_IMMUTABLE
     } else {
         FLAG_UPDATE_CURRENT
     }
@@ -147,7 +148,7 @@ inline fun <reified T : BroadcastReceiver> Context.broadcastPendingIntent(
     intent.action = action
     configIntent.invoke(intent)
     val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        FLAG_UPDATE_CURRENT or FLAG_MUTABLE
+        FLAG_UPDATE_CURRENT or FLAG_IMMUTABLE
     } else {
         FLAG_UPDATE_CURRENT
     }
@@ -363,12 +364,11 @@ fun Context.openFileUri(uri: Uri, type: String? = null) {
     }
 }
 
-@Suppress("DEPRECATION")
 val Context.isWifiConnect: Boolean
-    @SuppressLint("MissingPermission")
     get() {
-        val info = connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI)
-        return info?.isConnected == true
+        val network = connectivityManager.activeNetwork ?: return false
+        val nc = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
     }
 
 val Context.isPad: Boolean
