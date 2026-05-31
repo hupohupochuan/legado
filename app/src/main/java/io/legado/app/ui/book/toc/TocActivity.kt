@@ -1,4 +1,4 @@
-@file:Suppress("DEPRECATION")
+@file:Suppress("unused")
 
 package io.legado.app.ui.book.toc
 
@@ -9,8 +9,9 @@ import android.view.MenuItem
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.FragmentPagerAdapter
+import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.tabs.TabLayout
+import com.google.android.material.tabs.TabLayoutMediator
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.entities.Book
@@ -58,8 +59,13 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
         tabLayout = binding.titleBar.findViewById(R.id.tab_layout)
         tabLayout.isTabIndicatorFullWidth = false
         tabLayout.setSelectedTabIndicatorColor(accentColor)
-        binding.viewPager.adapter = TabFragmentPageAdapter()
-        tabLayout.setupWithViewPager(binding.viewPager)
+        binding.viewPager.adapter = TabFragmentPageAdapter(this)
+        TabLayoutMediator(tabLayout, binding.viewPager) { tab, position ->
+            tab.text = when (position) {
+                1 -> getString(R.string.bookmark)
+                else -> getString(R.string.chapter_list)
+            }
+        }.attach()
         tabLayout.tabGravity = TabLayout.GRAVITY_CENTER
         viewModel.bookData.observe(this) {
             menu?.setGroupVisible(R.id.menu_group_text, it.isLocalTxt)
@@ -191,28 +197,18 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
         }
     }
 
-    @Suppress("DEPRECATION")
-    private inner class TabFragmentPageAdapter :
-        FragmentPagerAdapter(supportFragmentManager, BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT) {
+    private inner class TabFragmentPageAdapter(
+        activity: androidx.fragment.app.FragmentActivity
+    ) : FragmentStateAdapter(activity) {
 
-        override fun getItem(position: Int): Fragment {
+        override fun getItemCount(): Int = 2
+
+        override fun createFragment(position: Int): Fragment {
             return when (position) {
                 1 -> BookmarkFragment()
                 else -> ChapterListFragment()
             }
         }
-
-        override fun getCount(): Int {
-            return 2
-        }
-
-        override fun getPageTitle(position: Int): CharSequence {
-            return when (position) {
-                1 -> getString(R.string.bookmark)
-                else -> getString(R.string.chapter_list)
-            }
-        }
-
     }
 
 }

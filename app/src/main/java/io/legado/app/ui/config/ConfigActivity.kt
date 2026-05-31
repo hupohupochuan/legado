@@ -31,9 +31,8 @@ class ConfigActivity : VMBaseActivity<ActivityConfigBinding, ConfigViewModel>() 
 
     inline fun <reified T : Fragment> replaceFragment(configTag: String) {
         intent.putExtra("configTag", configTag)
-        @Suppress("DEPRECATION")
         val configFragment = supportFragmentManager.findFragmentByTag(configTag)
-            ?: T::class.java.newInstance()
+            ?: T::class.java.getDeclaredConstructor().newInstance()
         supportFragmentManager.beginTransaction()
             .replace(R.id.configFrameLayout, configFragment, configTag)
             .commit()

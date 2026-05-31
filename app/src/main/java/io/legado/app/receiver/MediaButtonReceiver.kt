@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.view.KeyEvent
+import androidx.core.content.IntentCompat
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.help.LifecycleHelp
@@ -39,8 +40,9 @@ class MediaButtonReceiver : BroadcastReceiver() {
         fun handleIntent(context: Context, intent: Intent): Boolean {
             val intentAction = intent.action
             if (Intent.ACTION_MEDIA_BUTTON == intentAction) {
-                @Suppress("DEPRECATION")
-                val keyEvent = intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+                val keyEvent = IntentCompat.getParcelableExtra(
+                    intent, Intent.EXTRA_KEY_EVENT, KeyEvent::class.java
+                )
                     ?: return false
                 val keycode: Int = keyEvent.keyCode
                 val action: Int = keyEvent.action

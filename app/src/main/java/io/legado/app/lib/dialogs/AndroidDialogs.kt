@@ -1,12 +1,12 @@
-@file:Suppress("NOTHING_TO_INLINE", "unused", "DEPRECATION")
+@file:Suppress("NOTHING_TO_INLINE", "unused")
 
 package io.legado.app.lib.dialogs
 
-import android.app.ProgressDialog
 import android.content.Context
 import android.content.DialogInterface
 import android.view.KeyEvent
 import android.view.View
+import android.widget.ProgressBar
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import io.legado.app.R
@@ -172,51 +172,51 @@ fun AlertDialog.Builder.singleChoiceItems(
 inline fun Fragment.progressDialog(
     title: Int? = null,
     message: Int? = null,
-    noinline init: (ProgressDialog.() -> Unit)? = null
+    noinline init: (AlertDialog.() -> Unit)? = null
 ) = requireActivity().progressDialog(title, message, init)
 
 fun Context.progressDialog(
     title: Int? = null,
     message: Int? = null,
-    init: (ProgressDialog.() -> Unit)? = null
+    init: (AlertDialog.() -> Unit)? = null
 ) = progressDialog(title?.let { getString(it) }, message?.let { getString(it) }, false, init)
 
 
 inline fun Fragment.indeterminateProgressDialog(
     title: Int? = null,
     message: Int? = null,
-    noinline init: (ProgressDialog.() -> Unit)? = null
+    noinline init: (AlertDialog.() -> Unit)? = null
 ) = requireActivity().indeterminateProgressDialog(title, message, init)
 
 fun Context.indeterminateProgressDialog(
     title: Int? = null,
     message: Int? = null,
-    init: (ProgressDialog.() -> Unit)? = null
+    init: (AlertDialog.() -> Unit)? = null
 ) = progressDialog(title?.let { getString(it) }, message?.let { getString(it) }, true, init)
 
 inline fun Fragment.progressDialog(
     title: CharSequence? = null,
     message: CharSequence? = null,
-    noinline init: (ProgressDialog.() -> Unit)? = null
+    noinline init: (AlertDialog.() -> Unit)? = null
 ) = requireActivity().progressDialog(title, message, init)
 
 fun Context.progressDialog(
     title: CharSequence? = null,
     message: CharSequence? = null,
-    init: (ProgressDialog.() -> Unit)? = null
+    init: (AlertDialog.() -> Unit)? = null
 ) = progressDialog(title, message, false, init)
 
 
 inline fun Fragment.indeterminateProgressDialog(
     title: CharSequence? = null,
     message: CharSequence? = null,
-    noinline init: (ProgressDialog.() -> Unit)? = null
+    noinline init: (AlertDialog.() -> Unit)? = null
 ) = requireActivity().indeterminateProgressDialog(title, message, init)
 
 fun Context.indeterminateProgressDialog(
     title: CharSequence? = null,
     message: CharSequence? = null,
-    init: (ProgressDialog.() -> Unit)? = null
+    init: (AlertDialog.() -> Unit)? = null
 ) = progressDialog(title, message, true, init)
 
 
@@ -224,12 +224,23 @@ private fun Context.progressDialog(
     title: CharSequence? = null,
     message: CharSequence? = null,
     indeterminate: Boolean,
-    init: (ProgressDialog.() -> Unit)? = null
-) = ProgressDialog(this).apply {
-    isIndeterminate = indeterminate
-    if (!indeterminate) setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
-    if (message != null) setMessage(message)
-    if (title != null) setTitle(title)
-    if (init != null) init()
-    show()
+    init: (AlertDialog.() -> Unit)? = null
+): AlertDialog {
+    val progressBar = if (indeterminate) {
+        null
+    } else {
+        ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = false
+            max = 100
+        }
+    }
+    val dialog = AlertDialog.Builder(this).apply {
+        if (title != null) setTitle(title)
+        if (message != null) setMessage(message)
+        if (progressBar != null) setView(progressBar)
+    }.create()
+    if (init != null) dialog.init()
+    dialog.applyTint()
+    dialog.show()
+    return dialog
 }
