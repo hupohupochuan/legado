@@ -62,7 +62,9 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        bookGroup = arguments?.getParcelable("group", BookGroup::class.java)
+        bookGroup = arguments?.let {
+            BundleCompat.getParcelable(it, "group", BookGroup::class.java)
+        }
         bookGroup?.let {
             binding.btnDelete.visible(it.groupId > 0 || it.groupId == Long.MIN_VALUE)
             binding.tieGroupName.setText(it.groupName)
