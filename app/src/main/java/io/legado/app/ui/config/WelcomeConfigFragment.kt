@@ -126,10 +126,19 @@ class WelcomeConfigFragment : PreferenceFragment(),
             runCatching {
                 val windowManager =
                     requireContext().getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                val displayMetrics = DisplayMetrics()
-                windowManager.defaultDisplay.getRealMetrics(displayMetrics)
-                val screenWidth: Int = displayMetrics.widthPixels
-                val screenHeight: Int = displayMetrics.heightPixels
+                val screenWidth: Int
+                val screenHeight: Int
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    val bounds = windowManager.currentWindowMetrics.bounds
+                    screenWidth = bounds.width()
+                    screenHeight = bounds.height()
+                } else {
+                    val displayMetrics = DisplayMetrics()
+                    @Suppress("DEPRECATION")
+                    windowManager.defaultDisplay.getRealMetrics(displayMetrics)
+                    screenWidth = displayMetrics.widthPixels
+                    screenHeight = displayMetrics.heightPixels
+                }
 
                 // 使用BitmapFactory.Options来优化图片解码，避免加载整个图片
                 val op = BitmapFactory.Options()

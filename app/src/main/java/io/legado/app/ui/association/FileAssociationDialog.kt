@@ -4,6 +4,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import androidx.core.net.toUri
+import androidx.core.os.BundleCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -49,7 +50,8 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
     private val viewModel by viewModels<FileAssociationViewModel>()
     private val localBookTreeSelect by lazy {
         registerHandleFile { result ->
-        val uri = arguments?.getParcelable<Uri>("uri") ?: return@registerHandleFile
+        val uri = BundleCompat.getParcelable(arguments ?: return@registerHandleFile, "uri", Uri::class.java)
+            ?: return@registerHandleFile
         result.uri?.let { treeUri ->
             AppConfig.defaultBookTreeUri = treeUri.toString()
             importBook(treeUri, uri)
@@ -60,7 +62,7 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
     private val isShell get() = activity is AssociationActivity
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        val uri = arguments?.getParcelable<Uri>("uri") ?: return dismiss()
+        val uri = arguments?.let { BundleCompat.getParcelable(it, "uri", Uri::class.java) } ?: return dismiss()
 
         viewModel.importBookLiveData.observe(viewLifecycleOwner) {
             importBook(it)

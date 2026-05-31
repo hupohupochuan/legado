@@ -544,15 +544,11 @@ class TextChapterLayout(
             splitResult.widths,
             if (isFirstLine) paragraphIndent.length else 0
         )
-        else StaticLayout(
-            text,
-            textPaint,
-            visibleWidth,
-            Layout.Alignment.ALIGN_NORMAL,
-            0f,
-            0f,
-            true
-        )
+        else StaticLayout.Builder.obtain(text, 0, text.length, textPaint, visibleWidth)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setLineSpacing(0f, 0f)
+            .setIncludePad(true)
+            .build()
 
         durY = calculateInitialYPosition(layout, textHeight, emptyContent, isTitle, imageStyle)
         val shouldCenterTitle =

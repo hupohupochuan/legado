@@ -140,17 +140,17 @@ data class TextPage(
     /**
      * 计算文字位置,只用作单页面内容
      */
-    @Suppress("DEPRECATION")
     fun format(): TextPage {
         if (textLines.isEmpty()) isMsgPage = true
         if (isMsgPage && ChapterProvider.viewWidth > 0) {
             textLines.clear()
             val visibleWidth = ChapterProvider.visibleRight - ChapterProvider.paddingLeft
             val paint = ChapterProvider.contentPaint
-            val layout = StaticLayout(
-                text, paint, visibleWidth,
-                Layout.Alignment.ALIGN_NORMAL, 1f, 0f, false
-            )
+            val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, visibleWidth)
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                .setLineSpacing(0f, 1f)
+                .setIncludePad(false)
+                .build()
             val letterSpacing = paint.letterSpacing * paint.textSize
             var y = (ChapterProvider.visibleHeight - layout.height) / 2f
             if (y < 0) y = 0f

@@ -2,6 +2,7 @@ package io.legado.app.ui.book.group
 
 import android.os.Bundle
 import android.view.View
+import androidx.core.os.BundleCompat
 import androidx.fragment.app.viewModels
 import io.legado.app.R
 import io.legado.app.R.string.delete
@@ -61,8 +62,7 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        @Suppress("DEPRECATION")
-        bookGroup = arguments?.getParcelable("group")
+        bookGroup = arguments?.getParcelable("group", BookGroup::class.java)
         bookGroup?.let {
             binding.btnDelete.visible(it.groupId > 0 || it.groupId == Long.MIN_VALUE)
             binding.tieGroupName.setText(it.groupName)

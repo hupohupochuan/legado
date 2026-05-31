@@ -2,6 +2,7 @@ package io.legado.app.ui.book.bookmark
 
 import android.os.Bundle
 import android.view.View
+import androidx.core.os.BundleCompat
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
@@ -31,8 +32,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark) {
             return
         }
 
-        @Suppress("DEPRECATION")
-        val bookmark = arguments.getParcelable<Bookmark>("bookmark")
+        val bookmark = BundleCompat.getParcelable(arguments, "bookmark", Bookmark::class.java)
         bookmark ?: let {
             dismiss()
             return
