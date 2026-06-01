@@ -1,6 +1,7 @@
 package io.legado.app.model
 
 import android.content.Context
+import android.content.Intent
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
@@ -18,6 +19,7 @@ import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.service.CacheBookService
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.utils.startService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -78,19 +80,22 @@ object CacheBook {
 
     fun start(context: Context, book: Book, start: Int, end: Int) {
         if (!book.isLocal) {
-            context.startService<CacheBookService> {
+            val intent = Intent(context, CacheBookService::class.java).apply {
                 action = IntentAction.start
                 putExtra("bookUrl", book.bookUrl)
                 putExtra("start", start)
                 putExtra("end", end)
             }
+            context.startForegroundServiceCompat(intent)
         }
     }
 
     fun remove(context: Context, bookUrl: String) {
-        context.startService<CacheBookService> {
-            action = IntentAction.remove
-            putExtra("bookUrl", bookUrl)
+        if (CacheBookService.isRun) {
+            context.startService<CacheBookService> {
+                action = IntentAction.remove
+                putExtra("bookUrl", bookUrl)
+            }
         }
     }
 

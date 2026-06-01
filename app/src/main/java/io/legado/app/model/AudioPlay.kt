@@ -17,6 +17,7 @@ import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.service.AudioPlayService
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.utils.startService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -86,9 +87,14 @@ object AudioPlay {
         extras: Intent.() -> Unit = {}
     ) {
         if (requireRunning && !AudioPlayService.isRun) return
-        appCtx.startService<AudioPlayService> {
+        val intent = Intent(appCtx, AudioPlayService::class.java).apply {
             this.action = action
             extras()
+        }
+        if (!requireRunning) {
+            appCtx.startForegroundServiceCompat(intent)
+        } else {
+            appCtx.startService(intent)
         }
     }
 

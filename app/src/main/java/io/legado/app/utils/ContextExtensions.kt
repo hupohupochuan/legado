@@ -156,10 +156,15 @@ inline fun <reified T : BroadcastReceiver> Context.broadcastPendingIntent(
 }
 
 fun Context.startForegroundServiceCompat(intent: Intent) {
+    ContextCompat.startForegroundService(this, intent)
+}
+
+fun Context.safeStartForegroundService(intent: Intent, errorMsg: String = "启动服务失败") {
     try {
-        startService(intent)
-    } catch (e: IllegalStateException) {
         ContextCompat.startForegroundService(this, intent)
+    } catch (e: Exception) {
+        io.legado.app.constant.AppLog.put(errorMsg, e)
+        toastOnUi("$errorMsg\n${e.localizedMessage}")
     }
 }
 

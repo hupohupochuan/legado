@@ -53,6 +53,11 @@ import kotlin.math.min
  * 校验书源
  */
 class CheckSourceService : BaseService() {
+
+    companion object {
+        var isRun = false
+    }
+
     private var threadCount = AppConfig.threadCount
     private var searchCoroutine =
         Executors.newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
@@ -79,6 +84,7 @@ class CheckSourceService : BaseService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        isRun = true
         when (intent?.action) {
             IntentAction.start -> IntentData.get<List<String>>("checkSourceSelectedIds")?.let {
                 check(it)
@@ -92,6 +98,7 @@ class CheckSourceService : BaseService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        isRun = false
         Debug.finishChecking()
         searchCoroutine.close()
         postEvent(EventBus.CHECK_SOURCE_DONE, 0)

@@ -42,12 +42,12 @@ class WebService : BaseService() {
         var hostAddress = ""
 
         fun start(context: Context) {
-            context.startService<WebService>()
+            val intent = Intent(context, WebService::class.java)
+            context.startForegroundServiceCompat(intent)
         }
 
         fun startForeground(context: Context) {
-            val intent = Intent(context, WebService::class.java)
-            context.startForegroundServiceCompat(intent)
+            start(context)
         }
 
         fun stop(context: Context) {
@@ -55,8 +55,10 @@ class WebService : BaseService() {
         }
 
         fun serve() {
-            appCtx.startService<WebService> {
-                action = "serve"
+            if (isRun) {
+                appCtx.startService<WebService> {
+                    action = "serve"
+                }
             }
         }
     }

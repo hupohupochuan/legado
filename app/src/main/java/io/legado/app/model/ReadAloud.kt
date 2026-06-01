@@ -2,7 +2,6 @@ package io.legado.app.model
 
 import android.content.Context
 import android.content.Intent
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.IntentAction
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
@@ -12,8 +11,8 @@ import io.legado.app.service.HttpReadAloudService
 import io.legado.app.service.TTSReadAloudService
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.StringUtils
-import io.legado.app.utils.startForegroundServiceCompat
-import io.legado.app.utils.toastOnUi
+import io.legado.app.utils.safeStartForegroundService
+import io.legado.app.utils.startService
 import splitties.init.appCtx
 
 object ReadAloud {
@@ -49,13 +48,7 @@ object ReadAloud {
             putExtra("startPos", startPos)
         }
         LogUtils.d("ReadAloud", intent.toString())
-        try {
-            context.startForegroundServiceCompat(intent)
-        } catch (e: Exception) {
-            val msg = "启动朗读服务出错\n${e.localizedMessage}"
-            AppLog.put(msg, e)
-            context.toastOnUi(msg)
-        }
+        context.safeStartForegroundService(intent, "启动朗读服务出错")
     }
 
     private inline fun sendAction(
@@ -68,7 +61,7 @@ object ReadAloud {
             this.action = action
             extras()
         }
-        context.startForegroundServiceCompat(intent)
+        context.startService(intent)
     }
 
     fun pause(context: Context) = sendAction(context, IntentAction.pause)

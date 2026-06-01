@@ -1,12 +1,14 @@
 package io.legado.app.model
 
 import android.content.Context
+import android.content.Intent
 import io.legado.app.R
 import io.legado.app.constant.IntentAction
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.CacheManager
 import io.legado.app.help.IntentData
 import io.legado.app.service.CheckSourceService
+import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.utils.startService
 import splitties.init.appCtx
 
@@ -27,20 +29,25 @@ object CheckSource {
             it.bookSourceUrl
         }
         IntentData.put("checkSourceSelectedIds", selectedIds)
-        context.startService<CheckSourceService> {
+        val intent = Intent(context, CheckSourceService::class.java).apply {
             action = IntentAction.start
         }
+        context.startForegroundServiceCompat(intent)
     }
 
     fun stop(context: Context) {
-        context.startService<CheckSourceService> {
-            action = IntentAction.stop
+        if (CheckSourceService.isRun) {
+            context.startService<CheckSourceService> {
+                action = IntentAction.stop
+            }
         }
     }
 
     fun resume(context: Context) {
-        context.startService<CheckSourceService> {
-            action = IntentAction.resume
+        if (CheckSourceService.isRun) {
+            context.startService<CheckSourceService> {
+                action = IntentAction.resume
+            }
         }
     }
 

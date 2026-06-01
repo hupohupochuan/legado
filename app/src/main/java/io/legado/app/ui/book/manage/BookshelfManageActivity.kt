@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.manage
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -75,6 +76,7 @@ import io.legado.app.utils.shouldHideSoftInput
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.utils.startService
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.verificationField
@@ -685,7 +687,7 @@ class BookshelfManageActivity :
                 etInputScope.error = null
                 val epubSize = etEpubSize.text.toString().toIntOrNull() ?: 1
                 adapter.selection.forEach { book ->
-                    startService<ExportBookService> {
+                    val intent = Intent(this@BookshelfManageActivity, ExportBookService::class.java).apply {
                         action = IntentAction.start
                         putExtra("bookUrl", book.bookUrl)
                         putExtra("exportType", "epub")
@@ -693,6 +695,7 @@ class BookshelfManageActivity :
                         putExtra("epubSize", epubSize)
                         putExtra("epubScope", epubScope)
                     }
+                    startForegroundServiceCompat(intent)
                 }
                 alertDialog.hide()
             }
@@ -719,12 +722,13 @@ class BookshelfManageActivity :
         }
             if (adapter.selection.isNotEmpty()) {
                 adapter.selection.forEach { book ->
-                    startService<ExportBookService> {
+                    val intent = Intent(this, ExportBookService::class.java).apply {
                         action = IntentAction.start
                         putExtra("bookUrl", book.bookUrl)
                         putExtra("exportType", exportType)
                         putExtra("exportPath", path)
                     }
+                    startForegroundServiceCompat(intent)
                 }
             } else {
                 toastOnUi(R.string.no_book)
