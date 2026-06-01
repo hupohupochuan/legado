@@ -57,7 +57,7 @@ import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setIconCompat
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.startForegroundServiceCompat
+import io.legado.app.utils.safeStartForegroundService
 import io.legado.app.utils.startService
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.verificationField
@@ -472,7 +472,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                         putExtra("epubSize", epubSize)
                         putExtra("epubScope", epubScope)
                     }
-                    startForegroundServiceCompat(intent)
+                    safeStartForegroundService(intent, "启动导出服务出错")
                 }
                 alertDialog.hide()
             }
@@ -506,7 +506,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                         putExtra("exportType", exportType)
                         putExtra("exportPath", path)
                     }
-                    startForegroundServiceCompat(intent)
+                    safeStartForegroundService(intent, "启动导出服务出错")
                 }
             } else {
                 toastOnUi(R.string.no_book)
@@ -519,7 +519,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                     putExtra("exportType", exportType)
                     putExtra("exportPath", path)
                 }
-                startForegroundServiceCompat(intent)
+                safeStartForegroundService(intent, "启动导出服务出错")
             }
         }
     }

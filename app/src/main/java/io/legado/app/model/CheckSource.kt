@@ -8,7 +8,7 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.CacheManager
 import io.legado.app.help.IntentData
 import io.legado.app.service.CheckSourceService
-import io.legado.app.utils.startForegroundServiceCompat
+import io.legado.app.utils.safeStartForegroundService
 import io.legado.app.utils.startService
 import splitties.init.appCtx
 
@@ -32,7 +32,7 @@ object CheckSource {
         val intent = Intent(context, CheckSourceService::class.java).apply {
             action = IntentAction.start
         }
-        context.startForegroundServiceCompat(intent)
+        context.safeStartForegroundService(intent, "启动书源校验服务出错")
     }
 
     fun stop(context: Context) {

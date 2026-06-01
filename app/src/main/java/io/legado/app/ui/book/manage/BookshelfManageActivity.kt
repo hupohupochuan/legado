@@ -75,8 +75,8 @@ import io.legado.app.utils.setIconCompat
 import io.legado.app.utils.shouldHideSoftInput
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess
+import io.legado.app.utils.safeStartForegroundService
 import io.legado.app.utils.startActivity
-import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.utils.startService
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.verificationField
@@ -695,7 +695,7 @@ class BookshelfManageActivity :
                         putExtra("epubSize", epubSize)
                         putExtra("epubScope", epubScope)
                     }
-                    startForegroundServiceCompat(intent)
+                    safeStartForegroundService(intent, "启动导出服务出错")
                 }
                 alertDialog.hide()
             }
@@ -728,7 +728,7 @@ class BookshelfManageActivity :
                         putExtra("exportType", exportType)
                         putExtra("exportPath", path)
                     }
-                    startForegroundServiceCompat(intent)
+                    safeStartForegroundService(intent, "启动导出服务出错")
                 }
             } else {
                 toastOnUi(R.string.no_book)

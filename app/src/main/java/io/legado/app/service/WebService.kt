@@ -24,7 +24,7 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.servicePendingIntent
-import io.legado.app.utils.startForegroundServiceCompat
+import io.legado.app.utils.safeStartForegroundService
 import io.legado.app.utils.startService
 import io.legado.app.utils.stopService
 import io.legado.app.utils.toastOnUi
@@ -43,7 +43,7 @@ class WebService : BaseService() {
 
         fun start(context: Context) {
             val intent = Intent(context, WebService::class.java)
-            context.startForegroundServiceCompat(intent)
+            context.safeStartForegroundService(intent, "启动Web服务出错")
         }
 
         fun startForeground(context: Context) {

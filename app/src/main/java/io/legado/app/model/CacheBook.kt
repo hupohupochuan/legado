@@ -19,7 +19,7 @@ import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.service.CacheBookService
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.startForegroundServiceCompat
+import io.legado.app.utils.safeStartForegroundService
 import io.legado.app.utils.startService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -86,7 +86,7 @@ object CacheBook {
                 putExtra("start", start)
                 putExtra("end", end)
             }
-            context.startForegroundServiceCompat(intent)
+            context.safeStartForegroundService(intent, "启动缓存服务出错")
         }
     }
 
