@@ -2,7 +2,6 @@ package io.legado.app.ui.main.bookshelf
 
 import android.app.Application
 import androidx.lifecycle.MutableLiveData
-import com.google.gson.stream.JsonWriter
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
@@ -11,6 +10,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.IntentData
+import io.legado.app.help.book.BookshelfExport
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.decompressed
@@ -21,7 +21,6 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.webBook.WebBook.getBookInfoAwait
 import io.legado.app.model.webBook.WebBook.getBookInfoByUrlAwait
 import io.legado.app.model.webBook.WebBook.preciseSearchAwait
-import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.isAbsUrl
@@ -31,8 +30,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.io.File
-import java.io.FileOutputStream
-import java.io.OutputStreamWriter
 
 class BookshelfViewModel(application: Application) : BaseViewModel(application) {
     val addBookProgressLiveData = MutableLiveData(-1)
@@ -40,37 +37,7 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
 
     fun exportBookshelf(books: List<Book>?, success: (file: File) -> Unit) {
         execute {
-            books?.let {
-                val path = "${context.filesDir}/bookshelf.json"
-                FileUtils.delete(path)
-                val file = FileUtils.createFileWithReplace(path)
-                FileOutputStream(file).use { out ->
-                    val writer = JsonWriter(OutputStreamWriter(out, "UTF-8"))
-                    writer.setIndent("  ")
-                    writer.beginArray()
-                    it.forEach {
-                        val bookMap = mapOf(
-                            "bookUrl" to it.bookUrl,
-                            "tocUrl" to it.tocUrl,
-                            "origin" to it.origin,
-                            "originName" to it.originName,
-                            "name" to it.name,
-                            "author" to it.author,
-                            "kind" to it.kind,
-                            "coverUrl" to it.coverUrl,
-                            "customCoverUrl" to it.customCoverUrl,
-                            "intro" to it.intro,
-                            "customIntro" to it.customIntro,
-                            "type" to it.type,
-                            "wordCount" to it.wordCount
-                        )
-                        GSON.toJson(bookMap, bookMap::class.java, writer)
-                    }
-                    writer.endArray()
-                    writer.close()
-                }
-                file
-            } ?: throw NoStackTraceException("书籍不能为空")
+            BookshelfExport.export(context, books)
         }.onSuccess {
             success(it)
         }.onError {

@@ -2,7 +2,6 @@ package io.legado.app.ui.book.manage
 
 import android.app.Application
 import androidx.lifecycle.MutableLiveData
-import com.google.gson.stream.JsonWriter
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
@@ -12,6 +11,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.BookshelfExport
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
@@ -27,8 +27,6 @@ import io.legado.app.utils.writeToOutputStream
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import java.io.File
-import java.io.FileOutputStream
-import java.io.OutputStreamWriter
 
 
 class BookshelfManageViewModel(application: Application) : BaseViewModel(application) {
@@ -138,37 +136,7 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
 
     fun exportBookshelf(books: List<Book>?, success: (file: File) -> Unit) {
         execute {
-            books?.let {
-                val path = "${context.filesDir}/bookshelf.json"
-                FileUtils.delete(path)
-                val file = FileUtils.createFileWithReplace(path)
-                FileOutputStream(file).use { out ->
-                    val writer = JsonWriter(OutputStreamWriter(out, "UTF-8"))
-                    writer.setIndent("  ")
-                    writer.beginArray()
-                    books.forEach {
-                        val bookMap = mapOf(
-                            "bookUrl" to it.bookUrl,
-                            "tocUrl" to it.tocUrl,
-                            "origin" to it.origin,
-                            "originName" to it.originName,
-                            "name" to it.name,
-                            "author" to it.author,
-                            "kind" to it.kind,
-                            "coverUrl" to it.coverUrl,
-                            "customCoverUrl" to it.customCoverUrl,
-                            "intro" to it.intro,
-                            "customIntro" to it.customIntro,
-                            "type" to it.type,
-                            "wordCount" to it.wordCount
-                        )
-                        GSON.toJson(bookMap, bookMap::class.java, writer)
-                    }
-                    writer.endArray()
-                    writer.close()
-                }
-                file
-            } ?: throw NoStackTraceException("书籍不能为空")
+            BookshelfExport.export(context, books)
         }.onSuccess {
             success(it)
         }.onError {
