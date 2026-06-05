@@ -1,6 +1,5 @@
 plugins {
     alias libs.plugins.android.application
-    alias libs.plugins.kotlin.android
     alias libs.plugins.kotlin.parcelize
     alias libs.plugins.room
     alias libs.plugins.ksp
@@ -71,9 +70,9 @@ android {
     buildTypes {
         release {
             if (project.hasProperty("RELEASE_STORE_FILE")) {
-                signingConfig signingConfigs.myConfig
+                signingConfig = signingConfigs.myConfig
             } else {
-                signingConfig signingConfigs.debug
+                signingConfig = signingConfigs.debug
             }
             applicationIdSuffix '.release'
             if (getApplicationIdSuffix() == '.releaseA') {
@@ -82,19 +81,19 @@ android {
                 manifestPlaceholders.put("app_name", "@string/app_name")
             }
 
-            minifyEnabled true
+            minifyEnabled = true
             shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
         }
         debug {
             if (project.hasProperty("RELEASE_STORE_FILE")) {
-                signingConfig signingConfigs.myConfig
+                signingConfig = signingConfigs.myConfig
             }
             manifestPlaceholders.put("app_name", "@string/app_name")
 
             applicationIdSuffix '.debug'
             versionNameSuffix 'debug'
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
         }
     }
@@ -109,26 +108,10 @@ android {
 
     splits {
         abi {
-            enable true
+            enable = true
             reset()
             include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
-            universalApk true
-        }
-    }
-
-    applicationVariants.configureEach { variant ->
-        variant.outputs.configureEach { output ->
-            def abi = output.getFilter("ABI")
-            // 简写架构名称
-            def abiShortMap = [
-                    "arm64-v8a"  : "arm64",
-                    "armeabi-v7a": "armv7",
-                    "x86_64"     : "x64",
-                    "x86"        : "x86",
-                    "all"       : "all"
-            ]
-            def abiName = abiShortMap.get(abi ?: "all")
-            outputFileName = "${name}_${abiName}.apk"
+            universalApk = true
         }
     }
 
@@ -167,6 +150,22 @@ android {
     tasks.withType(JavaCompile).tap {
         configureEach {
             //options.compilerArgs << "-Xlint:unchecked"
+        }
+    }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.forEach { output ->
+            def abiFilter = output.filters.find { it.filterType.name() == "ABI" }
+            def abiShortMap = [
+                    "arm64-v8a"  : "arm64",
+                    "armeabi-v7a": "armv7",
+                    "x86_64"     : "x64",
+                    "x86"        : "x86",
+            ]
+            def abiName = abiFilter ? (abiShortMap[abiFilter.identifier] ?: abiFilter.identifier) : "all"
+            output.outputFileName.set("legado_${abiName}.apk")
         }
     }
 }

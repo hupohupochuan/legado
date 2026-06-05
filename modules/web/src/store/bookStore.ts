@@ -204,7 +204,7 @@ export const useBookStore = defineStore('book', {
     clearSearchBooks() {
       this.searchBooks = []
     },
-    async saveBookProgress() {
+    async saveBookProgress(useBeacon = false) {
       if (!this.bookProgress) return Promise.resolve()
       const { bookUrl } = this.readingBook
       const shelfRaw = toRaw(this.shelf)
@@ -216,7 +216,11 @@ export const useBookStore = defineStore('book', {
           this.bookProgress,
         )
       }
-      return API.saveBookProgressWithBeacon(this.bookProgress)
+      if (useBeacon) {
+        API.saveBookProgressWithBeacon(this.bookProgress)
+        return
+      }
+      return API.saveBookProgress(this.bookProgress)
     },
   },
 })

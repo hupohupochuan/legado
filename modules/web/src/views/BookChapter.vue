@@ -131,24 +131,28 @@ watch(
 )
 
 const infiniteLoading = computed(() => store.config.infiniteLoading)
+const isAppendingChapter = ref(false)
 let scrollObserver: IntersectionObserver | null
 const loading = ref()
 watchEffect(() => {
   if (!infiniteLoading.value) {
     scrollObserver?.disconnect()
-  } else {
+  } else if (loading.value) {
     scrollObserver?.observe(loading.value)
   }
 })
 const loadMore = () => {
-  const index = chapterData.value.slice(-1)[0].index
+  const lastChapter = chapterData.value.slice(-1)[0]
+  if (!lastChapter) return
+  const index = lastChapter.index
   if (catalog.value.length - 1 > index) {
     getContent(index + 1, false)
-    store.saveBookProgress()
+      .then(() => store.saveBookProgress())
+      .catch(() => undefined)
   }
 }
 const onReachBottom = (entries: IntersectionObserverEntry[]) => {
-  if (isLoading.value) return
+  if (isLoading.value || isAppendingChapter.value) return
   for (const { isIntersecting } of entries) {
     if (!isIntersecting) return
     loadMore()
@@ -243,34 +247,41 @@ const getContent = (index: number, reloadChapter = true, chapterPos = 0) => {
   const bookUrl = store.readingBook.bookUrl
   const { title, index: chapterIndex } = catalog.value[index]
 
-  loadingWrapper(
-    API.getBookContent(bookUrl, chapterIndex).then(
-      res => {
-        if (res.data.isSuccess) {
-          const data = res.data.data
-          const content = data.split(/\n+/)
-          chapterData.value.push({ index, content, title })
-          if (reloadChapter) toChapterPos(chapterPos)
-        } else {
-          toast.error(res.data.errorMsg)
-          const content = [res.data.errorMsg]
-          chapterData.value.push({ index, content, title })
-        }
-        store.setContentLoading(true)
-        noPoint.value = false
-        store.setShowContent(true)
-        if (!res.data.isSuccess) {
-          throw res.data
-        }
-      },
-      err => {
+  const request = API.getBookContent(bookUrl, chapterIndex).then(
+    res => {
+      if (res.data.isSuccess) {
+        const data = res.data.data
+        const content = data.split(/\n+/)
+        chapterData.value.push({ index, content, title })
+        if (reloadChapter) toChapterPos(chapterPos)
+      } else {
+        toast.error(res.data.errorMsg)
+        const content = [res.data.errorMsg]
+        chapterData.value.push({ index, content, title })
+      }
+      store.setContentLoading(true)
+      noPoint.value = false
+      store.setShowContent(true)
+      if (!res.data.isSuccess) {
+        throw res.data
+      }
+    },
+    err => {
+      if (reloadChapter) {
         const content = ['获取章节内容失败！']
         chapterData.value.push({ index, content, title })
-        store.setShowContent(true)
-        throw err
-      },
-    ),
+      } else {
+        toast.error('获取下一章内容失败！')
+      }
+      store.setShowContent(true)
+      throw err
+    },
   )
+  if (reloadChapter) return loadingWrapper(request)
+  isAppendingChapter.value = true
+  return request.finally(() => {
+    isAppendingChapter.value = false
+  })
 }
 
 const chapter = ref()
@@ -304,7 +315,7 @@ const saveReadingBookProgressToBrowser = (index: number, pos: number) => {
 const onVisibilityChange = () => {
   const _bookProgress = bookProgress.value
   if (document.visibilityState == 'hidden' && _bookProgress) {
-    store.saveBookProgress()
+    store.saveBookProgress(true)
   }
 }
 

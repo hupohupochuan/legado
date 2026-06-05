@@ -26,13 +26,13 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.isJson
 import io.legado.app.utils.normalizeFileName
-import io.legado.app.utils.removePref
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * webDav初始化会访问网络,不要放到主线程
@@ -52,50 +52,79 @@ object AppWebDav {
 
     val isJianGuoYun get() = rootWebDavUrl.startsWith(defaultWebDavUrl, true)
 
+    private val configVersion = AtomicInteger()
+
     init {
         runBlocking {
             upConfig()
         }
     }
 
-    private val rootWebDavUrl: String
+    private val serverWebDavUrl: String
         get() {
-            val configUrl = appCtx.getPrefString(PreferKey.webDavUrl)
+            val configUrl = appCtx.getPrefString(PreferKey.webDavUrl)?.trim()
             var url = if (configUrl.isNullOrEmpty()) defaultWebDavUrl else configUrl
             if (!url.endsWith("/")) url = "${url}/"
-            AppConfig.webDavDir?.trim()?.let {
+            return url
+        }
+
+    private val rootWebDavUrl: String
+        get() {
+            var url = serverWebDavUrl
+            AppConfig.webDavDir?.trim()?.trim('/')?.let {
                 if (it.isNotEmpty()) {
-                    url = "${url}${it}/"
+                    url = "$url$it/"
                 }
             }
             return url
         }
 
     suspend fun upConfig() {
-        kotlin.runCatching {
+        val version = configVersion.incrementAndGet()
+        val account = appCtx.getPrefString(PreferKey.webDavAccount)?.trim()
+        val password = appCtx.getPrefString(PreferKey.webDavPassword)?.trim()
+
+        if (account.isNullOrEmpty() || password.isNullOrEmpty()) {
             authorization = null
             defaultBookWebDav = null
-            val account = appCtx.getPrefString(PreferKey.webDavAccount)
-            val password = appCtx.getPrefString(PreferKey.webDavPassword)
-            if (!account.isNullOrEmpty() && !password.isNullOrEmpty()) {
-                val mAuthorization = Authorization(account, password)
-                checkAuthorization(mAuthorization)
-                WebDav(rootWebDavUrl, mAuthorization).makeAsDir()
-                WebDav(bookProgressUrl, mAuthorization).makeAsDir()
-                WebDav(exportsWebDavUrl, mAuthorization).makeAsDir()
-                WebDav(bgWebDavUrl, mAuthorization).makeAsDir()
-                val rootBooksUrl = "${rootWebDavUrl}books/"
-                defaultBookWebDav = RemoteBookWebDav(rootBooksUrl, mAuthorization)
-                authorization = mAuthorization
+            AppLog.put("WebDav upConfig: 账号或密码为空，已清空运行时配置")
+            return
+        }
+
+        val mAuthorization = Authorization(account, password)
+        kotlin.runCatching {
+            checkAuthorization(mAuthorization, version)
+            if (version != configVersion.get()) {
+                AppLog.put("WebDav upConfig 版本过期(1) url=${serverWebDavUrl}")
+                return@runCatching
             }
+            WebDav(rootWebDavUrl, mAuthorization).makeAsDir()
+            WebDav(bookProgressUrl, mAuthorization).makeAsDir()
+            WebDav(exportsWebDavUrl, mAuthorization).makeAsDir()
+            WebDav(bgWebDavUrl, mAuthorization).makeAsDir()
+            if (version != configVersion.get()) {
+                AppLog.put("WebDav upConfig 版本过期(2) url=${rootWebDavUrl}")
+                return@runCatching
+            }
+            val rootBooksUrl = "${rootWebDavUrl}books/"
+            defaultBookWebDav = RemoteBookWebDav(rootBooksUrl, mAuthorization)
+            authorization = mAuthorization
+            AppLog.put("WebDav配置更新成功 url=${rootWebDavUrl}")
+        }.onFailure {
+            AppLog.put("WebDav认证失败 serverUrl=${serverWebDavUrl} ${it.localizedMessage}")
         }
     }
 
     @Throws(WebDavException::class)
-    private suspend fun checkAuthorization(authorization: Authorization) {
-        if (!WebDav(rootWebDavUrl, authorization).check()) {
-            appCtx.removePref(PreferKey.webDavPassword)
-            appCtx.toastOnUi(R.string.webdav_application_authorization_error)
+    private suspend fun checkAuthorization(authorization: Authorization, version: Int) {
+        val serverAuthorized = WebDav(serverWebDavUrl, authorization).check()
+        val rootAuthorized = serverAuthorized
+            || serverWebDavUrl.equals(rootWebDavUrl, ignoreCase = true)
+            || WebDav(rootWebDavUrl, authorization).check()
+        if (!rootAuthorized) {
+            if (version == configVersion.get()) {
+                appCtx.toastOnUi(R.string.webdav_application_authorization_error)
+            }
             throw WebDavException(appCtx.getString(R.string.webdav_application_authorization_error))
         }
     }

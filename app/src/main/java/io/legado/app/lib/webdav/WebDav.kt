@@ -268,9 +268,17 @@ open class WebDav(
                 addHeader("Depth", "0")
                 val requestBody = EXISTS.toRequestBody("application/xml".toMediaType())
                 method("PROPFIND", requestBody)
-            }.use { it.code != 401 }
+            }.use {
+                val httpCode = it.code
+                val is401 = httpCode == 401
+                val httpUrlStr = url.toString()
+                AppLog.put("WebDav.check url=${httpUrlStr} code=${httpCode} is401=${is401}")
+                !is401
+            }
         }.onFailure {
             currentCoroutineContext().ensureActive()
+            val httpUrlStr = url.toString()
+            AppLog.put("WebDav.check 网络异常 url=${httpUrlStr} ${it.localizedMessage}")
         }.getOrDefault(true)
     }
 
