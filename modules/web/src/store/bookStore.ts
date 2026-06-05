@@ -217,6 +217,8 @@ export const useBookStore = defineStore('book', {
         )
       }
       if (useBeacon) {
+        // Beacon is only for page hide/unload; normal reads need a real request
+        // so the browser can observe failures and keep progress in sync.
         API.saveBookProgressWithBeacon(this.bookProgress)
         return
       }

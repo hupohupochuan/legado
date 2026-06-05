@@ -19,7 +19,7 @@ Legado (阅读) — Android 电子书阅读器
 ├── targetSdk=36, compileSdk=36, minSdk=26
 ├── Kotlin (~790 文件) + Java (10 文件)
 ├── Gradle Version Catalog (libs.versions.toml)
-└── 模块结构：app + modules/book + modules/rhino
+└── 模块结构：app + modules/book + modules/rhino + modules/web
 ```
 
 ### 模块依赖图
@@ -36,12 +36,18 @@ Legado (阅读) — Android 电子书阅读器
 │ (书籍解析)   │        │              │
 └─────────────┘        └──────────────┘
                               │
-                    ┌─────────┼─────────┐
-                    ▼         ▼         ▼
-               ┌────────┐ ┌──────┐ ┌──────┐
-               │  data  │ │  help│ │  lib  │
-               │ (数据库)│ │(配置)│ │(第三方)│
-               └────────┘ └──────┘ └──────┘
+                    ┌─────────┼─────────┬──────────────┐
+                    ▼         ▼         ▼              ▼
+               ┌────────┐ ┌──────┐ ┌──────┐     ┌────────────┐
+               │  data  │ │  help│ │  lib  │     │ assets/web │
+               │ (数据库)│ │(配置)│ │(第三方)│     │ Web UI产物 │
+               └────────┘ └──────┘ └──────┘     └────────────┘
+                                                        ▲
+                                                        │
+                                               ┌────────────────┐
+                                               │ modules/web/src│
+                                               │ Vue Web UI源码 │
+                                               └────────────────┘
 ```
 
 ---
@@ -114,6 +120,13 @@ app/src/main/java/io/legado/app/
     ├── PreferKey.kt         ← SharedPreferences Key
     └── EventBus.kt          ← EventBus 事件定义
 ```
+
+### Web 前端资源边界
+
+- `modules/web/src/` 是 Web 服务浏览器端 UI 源码。
+- `app/src/main/assets/web/` 是 APK 内实际加载资源。
+- 如果没有执行 `modules/web` 构建同步，修改 Web 阅读页时必须同步维护 `app/src/main/assets/web/index.html`，否则 APK 里不会包含修复。
+- Web 阅读页核心文件: `modules/web/src/views/BookChapter.vue`, `modules/web/src/store/bookStore.ts`。
 
 ---
 

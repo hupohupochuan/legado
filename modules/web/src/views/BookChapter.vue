@@ -131,6 +131,8 @@ watch(
 )
 
 const infiniteLoading = computed(() => store.config.infiniteLoading)
+// Appending a chapter must not use the global loading mask; that mask covers the
+// whole reader and shows as a white overlay at the end of each chapter.
 const isAppendingChapter = ref(false)
 let scrollObserver: IntersectionObserver | null
 const loading = ref()
@@ -278,6 +280,7 @@ const getContent = (index: number, reloadChapter = true, chapterPos = 0) => {
     },
   )
   if (reloadChapter) return loadingWrapper(request)
+  // Keep infinite-scroll fetches invisible and only use this flag for de-duping.
   isAppendingChapter.value = true
   return request.finally(() => {
     isAppendingChapter.value = false
