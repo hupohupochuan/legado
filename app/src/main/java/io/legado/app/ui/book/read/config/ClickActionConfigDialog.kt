@@ -42,6 +42,7 @@ class ClickActionConfigDialog : BaseDialogFragment(R.layout.dialog_click_action_
         )
     }
 
+    @Suppress("DEPRECATION")
     override fun onStart() {
         super.onStart()
         dialog?.window?.let { window ->

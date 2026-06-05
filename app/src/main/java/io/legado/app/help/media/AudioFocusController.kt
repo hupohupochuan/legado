@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package io.legado.app.help.media
 
 import android.media.AudioManager

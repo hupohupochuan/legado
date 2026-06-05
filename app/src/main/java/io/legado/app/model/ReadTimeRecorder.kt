@@ -8,6 +8,7 @@ import io.legado.app.model.ReadTimeRecorder.end
 import io.legado.app.model.ReadTimeRecorder.flushAll
 import io.legado.app.model.ReadTimeRecorder.setBook
 import io.legado.app.model.ReadTimeRecorder.start
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
@@ -72,11 +73,11 @@ object ReadTimeRecorder {
     }
 
     /** 标记 source 结束活跃. pending 状态也会一并清理. */
+    @OptIn(DelicateCoroutinesApi::class)
     fun end(source: String) {
         synchronized(lock) {
             val book = sourceBook[source] ?: return
             endJobs.remove(source)?.cancel()
-            @Suppress("OptInUsageInspection")
             endJobs[source] = GlobalScope.launch(Dispatchers.Main) {
                 delay(SESSION_END_DELAY_MS)
                 synchronized(lock) {

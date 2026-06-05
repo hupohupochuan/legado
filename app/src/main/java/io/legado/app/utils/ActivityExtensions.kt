@@ -76,9 +76,10 @@ val WindowManager.windowSize: DisplayMetrics
         return displayMetrics
     }
 
+@Suppress("DEPRECATION")
 fun Activity.fullScreen() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        window.setDecorFitsSystemWindows(true)
+        WindowCompat.setDecorFitsSystemWindows(window, true)
     }
     @Suppress("DEPRECATION")
     window.decorView.systemUiVisibility =
@@ -108,6 +109,7 @@ fun Activity.setStatusBarColorAuto(
 }
 
 @SuppressLint("ObsoleteSdkInt")
+@Suppress("DEPRECATION")
 fun Activity.setLightStatusBar(isLightBar: Boolean) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         window.insetsController?.let {
@@ -140,6 +142,7 @@ fun Activity.setLightStatusBar(isLightBar: Boolean) {
 /**
  * 设置导航栏颜色
  */
+@Suppress("DEPRECATION")
 fun Activity.setNavigationBarColorAuto(@ColorInt color: Int) {
     val isLightBor = ColorUtils.isColorLight(color)
     window.navigationBarColor = color

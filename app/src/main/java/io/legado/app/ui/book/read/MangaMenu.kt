@@ -12,7 +12,6 @@ import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.databinding.ViewMangaMenuBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.source.getSourceType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton

@@ -38,7 +38,8 @@ object ImageLoader {
         path: String?,
         inBookshelf: Boolean = false
     ): RequestBuilder<Drawable> {
-        return requestManager.load(if (path.isFilePath()) File(path) else path)
+        val model = path?.let { if (it.isFilePath()) File(it) else it }
+        return requestManager.load(model)
             .diskCacheStrategy(DiskCacheStrategy.DATA)
             .let { if (inBookshelf) it.signature(ObjectKey("covers")) else it }
     }
@@ -62,10 +63,8 @@ object ImageLoader {
 
     fun loadBitmap(context: Context, path: String?): RequestBuilder<Bitmap> {
         val requestManager = Glide.with(context).`as`(Bitmap::class.java)
-        return when {
-            path.isFilePath() -> requestManager.load(File(path))
-            else -> requestManager.load(path)
-        }.diskCacheStrategy(DiskCacheStrategy.DATA)
+        val model = path?.let { if (it.isFilePath()) File(it) else it }
+        return requestManager.load(model).diskCacheStrategy(DiskCacheStrategy.DATA)
     }
 
     suspend fun loadManga(

@@ -123,6 +123,7 @@ class AnalyzeByJSonPath(json: Any) {
             ctx.let {
                 try {
                     val tmp = it.read<Any>(rules[0])
+                    @Suppress("UNCHECKED_CAST")
                     return if (tmp is ArrayList<*>) tmp as ArrayList<Any>
                     else arrayListOf(tmp)
                 } catch (e: Exception) {

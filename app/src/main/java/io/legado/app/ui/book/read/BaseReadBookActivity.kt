@@ -141,6 +141,7 @@ abstract class BaseReadBookActivity :
     /**
      * 更新状态栏,导航栏
      */
+    @Suppress("DEPRECATION")
     fun upSystemUiVisibility(
         isInMultiWindow: Boolean,
         toolBarHide: Boolean = true,

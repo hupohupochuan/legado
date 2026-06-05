@@ -19,7 +19,6 @@ import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.SSLHelper
 import io.legado.app.help.http.StrResponse
 import io.legado.app.help.source.SourceVerificationHelp
-import io.legado.app.help.source.getSourceType
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.QueryTTF

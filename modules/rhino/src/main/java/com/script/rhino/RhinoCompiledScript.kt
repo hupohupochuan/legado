@@ -68,6 +68,7 @@ internal class RhinoCompiledScript(
         val result: Any?
         try {
             cx.checkRecursive()
+            @Suppress("DEPRECATION")
             val ret = script.exec(cx, scope)
             result = engine.unwrapReturnValue(ret)
         } catch (re: RhinoException) {
