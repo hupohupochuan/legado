@@ -224,6 +224,10 @@ class TextChapterLayout(
             }
 
             getTextChapter(book, bookChapter, displayTitle, bookContent, parsedLines)
+
+            if (isSingle && allImages.isNotEmpty()) {
+                pageChangeChannel.trySend(Unit)
+            }
         }.onError {
             exception = it
             onException(it)
