@@ -9,7 +9,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookContent
 import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.getBookSource
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.coroutine.Coroutine
@@ -116,12 +115,13 @@ class TextChapterLayout(
             val allImages = parsedLines.flatMap { it.images }.map { it.src }.distinct()
 
             if (!isSingle && allImages.isNotEmpty()) {
-                val bookSource = book.getBookSource()
-                if (bookSource != null) {
-                    for (src in allImages) {
-                        ensureActive()
-                        if (!BookHelp.isImageExist(book, src)) {
-                            BookHelp.saveImage(bookSource, book, src, bookChapter)
+                for (src in allImages) {
+                    ensureActive()
+                    if (!BookHelp.isImageExist(book, src)) {
+                        runCatching {
+                            ImageProvider.cacheImage(book, src, ReadBook.bookSource)
+                        }.onFailure {
+                            AppLog.put("${book.name} ${bookChapter.title} 图片 $src 加载失败\n${it.localizedMessage}", it)
                         }
                     }
                 }
@@ -129,7 +129,6 @@ class TextChapterLayout(
 
             if (isSingle && allImages.isNotEmpty()) {
                 launch {
-                    val bookSource = book.getBookSource() ?: return@launch
                     val downloaded =
                         allImages.filter { BookHelp.isImageExist(book, it) }.toMutableSet()
 
@@ -175,7 +174,11 @@ class TextChapterLayout(
                         for (src in downloadWindow) {
                             ensureActive()
                             if (src !in downloaded) {
-                                BookHelp.saveImage(bookSource, book, src, bookChapter)
+                                runCatching {
+                                    ImageProvider.cacheImage(book, src, ReadBook.bookSource)
+                                }.onFailure {
+                                    AppLog.put("${book.name} ${bookChapter.title} 图片 $src 加载失败\n${it.localizedMessage}", it)
+                                }
                                 if (BookHelp.isImageExist(book, src)) {
                                     downloaded.add(src)
                                     newDownloaded.add(src)
