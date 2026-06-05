@@ -209,7 +209,8 @@ class BookInfoActivity :
         menu.findItem(R.id.menu_login)?.isVisible = viewModel.curBookSource?.hasLogin() == true
         menu.findItem(R.id.menu_set_source_variable)?.isVisible = hasSource
         menu.findItem(R.id.menu_set_book_variable)?.isVisible = hasSource
-        menu.findItem(R.id.menu_upload)?.isVisible = book?.origin == BookType.localTag
+        menu.findItem(R.id.menu_upload)?.isVisible =
+            book?.isLocal == true && !book.origin.startsWith(BookType.webDavTag)
         menu.findItem(R.id.menu_download_local)?.isVisible =
             book?.origin?.startsWith(BookType.webDavTag) == true
         menu.findItem(R.id.menu_delete_alert)?.isChecked = LocalConfig.bookInfoDeleteAlert
