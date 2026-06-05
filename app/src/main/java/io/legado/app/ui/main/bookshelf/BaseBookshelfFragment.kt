@@ -31,6 +31,7 @@ import io.legado.app.ui.main.MainViewModel
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.readText
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 
@@ -44,13 +45,18 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
 
     private val importBookshelf by lazy {
         registerHandleFile { result ->
-        kotlin.runCatching {
-            result.uri?.readText(requireContext())?.let { text ->
-                viewModel.importBookshelf(text, groupId)
+            kotlin.runCatching {
+                result.uri?.readText(requireContext())?.let { text ->
+                    viewModel.importBookshelf(text, groupId)
+                }
+            }.onFailure {
+                toastOnUi(it.localizedMessage ?: "ERROR")
             }
-        }.onFailure {
-            toastOnUi(it.localizedMessage ?: "ERROR")
         }
+    }
+    private val exportBookshelf by lazy {
+        registerHandleFile { result ->
+            result.uri?.let { showExportSuccess(it) }
         }
     }
     abstract val groupId: Long
@@ -91,14 +97,14 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
                 putExtra("groupId", groupId)
             }
 
-//            R.id.menu_export_bookshelf -> viewModel.exportBookshelf(books) { file ->
-//                exportResult.launch {
-//                    mode = HandleFileContract.EXPORT
-//                    fileData =
-//                        HandleFileContract.FileData("bookshelf.json", file, "application/json")
-//                }
-//            }
-//
+            R.id.menu_export_bookshelf -> viewModel.exportBookshelf(books) { file ->
+                exportBookshelf.launch {
+                    mode = HandleFileContract.EXPORT
+                    fileData =
+                        HandleFileContract.FileData("bookshelf.json", file, "application/json")
+                }
+            }
+
             R.id.menu_import_bookshelf -> importBookshelfAlert(groupId)
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
