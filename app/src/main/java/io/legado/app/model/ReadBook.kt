@@ -74,7 +74,7 @@ object ReadBook : CoroutineScope by MainScope() {
     var nextTextChapter: TextChapter? = null
     var bookSource: BookSource? = null
     var msg: String? = null
-    private val loadingChapters = arrayListOf<Int>()
+    private val chapterLoadState = ChapterLoadState()
     private val chapterLoadingJobs = ConcurrentHashMap<Int, Coroutine<*>>()
     private val prevChapterLoadingLock = Mutex()
     private val curChapterLoadingLock = Mutex()
@@ -135,7 +135,7 @@ object ReadBook : CoroutineScope by MainScope() {
         callBack?.upMenuView()
         upWebBook(book)
         synchronized(this) {
-            loadingChapters.clear()
+            chapterLoadState.clear()
             downloadedChapters.clear()
             downloadFailChapters.clear()
         }
@@ -635,14 +635,12 @@ object ReadBook : CoroutineScope by MainScope() {
 
     @Synchronized
     private fun addLoading(index: Int): Boolean {
-        if (loadingChapters.contains(index)) return false
-        loadingChapters.add(index)
-        return true
+        return chapterLoadState.tryStart(index)
     }
 
     @Synchronized
     fun removeLoading(index: Int) {
-        loadingChapters.remove(index)
+        chapterLoadState.finish(index)
     }
 
     /**
