@@ -93,6 +93,10 @@ object ReadBook : CoroutineScope by MainScope() {
     val downloadScope = CoroutineScope(SupervisorJob() + IO)
     val preDownloadSemaphore = Semaphore(2)
     val executor = globalExecutor
+    private val chapterStore = ReadBookChapterStore(
+        getChapterCount = { bookUrl -> appDb.bookChapterDao.getChapterCount(bookUrl) },
+        getChapter = { bookUrl, index -> appDb.bookChapterDao.getChapter(bookUrl, index) }
+    )
 
     fun initData(book: Book) {
         releaseAndCancel()
@@ -104,7 +108,7 @@ object ReadBook : CoroutineScope by MainScope() {
         if (chapterList?.firstOrNull()?.bookUrl != book.bookUrl){
             chapterList = null
         }
-        chapterSize = chapterList?.size ?: appDb.bookChapterDao.getChapterCount(book.bookUrl)
+        chapterSize = chapterStore.count(book, chapterList)
         simulatedChapterSize = if (book.readSimulating()) book.simulatedTotalChapterNum()
         else chapterSize
         contentProcessor = ContentProcessor.get(book)
@@ -639,8 +643,7 @@ object ReadBook : CoroutineScope by MainScope() {
     }
 
     private fun getChapter(book: Book, index: Int): BookChapter? {
-        if (index < 0 || index >= chapterSize) return null
-        return chapterList?.getOrNull(index) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index)
+        return chapterStore.get(book, index, chapterList, chapterSize)
     }
 
     @Synchronized
