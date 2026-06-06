@@ -530,7 +530,7 @@ object ReadBook : CoroutineScope by MainScope() {
     ) {
         Coroutine.async {
             val book = book!!
-            val chapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return@async
+            val chapter = getChapter(book, index) ?: return@async
             if (addLoading(index)) {
                 BookHelp.getContent(book, chapter)?.let {
                     contentLoadFinish(
@@ -558,10 +558,10 @@ object ReadBook : CoroutineScope by MainScope() {
         resetPageOffset: Boolean = false,
         success: (() -> Unit)? = null
     ) = withContext(IO) {
+        val book = book ?: return@withContext
+        val chapter = getChapter(book, index) ?: return@withContext
         if (addLoading(index)) {
             try {
-                val book = book!!
-                val chapter = chapterList?.get(durChapterIndex) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index)!!
                 val content = BookHelp.getContent(book, chapter) ?: downloadAwait(chapter)
                 contentLoadFinishAwait(book, chapter, content, upContent, resetPageOffset)
                 success?.invoke()
@@ -580,7 +580,7 @@ object ReadBook : CoroutineScope by MainScope() {
         if (index < 0) return
         if (index > chapterSize - 1)return
         val book = book ?: return
-        val chapter = chapterList?.get(index) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return
+        val chapter = getChapter(book, index) ?: return
         if (BookHelp.hasContent(book, chapter)) {
             downloadedChapters.add(chapter.index)
         } else {
@@ -626,6 +626,11 @@ object ReadBook : CoroutineScope by MainScope() {
             val msg = if (book.isLocal) "无内容" else "没有书源"
             return "加载正文失败\n$msg"
         }
+    }
+
+    private fun getChapter(book: Book, index: Int): BookChapter? {
+        if (index < 0 || index >= chapterSize) return null
+        return chapterList?.getOrNull(index) ?: appDb.bookChapterDao.getChapter(book.bookUrl, index)
     }
 
     @Synchronized
