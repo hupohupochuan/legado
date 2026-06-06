@@ -246,7 +246,7 @@ ReadBookActivity
 
 ### ⚠️ 容易遗漏的检查清单
 
-- [ ] 修改 Kotlin 后是否编译通过 (`compileAppDebugKotlin`)
+- [ ] 修改 Kotlin 后是否编译通过 (`scripts/check-debug.sh` / `compileAppDebugKotlin`)
 - [ ] 修改 Manifest 后是否声明了对应权限/服务类型
 - [ ] 新 API (API 30+) 是否有 `Build.VERSION.SDK_INT >=` 分支保护旧设备
 - [ ] Lambda 中的 `this` 是否指向正确对象（尤其是 Service/Activity）
@@ -280,15 +280,11 @@ ReadBookActivity
 
 ### Debug 编译（验证代码）
 ```bash
-# 1. 临时改 Gradle Wrapper 为本地路径
-distributionUrl=file:///home/liu/Documents/legado-master/.gradle/gradle-8.13-bin.zip
+# 推荐入口，等价于运行 :app:compileAppDebugKotlin --no-daemon
+scripts/check-debug.sh
 
-# 2. 编译
-ANDROID_HOME=/home/liu/Documents/legado-master/.sdk \
+# 底层命令
 ./gradlew :app:compileAppDebugKotlin --no-daemon
-
-# 3. 恢复 Gradle Wrapper 路径
-distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip
 ```
 
 ### Release APK
