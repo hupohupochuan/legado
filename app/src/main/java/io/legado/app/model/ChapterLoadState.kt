@@ -2,27 +2,48 @@ package io.legado.app.model
 
 class ChapterLoadState {
 
-    private val loadingIndexes = linkedSetOf<Int>()
+    enum class Status {
+        Idle,
+        Loading,
+        Failed
+    }
+
+    private val states = hashMapOf<Int, Status>()
 
     @Synchronized
     fun tryStart(index: Int): Boolean {
-        if (loadingIndexes.contains(index)) return false
-        loadingIndexes.add(index)
+        if (states[index] == Status.Loading) return false
+        states[index] = Status.Loading
         return true
     }
 
     @Synchronized
     fun finish(index: Int) {
-        loadingIndexes.remove(index)
+        states.remove(index)
+    }
+
+    @Synchronized
+    fun fail(index: Int) {
+        states[index] = Status.Failed
     }
 
     @Synchronized
     fun clear() {
-        loadingIndexes.clear()
+        states.clear()
     }
 
     @Synchronized
     fun isLoading(index: Int): Boolean {
-        return loadingIndexes.contains(index)
+        return status(index) == Status.Loading
+    }
+
+    @Synchronized
+    fun isFailed(index: Int): Boolean {
+        return status(index) == Status.Failed
+    }
+
+    @Synchronized
+    fun status(index: Int): Status {
+        return states[index] ?: Status.Idle
     }
 }

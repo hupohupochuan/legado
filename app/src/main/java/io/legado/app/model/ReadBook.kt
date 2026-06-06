@@ -548,6 +548,9 @@ object ReadBook : CoroutineScope by MainScope() {
                 )
             }
         }.onError {
+            if (it !is CancellationException) {
+                markLoadingFailed(index)
+            }
             AppLog.put("加载正文出错\n${it.localizedMessage}")
         }
     }
@@ -561,14 +564,21 @@ object ReadBook : CoroutineScope by MainScope() {
         val book = book ?: return@withContext
         val chapter = getChapter(book, index) ?: return@withContext
         if (addLoading(index)) {
+            var failed = false
             try {
                 val content = BookHelp.getContent(book, chapter) ?: downloadAwait(chapter)
                 contentLoadFinishAwait(book, chapter, content, upContent, resetPageOffset)
                 success?.invoke()
             } catch (e: Exception) {
+                if (e !is CancellationException) {
+                    failed = true
+                    markLoadingFailed(index)
+                }
                 AppLog.put("加载正文出错\n${e.localizedMessage}")
             } finally {
-                removeLoading(index)
+                if (!failed) {
+                    removeLoading(index)
+                }
             }
         }
     }
@@ -641,6 +651,11 @@ object ReadBook : CoroutineScope by MainScope() {
     @Synchronized
     fun removeLoading(index: Int) {
         chapterLoadState.finish(index)
+    }
+
+    @Synchronized
+    private fun markLoadingFailed(index: Int) {
+        chapterLoadState.fail(index)
     }
 
     /**
