@@ -1,5 +1,6 @@
 *.iml
 .gradle
+.sdk/
 local.properties
 .DS_Store
 /build
@@ -19,4 +20,6 @@ package-lock.json
 .kotlin/
 .vscode
 .proxyai
+AGENTS.md
+opencode.json
 /release签名
