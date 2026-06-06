@@ -3,3 +3,4 @@
 set -eu
 
 scripts/check-staged-local-files.sh
+scripts/check-web-assets-sync.sh

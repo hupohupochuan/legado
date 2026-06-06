@@ -126,6 +126,7 @@ app/src/main/java/io/legado/app/
 - `modules/web/src/` 是 Web 服务浏览器端 UI 源码。
 - `app/src/main/assets/web/` 是 APK 内实际加载资源。
 - 如果没有执行 `modules/web` 构建同步，修改 Web 阅读页时必须同步维护 `app/src/main/assets/web/index.html`，否则 APK 里不会包含修复。
+- `scripts/check-web-assets-sync.sh` 会在提交前拦截“改了 Web 源码/配置但未暂存 assets”的情况。
 - Web 阅读页核心文件: `modules/web/src/views/BookChapter.vue`, `modules/web/src/store/bookStore.ts`。
 
 ---
