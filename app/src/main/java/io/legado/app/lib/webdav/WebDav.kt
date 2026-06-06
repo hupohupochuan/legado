@@ -80,6 +80,23 @@ open class WebDav(
             </propfind>"""
 
         private const val DEFAULT_CONTENT_TYPE = "application/octet-stream"
+
+        fun safeLogUrl(url: String?): String {
+            if (url.isNullOrBlank()) return ""
+            return kotlin.runCatching {
+                url.toHttpUrl().newBuilder()
+                    .username("")
+                    .password("")
+                    .query(null)
+                    .fragment(null)
+                    .build()
+                    .toString()
+            }.getOrElse {
+                url.substringBefore('?')
+                    .substringBefore('#')
+                    .replace(Regex("(?<=://)[^/@]+:[^/@]+@"), "")
+            }
+        }
     }
 
 
@@ -271,13 +288,13 @@ open class WebDav(
             }.use {
                 val httpCode = it.code
                 val is401 = httpCode == 401
-                val httpUrlStr = url.toString()
+                val httpUrlStr = safeLogUrl(url.toString())
                 AppLog.put("WebDav.check url=${httpUrlStr} code=${httpCode} is401=${is401}")
                 !is401
             }
         }.onFailure {
             currentCoroutineContext().ensureActive()
-            val httpUrlStr = url.toString()
+            val httpUrlStr = safeLogUrl(url.toString())
             AppLog.put("WebDav.check 网络异常 url=${httpUrlStr} ${it.localizedMessage}")
         }.getOrDefault(true)
     }
@@ -451,7 +468,7 @@ open class WebDav(
             }
 
             if (response.message.isNotBlank() || body.isBlank()) {
-                throw WebDavException("${url}\n${response.code}:${response.message}")
+                throw WebDavException("${safeLogUrl(url.toString())}\n${response.code}:${response.message}")
             }
             val document = Jsoup.parse(body)
             val exception = document.getElementsByTag("s:exception").firstOrNull()?.text()

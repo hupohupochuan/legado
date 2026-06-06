@@ -93,9 +93,14 @@ object AppWebDav {
 
         val mAuthorization = Authorization(account, password)
         kotlin.runCatching {
+            AppLog.putDebug(
+                "WebDav upConfig start version=${version} " +
+                        "serverUrl=${WebDav.safeLogUrl(serverWebDavUrl)} " +
+                        "rootUrl=${WebDav.safeLogUrl(rootWebDavUrl)}"
+            )
             checkAuthorization(mAuthorization, version)
             if (version != configVersion.get()) {
-                AppLog.put("WebDav upConfig 版本过期(1) url=${serverWebDavUrl}")
+                AppLog.put("WebDav upConfig 版本过期(1) url=${WebDav.safeLogUrl(serverWebDavUrl)}")
                 return@runCatching
             }
             WebDav(rootWebDavUrl, mAuthorization).makeAsDir()
@@ -103,15 +108,18 @@ object AppWebDav {
             WebDav(exportsWebDavUrl, mAuthorization).makeAsDir()
             WebDav(bgWebDavUrl, mAuthorization).makeAsDir()
             if (version != configVersion.get()) {
-                AppLog.put("WebDav upConfig 版本过期(2) url=${rootWebDavUrl}")
+                AppLog.put("WebDav upConfig 版本过期(2) url=${WebDav.safeLogUrl(rootWebDavUrl)}")
                 return@runCatching
             }
             val rootBooksUrl = "${rootWebDavUrl}books/"
             defaultBookWebDav = RemoteBookWebDav(rootBooksUrl, mAuthorization)
             authorization = mAuthorization
-            AppLog.put("WebDav配置更新成功 url=${rootWebDavUrl}")
+            AppLog.put("WebDav配置更新成功 url=${WebDav.safeLogUrl(rootWebDavUrl)}")
         }.onFailure {
-            AppLog.put("WebDav认证失败 serverUrl=${serverWebDavUrl} ${it.localizedMessage}")
+            AppLog.put(
+                "WebDav认证失败 serverUrl=${WebDav.safeLogUrl(serverWebDavUrl)} " +
+                        "rootUrl=${WebDav.safeLogUrl(rootWebDavUrl)} ${it.localizedMessage}"
+            )
         }
     }
 
@@ -121,6 +129,12 @@ object AppWebDav {
         val rootAuthorized = serverAuthorized
             || serverWebDavUrl.equals(rootWebDavUrl, ignoreCase = true)
             || WebDav(rootWebDavUrl, authorization).check()
+        AppLog.putDebug(
+            "WebDav checkAuthorization version=${version} " +
+                    "serverAuthorized=${serverAuthorized} rootAuthorized=${rootAuthorized} " +
+                    "serverUrl=${WebDav.safeLogUrl(serverWebDavUrl)} " +
+                    "rootUrl=${WebDav.safeLogUrl(rootWebDavUrl)}"
+        )
         if (!rootAuthorized) {
             if (version == configVersion.get()) {
                 appCtx.toastOnUi(R.string.webdav_application_authorization_error)
@@ -262,39 +276,57 @@ object AppWebDav {
         toast: Boolean = false,
         onSuccess: (() -> Unit)? = null
     ) {
-        val authorization = authorization ?: return
-        if (!AppConfig.syncBookProgress) return
-        if (!NetworkUtils.isAvailable()) return
+        val progressFileName = getProgressFileName(book.name, book.author)
+        val authorization = authorization ?: return AppLog.putDebug(
+            "WebDav uploadBookProgress skip reason=noAuthorization file=${progressFileName}"
+        )
+        if (!AppConfig.syncBookProgress) return AppLog.putDebug(
+            "WebDav uploadBookProgress skip reason=syncDisabled file=${progressFileName}"
+        )
+        if (!NetworkUtils.isAvailable()) return AppLog.putDebug(
+            "WebDav uploadBookProgress skip reason=networkUnavailable file=${progressFileName}"
+        )
         try {
             val bookProgress = BookProgress(book)
             val json = GSON.toJson(bookProgress)
-            val url = getProgressUrl(book.name, book.author)
+            val url = bookProgressUrl + progressFileName
             WebDav(url, authorization).upload(json.toByteArray(), "application/json")
             book.syncTime = System.currentTimeMillis()
+            AppLog.putDebug(
+                "WebDav uploadBookProgress success file=${progressFileName} " +
+                        "chapter=${bookProgress.durChapterIndex} pos=${bookProgress.durChapterPos}"
+            )
             onSuccess?.invoke()
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
-            AppLog.put("上传进度失败\n${e.localizedMessage}", e, toast)
+            AppLog.put("上传进度失败 file=${progressFileName}\n${e.localizedMessage}", e, toast)
         }
     }
 
     suspend fun uploadBookProgress(bookProgress: BookProgress, onSuccess: (() -> Unit)? = null) {
+        val progressFileName = getProgressFileName(bookProgress.name, bookProgress.author)
         try {
-            val authorization = authorization ?: return
-            if (!AppConfig.syncBookProgress) return
-            if (!NetworkUtils.isAvailable()) return
+            val authorization = authorization ?: return AppLog.putDebug(
+                "WebDav uploadBookProgress skip reason=noAuthorization file=${progressFileName}"
+            )
+            if (!AppConfig.syncBookProgress) return AppLog.putDebug(
+                "WebDav uploadBookProgress skip reason=syncDisabled file=${progressFileName}"
+            )
+            if (!NetworkUtils.isAvailable()) return AppLog.putDebug(
+                "WebDav uploadBookProgress skip reason=networkUnavailable file=${progressFileName}"
+            )
             val json = GSON.toJson(bookProgress)
-            val url = getProgressUrl(bookProgress.name, bookProgress.author)
+            val url = bookProgressUrl + progressFileName
             WebDav(url, authorization).upload(json.toByteArray(), "application/json")
+            AppLog.putDebug(
+                "WebDav uploadBookProgress success file=${progressFileName} " +
+                        "chapter=${bookProgress.durChapterIndex} pos=${bookProgress.durChapterPos}"
+            )
             onSuccess?.invoke()
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
-            AppLog.put("上传进度失败\n${e.localizedMessage}", e)
+            AppLog.put("上传进度失败 file=${progressFileName}\n${e.localizedMessage}", e)
         }
-    }
-
-    private fun getProgressUrl(name: String, author: String): String {
-        return bookProgressUrl + getProgressFileName(name, author)
     }
 
     private fun getProgressFileName(name: String, author: String): String {
@@ -305,50 +337,76 @@ object AppWebDav {
      * 获取书籍进度
      */
     suspend fun getBookProgress(book: Book): BookProgress? {
-        val url = getProgressUrl(book.name, book.author)
+        val progressFileName = getProgressFileName(book.name, book.author)
+        val url = bookProgressUrl + progressFileName
+        val authorization = authorization ?: run {
+            AppLog.putDebug("WebDav getBookProgress skip reason=noAuthorization file=${progressFileName}")
+            return null
+        }
         kotlin.runCatching {
-            val authorization = authorization ?: return null
             WebDav(url, authorization).download().let { byteArray ->
                 val json = String(byteArray)
                 if (json.isJson()) {
-                    return GSON.fromJsonObject<BookProgress>(json).getOrNull()
+                    return GSON.fromJsonObject<BookProgress>(json).getOrNull()?.also {
+                        AppLog.putDebug(
+                            "WebDav getBookProgress success file=${progressFileName} " +
+                                    "chapter=${it.durChapterIndex} pos=${it.durChapterPos}"
+                        )
+                    }
                 }
             }
         }.onFailure {
             currentCoroutineContext().ensureActive()
-            AppLog.put("获取书籍进度失败\n${it.localizedMessage}", it)
+            AppLog.put("获取书籍进度失败 file=${progressFileName}\n${it.localizedMessage}", it)
         }
         return null
     }
 
     suspend fun downloadAllBookProgress() {
-        val authorization = authorization ?: return
-        if (!NetworkUtils.isAvailable()) return
-        val bookProgressFiles = WebDav(bookProgressUrl, authorization).listFiles()
-        val map = hashMapOf<String, WebDavFile>()
-        bookProgressFiles.forEach {
-            map[it.displayName] = it
-        }
-        appDb.bookDao.all.forEach { book ->
-            val progressFileName = getProgressFileName(book.name, book.author)
-            val webDavFile = map[progressFileName] ?: return@forEach
-            if (webDavFile.lastModify <= book.syncTime) {
-                //本地同步时间大于上传时间不用同步
-                return@forEach
+        val authorization = authorization ?: return AppLog.putDebug(
+            "WebDav downloadAllBookProgress skip reason=noAuthorization"
+        )
+        if (!NetworkUtils.isAvailable()) return AppLog.putDebug(
+            "WebDav downloadAllBookProgress skip reason=networkUnavailable"
+        )
+        kotlin.runCatching {
+            val bookProgressFiles = WebDav(bookProgressUrl, authorization).listFiles()
+            val map = hashMapOf<String, WebDavFile>()
+            bookProgressFiles.forEach {
+                map[it.displayName] = it
             }
-            getBookProgress(book)?.let { bookProgress ->
-                if (bookProgress.durChapterIndex > book.durChapterIndex
-                    || (bookProgress.durChapterIndex == book.durChapterIndex
-                        && bookProgress.durChapterPos > book.durChapterPos)
-                ) {
-                    book.durChapterIndex = bookProgress.durChapterIndex
-                    book.durChapterPos = bookProgress.durChapterPos
-                    book.durChapterTitle = bookProgress.durChapterTitle
-                    book.durChapterTime = bookProgress.durChapterTime
-                    book.syncTime = System.currentTimeMillis()
-                    appDb.bookDao.update(book)
+            var matchedCount = 0
+            var updatedCount = 0
+            appDb.bookDao.all.forEach { book ->
+                val progressFileName = getProgressFileName(book.name, book.author)
+                val webDavFile = map[progressFileName] ?: return@forEach
+                matchedCount++
+                if (webDavFile.lastModify <= book.syncTime) {
+                    //本地同步时间大于上传时间不用同步
+                    return@forEach
+                }
+                getBookProgress(book)?.let { bookProgress ->
+                    if (bookProgress.durChapterIndex > book.durChapterIndex
+                        || (bookProgress.durChapterIndex == book.durChapterIndex
+                            && bookProgress.durChapterPos > book.durChapterPos)
+                    ) {
+                        book.durChapterIndex = bookProgress.durChapterIndex
+                        book.durChapterPos = bookProgress.durChapterPos
+                        book.durChapterTitle = bookProgress.durChapterTitle
+                        book.durChapterTime = bookProgress.durChapterTime
+                        book.syncTime = System.currentTimeMillis()
+                        appDb.bookDao.update(book)
+                        updatedCount++
+                    }
                 }
             }
+            AppLog.putDebug(
+                "WebDav downloadAllBookProgress success " +
+                        "remoteFiles=${bookProgressFiles.size} matched=${matchedCount} updated=${updatedCount}"
+            )
+        }.onFailure {
+            currentCoroutineContext().ensureActive()
+            AppLog.put("WebDav全量同步阅读进度失败\n${it.localizedMessage}", it)
         }
     }
 
