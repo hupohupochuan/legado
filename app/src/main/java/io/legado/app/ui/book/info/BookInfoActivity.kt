@@ -33,13 +33,14 @@ import io.legado.app.databinding.ActivityBookInfoBinding
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.addType
-import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
+import io.legado.app.help.book.isPlainLocalBook
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
+import io.legado.app.help.book.isWebDavBook
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
@@ -210,9 +211,9 @@ class BookInfoActivity :
         menu.findItem(R.id.menu_set_source_variable)?.isVisible = hasSource
         menu.findItem(R.id.menu_set_book_variable)?.isVisible = hasSource
         menu.findItem(R.id.menu_upload)?.isVisible =
-            book?.isLocal == true && !book.origin.startsWith(BookType.webDavTag)
+            book?.isPlainLocalBook == true
         menu.findItem(R.id.menu_download_local)?.isVisible =
-            book?.origin?.startsWith(BookType.webDavTag) == true
+            book?.isWebDavBook == true
         menu.findItem(R.id.menu_delete_alert)?.isChecked = LocalConfig.bookInfoDeleteAlert
         return super.onMenuOpened(featureId, menu)
     }
@@ -290,7 +291,7 @@ class BookInfoActivity :
     }
 
     private fun uploadBook(book: Book) {
-        if (book.getRemoteUrl() != null) {
+        if (book.isWebDavBook) {
             alert(R.string.draw, R.string.sure_upload) {
                 okButton { viewModel.uploadBook(book) }
                 cancelButton()

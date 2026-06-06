@@ -51,6 +51,20 @@ val BaseBook.isLocal: Boolean
         return isType(BookType.local)
     }
 
+/**
+ * 广义本地书籍中的 WebDAV 来源书籍。
+ *
+ * `isLocal` 会同时覆盖普通本地文件和 WebDAV 远程书籍；需要区分上传/下载入口时优先使用本属性。
+ */
+val BaseBook.isWebDavBook: Boolean
+    get() = origin.startsWith(BookType.webDavTag)
+
+/**
+ * 普通本地文件书籍，不包含 `webDav::` 来源书籍。
+ */
+val BaseBook.isPlainLocalBook: Boolean
+    get() = isLocal && !isWebDavBook
+
 val BaseBook.isLocalTxt: Boolean
     get() = isLocal && originName.endsWith(".txt", true)
 
