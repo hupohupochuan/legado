@@ -42,6 +42,7 @@ import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
@@ -94,6 +95,11 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     protected open fun onSourceChanged(book: Book, toc: List<BookChapter>) {}
 
     protected open fun onChapterListUpdated(book: Book) {}
+
+    /**
+     * 本地书信息加载失败时通知子类收口界面状态。
+     */
+    protected open fun onLocalBookLoadError(book: Book, error: Throwable) {}
 
     /**
      * 进度同步时设置进度, 子类按需覆写
@@ -161,14 +167,22 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         book: Book, canReName: Boolean = true, runPreUpdateJs: Boolean = true
     ) {
         if (book.isLocal) {
-            val tmp = book.copy()
-            FileBook.upBookInfo(book)
-            if (tmp.tocUrl != book.tocUrl || book.totalChapterNum == 0) {
-                loadChapterList(book)
-            } else {
+            try {
+                val tmp = book.copy()
+                FileBook.upBookInfo(book)
+                if (tmp.tocUrl != book.tocUrl || book.totalChapterNum == 0) {
+                    loadChapterList(book)
+                } else {
+                    curBook = book
+                    val chapterList = appDb.bookChapterDao.getChapterList(book.bookUrl)
+                    chapterListData.postValue(chapterList)
+                }
+            } catch (e: Throwable) {
+                currentCoroutineContext().ensureActive()
                 curBook = book
-                val chapterList = appDb.bookChapterDao.getChapterList(book.bookUrl)
-                chapterListData.postValue(chapterList)
+                chapterListData.postValue(emptyList())
+                onLocalBookLoadError(book, e)
+                AppLog.put("获取本地书籍信息失败\n${e.localizedMessage}", e)
             }
         } else {
             val bookSource = curBookSource ?: let {

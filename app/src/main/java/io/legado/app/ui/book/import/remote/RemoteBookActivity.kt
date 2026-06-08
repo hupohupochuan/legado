@@ -12,7 +12,6 @@ import androidx.core.view.isGone
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
-import io.legado.app.data.appDb
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
@@ -229,8 +228,11 @@ class RemoteBookActivity : BaseImportBookActivity<RemoteBookViewModel>(),
     override fun startRead(remoteBook: RemoteBook) {
         val downloadFileName = remoteBook.filename
         if (!ArchiveUtils.isArchive(downloadFileName)) {
-            appDb.bookDao.getBookByFileName(downloadFileName)?.let {
+            binding.refreshProgressBar.isAutoLoading = true
+            viewModel.readOrImport(remoteBook, success = {
                 startReadBook(it)
+            }) {
+                binding.refreshProgressBar.isAutoLoading = false
             }
         } else {
             AppConfig.defaultBookTreeUri ?: return

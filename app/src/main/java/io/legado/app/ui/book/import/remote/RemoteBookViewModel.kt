@@ -5,6 +5,7 @@ import androidx.lifecycle.MutableLiveData
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.Book
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.config.AppConfig
@@ -113,6 +114,31 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
             }
         }.onError {
             AppLog.put("导入出错\n${it.localizedMessage}", it, true)
+            if (it is SecurityException) permissionDenialLiveData.postValue(1)
+        }.onFinally {
+            finally()
+        }
+    }
+
+    fun readOrImport(remoteBook: RemoteBook, success: (Book) -> Unit, finally: () -> Unit) {
+        execute {
+            val bookWebDav = remoteBookWebDav ?: throw NoStackTraceException("没有配置webDav")
+            appDb.bookDao.getBookByFileName(remoteBook.filename)?.let { localBook ->
+                kotlin.runCatching {
+                    FileBook.getBookInputStream(localBook).use { }
+                    return@execute localBook
+                }.onFailure {
+                    AppLog.put("远程书籍本地文件不可读，尝试重新下载\n${it.localizedMessage}", it)
+                }
+            }
+            val webDav = bookWebDav.getWebDav(remoteBook.path)
+            FileBook.importRemoteBook(webDav, bookWebDav.serverID, remoteBook, true).also {
+                remoteBook.isOnBookShelf = true
+            }
+        }.onSuccess {
+            success(it)
+        }.onError {
+            AppLog.put("打开远程书籍出错\n${it.localizedMessage}", it, true)
             if (it is SecurityException) permissionDenialLiveData.postValue(1)
         }.onFinally {
             finally()

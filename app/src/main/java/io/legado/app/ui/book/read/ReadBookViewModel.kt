@@ -113,6 +113,13 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
         ReadBook.bookSource = appDb.bookSourceDao.getBookSource(book.origin)
     }
 
+    override fun onLocalBookLoadError(book: Book, error: Throwable) {
+        ReadBook.upMsg("打开本地书籍出错: ${error.localizedMessage}")
+        if (error is SecurityException || error is FileNotFoundException) {
+            permissionDenialLiveData.postValue(0)
+        }
+    }
+
     /**
      * 初始化
      */
