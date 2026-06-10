@@ -50,6 +50,7 @@
     <string name="in_favorites">in Favorites</string>
     <string name="out_favorites">Not in Favorites</string>
     <string name="rss">RSS feeds</string>
+    <string name="bookshelf_rss_badge">RSS</string>
     <string name="all">All</string>
     <string name="recent_reading">Recent reading</string>
     <string name="last_read">Last reading</string>

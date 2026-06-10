@@ -8,6 +8,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ItemBookshelfListBinding
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isRss
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
@@ -56,6 +57,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             ivLast.visible()
             ivRead.visible()
             upRefresh(this, item)
+            tvRssBadge.gone(!item.isRss)
         }
 
         fun onBind(item: Book, payloads: MutableList<Any>) = binding.run {
@@ -80,6 +82,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
                             )
 
                             "refresh" -> upRefresh(this, item)
+                            "type" -> tvRssBadge.gone(!item.isRss)
                         }
                     }
                 }
@@ -126,6 +129,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             tvLast.gone()
             tvRead.gone()
             tvLastUpdateTime.gone()
+            tvRssBadge.gone()
         }
 
         fun onBind(item: BookGroup, payloads: MutableList<Any>) = binding.run {

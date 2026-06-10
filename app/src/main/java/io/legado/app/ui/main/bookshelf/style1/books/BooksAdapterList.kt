@@ -9,7 +9,9 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemBookshelfListBinding
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isRss
 import io.legado.app.help.config.AppConfig
+import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.toTimeAgo
 import splitties.views.onLongClick
@@ -39,6 +41,7 @@ class BooksAdapterList(
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
             upRefresh(binding, item)
             upLastUpdateTime(binding, item)
+            tvRssBadge.gone(!item.isRss)
         } else {
             for (i in payloads.indices) {
                 val bundle = payloads[i] as Bundle
@@ -61,6 +64,7 @@ class BooksAdapterList(
 
                         "refresh" -> upRefresh(binding, item)
                         "lastUpdateTime" -> upLastUpdateTime(binding, item)
+                        "type" -> tvRssBadge.gone(!item.isRss)
                     }
                 }
             }

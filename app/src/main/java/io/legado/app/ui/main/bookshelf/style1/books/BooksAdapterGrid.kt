@@ -7,7 +7,9 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemBookshelfGridBinding
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isRss
 import io.legado.app.help.config.AppConfig
+import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import splitties.views.onLongClick
 
@@ -28,6 +30,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
             tvName.text = item.name
             ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
             upRefresh(binding, item)
+            tvRssBadge.gone(!item.isRss)
         } else {
             for (i in payloads.indices) {
                 val bundle = payloads[i] as Bundle
@@ -36,6 +39,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                         "name" -> tvName.text = item.name
                         "cover" -> ivCover.load(item.getDisplayCover(), item.name, item.author, false, item.origin, inBookshelf = true)
                         "refresh" -> upRefresh(binding, item)
+                        "type" -> tvRssBadge.gone(!item.isRss)
                     }
                 }
             }
