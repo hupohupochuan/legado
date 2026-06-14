@@ -8,6 +8,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isPlainLocalBook
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.encodeURI
@@ -98,15 +99,20 @@ class EpubFile(var book: Book) {
      */
     private fun readEpub(): EpubBook? {
         return kotlin.runCatching {
-            //ContentScheme拷贝到私有文件夹采用懒加载防止OOM
-            //val zipFile = BookHelp.getEpubFile(book)
-            BookHelp.getBookPFD(book)?.let {
-                fileDescriptor = it
-                val zipFile = AndroidZipFile(it, book.originName)
+            val pfd = BookHelp.getBookPFD(book) ?: throw IOException("文件不可读")
+            fileDescriptor = pfd
+            val zipFile = AndroidZipFile(pfd, book.originName)
+            kotlin.runCatching {
                 EpubReader().readEpubLazy(zipFile, "utf-8")
+            }.getOrElse { directError ->
+                if (!book.isPlainLocalBook) {
+                    throw directError
+                }
+                AppLog.put("直接读取Epub失败, 尝试缓存后读取\n${directError.localizedMessage}", directError)
+                zipFile.close()
+                fileDescriptor = null
+                EpubReader().readEpubLazy(BookHelp.getEpubFile(book), "utf-8")
             }
-
-
         }.onFailure {
             AppLog.put("读取Epub文件失败\n${it.localizedMessage}", it)
             it.printOnDebug()

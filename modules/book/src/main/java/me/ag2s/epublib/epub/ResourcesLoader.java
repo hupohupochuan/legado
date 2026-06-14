@@ -58,6 +58,9 @@ public class ResourcesLoader {
 
         Resources result = new Resources();
         Enumeration entries = zipFileWrapper.entries();
+        if (entries == null) {
+            throw new ZipException("Can not read zip entries: " + zipFileWrapper.getName());
+        }
 
         while (entries.hasMoreElements()) {
             ZipEntryWrapper zipEntry = new ZipEntryWrapper(entries.nextElement());

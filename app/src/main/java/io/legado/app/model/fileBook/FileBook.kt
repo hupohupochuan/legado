@@ -27,6 +27,7 @@ import io.legado.app.help.book.isArchive
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isPlainLocalBook
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.WebDav
@@ -46,10 +47,12 @@ import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
+import me.ag2s.epublib.util.zip.AndroidZipFile
 import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.IOException
 import java.io.InputStream
 import java.util.Locale.getDefault
 import java.util.regex.Pattern
@@ -113,6 +116,41 @@ object FileBook : BaseFileBook {
             book.getHandler().getContent(book, chapter)
         } catch (e: Exception) {
             "获取本地书籍内容失败\n${e.localizedMessage}".also { AppLog.put(it, e) }
+        }
+    }
+
+    @Throws(IOException::class, SecurityException::class)
+    fun checkBookReadable(book: Book) {
+        when {
+            book.isEpub -> {
+                val pfd = BookHelp.getBookPFD(book) ?: throw IOException("文件不可读")
+                val zipFile = AndroidZipFile(pfd, book.originName)
+                val directResult = runCatching {
+                    zipFile.entries().hasMoreElements()
+                }
+                try {
+                    directResult.getOrThrow()
+                } catch (directError: Throwable) {
+                    if (!book.isPlainLocalBook) throw directError
+                    BookHelp.getEpubFile(book).use {
+                        it.entries().hasMoreElements()
+                    }
+                } finally {
+                    zipFile.close()
+                }
+            }
+
+            book.originName.endsWith(".cbz", true) || book.originName.endsWith(".zip", true) -> {
+                val result = ZipFileWrapper.create(book) ?: throw IOException("压缩包不可读")
+                try {
+                    result.wrapper.entries().hasMoreElements()
+                } finally {
+                    result.wrapper.close()
+                    result.fileDescriptor?.close()
+                }
+            }
+
+            else -> getBookInputStream(book).use { }
         }
     }
 

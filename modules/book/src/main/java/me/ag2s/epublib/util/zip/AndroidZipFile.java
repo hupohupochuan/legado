@@ -297,7 +297,7 @@ public class AndroidZipFile implements ZipConstants {
         try {
             return new ZipEntryEnumeration(getEntries().values().iterator());
         } catch (IOException ioe) {
-            return null;
+            throw new IllegalStateException("Can not read zip entries: " + name, ioe);
         }
     }
 

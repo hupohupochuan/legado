@@ -340,29 +340,61 @@ object AppWebDav {
      * 获取书籍进度
      */
     suspend fun getBookProgress(book: Book): BookProgress? {
+        return getBookProgressResult(book)
+            .onFailure {
+                currentCoroutineContext().ensureActive()
+                AppLog.put(
+                    "获取书籍进度失败 file=${getProgressFileName(book.name, book.author)}\n${it.localizedMessage}",
+                    it
+                )
+            }.getOrNull()
+    }
+
+    suspend fun getBookProgressResult(book: Book): Result<BookProgress?> {
         val progressFileName = getProgressFileName(book.name, book.author)
         val url = bookProgressUrl + progressFileName
         val authorization = authorization ?: run {
             AppLog.putDebug("WebDav getBookProgress skip reason=noAuthorization file=${progressFileName}")
-            return null
+            return Result.success(null)
         }
-        kotlin.runCatching {
+        return kotlin.runCatching {
             WebDav(url, authorization).download().let { byteArray ->
                 val json = String(byteArray)
                 if (json.isJson()) {
-                    return GSON.fromJsonObject<BookProgress>(json).getOrNull()?.also {
+                    return@runCatching GSON.fromJsonObject<BookProgress>(json).getOrNull()?.also {
                         AppLog.putDebug(
                             "WebDav getBookProgress success file=${progressFileName} " +
                                     "chapter=${it.durChapterIndex} pos=${it.durChapterPos}"
                         )
                     }
                 }
+                null
             }
-        }.onFailure {
-            currentCoroutineContext().ensureActive()
-            AppLog.put("获取书籍进度失败 file=${progressFileName}\n${it.localizedMessage}", it)
         }
-        return null
+    }
+
+    fun canApplyBookProgress(book: Book, bookProgress: BookProgress, logPrefix: String): Boolean {
+        val maxChapterIndex = book.simulatedTotalChapterNum()
+        if (maxChapterIndex <= 0 || bookProgress.durChapterIndex !in 0 until maxChapterIndex) {
+            AppLog.put(
+                "$logPrefix skip reason=outOfRange " +
+                        "book=${book.name} remoteChapter=${bookProgress.durChapterIndex} " +
+                        "maxChapter=${maxChapterIndex}"
+            )
+            return false
+        }
+        if (book.isLocal) {
+            kotlin.runCatching {
+                FileBook.checkBookReadable(book)
+            }.onFailure {
+                AppLog.put(
+                    "$logPrefix skip reason=localBookUnreadable " +
+                            "book=${book.name}\n${it.localizedMessage}", it
+                )
+                return false
+            }
+        }
+        return true
     }
 
     suspend fun downloadAllBookProgress() {
@@ -389,25 +421,8 @@ object AppWebDav {
                     return@forEach
                 }
                 getBookProgress(book)?.let { bookProgress ->
-                    val maxChapterIndex = book.simulatedTotalChapterNum()
-                    if (maxChapterIndex <= 0 || bookProgress.durChapterIndex !in 0 until maxChapterIndex) {
-                        AppLog.put(
-                            "WebDav downloadAllBookProgress skip reason=outOfRange " +
-                                    "book=${book.name} remoteChapter=${bookProgress.durChapterIndex} " +
-                                    "maxChapter=${maxChapterIndex}"
-                        )
+                    if (!canApplyBookProgress(book, bookProgress, "WebDav downloadAllBookProgress")) {
                         return@forEach
-                    }
-                    if (book.isLocal) {
-                        kotlin.runCatching {
-                            FileBook.getBookInputStream(book).use { }
-                        }.onFailure {
-                            AppLog.put(
-                                "WebDav downloadAllBookProgress skip reason=localBookUnreadable " +
-                                        "book=${book.name}\n${it.localizedMessage}", it
-                            )
-                            return@forEach
-                        }
                     }
                     if (bookProgress.durChapterIndex > book.durChapterIndex
                         || (bookProgress.durChapterIndex == book.durChapterIndex

@@ -242,10 +242,14 @@ object ReadBook : CoroutineScope by MainScope() {
         if (!AppConfig.syncBookProgress) return
         val book = book ?: return
         Coroutine.async {
-            AppWebDav.getBookProgress(book)
+            AppWebDav.getBookProgressResult(book)
         }.onError {
             AppLog.put("拉取阅读进度失败", it)
-        }.onSuccess { progress ->
+        }.onSuccess { result ->
+            val progress = result.getOrElse {
+                AppLog.put("拉取阅读进度失败《${book.name}》\n${it.localizedMessage}", it)
+                return@onSuccess
+            }
             if (progress == null || progress.durChapterIndex < book.durChapterIndex ||
                 (progress.durChapterIndex == book.durChapterIndex
                         && progress.durChapterPos < book.durChapterPos)
@@ -259,6 +263,9 @@ object ReadBook : CoroutineScope by MainScope() {
                 progress.durChapterPos > book.durChapterPos
             ) {
                 // 进度比服务器慢，执行传入动作
+                if (!AppWebDav.canApplyBookProgress(book, progress, "WebDav syncProgress")) {
+                    return@onSuccess
+                }
                 newProgressAction?.invoke(progress)
             } else {
                 syncSuccessAction?.invoke()

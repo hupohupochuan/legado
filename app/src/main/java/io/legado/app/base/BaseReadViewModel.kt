@@ -353,12 +353,19 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     ) {
         if (!AppConfig.syncBookProgress) return
         execute {
-            AppWebDav.getBookProgress(book)
+            AppWebDav.getBookProgressResult(book)
         }.onError {
             AppLog.put("拉取阅读进度失败《${book.name}》\n${it.localizedMessage}", it)
-        }.onSuccess { progress ->
+        }.onSuccess { result ->
+            val progress = result.getOrElse {
+                AppLog.put("拉取阅读进度失败《${book.name}》\n${it.localizedMessage}", it)
+                return@onSuccess
+            }
             progress ?: return@onSuccess
             if (progress.durChapterIndex == book.durChapterIndex && progress.durChapterPos == book.durChapterPos) {
+                return@onSuccess
+            }
+            if (!AppWebDav.canApplyBookProgress(book, progress, "WebDav syncBookProgress")) {
                 return@onSuccess
             }
             if (progress.durChapterIndex < book.durChapterIndex || (progress.durChapterIndex == book.durChapterIndex && progress.durChapterPos < book.durChapterPos)) {
