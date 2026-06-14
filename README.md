@@ -77,6 +77,13 @@ https://gedoor.github.io/Disclaimer
 * [web端书架](https://github.com/gedoor/legado_web_bookshelf)
 * [web端源编辑](https://github.com/gedoor/legado_web_source_editor)
 
+##### 支持开发
+如果这个项目对你有帮助，可以通过 PayPal 自愿支持后续维护。
+
+<img src="docs/assets/paypal-qr.jpg" alt="PayPal QR Code" width="180">
+
+支持开发不会解锁任何功能，不提供内容、书源或服务。
+
 <a href="#readme">
     <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
 </a>

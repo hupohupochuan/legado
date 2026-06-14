@@ -113,6 +113,14 @@ https://gedoor.github.io/Disclaimer
 * [web bookshelf](https://github.com/gedoor/legado_web_bookshelf)
 * [web source editor](https://github.com/gedoor/legado_web_source_editor)
 
+##### Support Development
+
+If this project helps you, you can voluntarily support ongoing maintenance via PayPal.
+
+<img src="docs/assets/paypal-qr.jpg" alt="PayPal QR Code" width="180">
+
+Sponsorship does not unlock any features, content, book sources, or services.
+
 <a href="#readme">
     <img src="https://img.shields.io/badge/-Top-orange.svg" alt="#" align="right">
 </a>
