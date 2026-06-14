@@ -1,4 +1,5 @@
 # [English](English.md) [中文](README.md)
+# 原作者删库，最后一次可见更新是5月30日，本人自己的职业是测试，并非专业开发，在尝试修改bug更新适配上可能有所不足，不过我自己也在用所以应该不会有恶性bug......
 
 [![icon_android](https://github.com/gedoor/gedoor.github.io/blob/master/static/img/legado/icon_android.png)](https://play.google.com/store/apps/details?id=io.legado.play.release)
 <a href="https://jb.gg/OpenSourceSupport" target="_blank">
