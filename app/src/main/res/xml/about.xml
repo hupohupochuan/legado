@@ -9,6 +9,14 @@
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.Preference
+        android:key="support_development"
+        android:summary="@string/support_development_summary"
+        android:title="@string/support_development"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
         android:key="update_log"
         android:title="@string/update_log"
         app:allowDividerAbove="false"

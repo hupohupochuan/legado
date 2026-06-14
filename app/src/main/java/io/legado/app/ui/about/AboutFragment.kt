@@ -51,6 +51,7 @@ class AboutFragment : PreferenceFragmentCompat() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (preference.key) {
             "contributors" -> openUrl(R.string.contributors_url)
+            "support_development" -> openUrl(R.string.project_home_url)
             "update_log" -> showMdFile(getString(R.string.update_log), "updateLog.md")
             "check_update" -> {
                 AppUpdate.check(lifecycleScope, requireActivity() as AppCompatActivity)
