@@ -27,7 +27,6 @@ import io.legado.app.help.book.isArchive
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isPlainLocalBook
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.WebDav
@@ -131,7 +130,7 @@ object FileBook : BaseFileBook {
                 try {
                     directResult.getOrThrow()
                 } catch (directError: Throwable) {
-                    if (!book.isPlainLocalBook) throw directError
+                    if (!book.isLocal) throw directError
                     BookHelp.getEpubFile(book).use {
                         it.entries().hasMoreElements()
                     }

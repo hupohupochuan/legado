@@ -8,7 +8,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.isPlainLocalBook
+import io.legado.app.help.book.isLocal
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.encodeURI
@@ -105,7 +105,7 @@ class EpubFile(var book: Book) {
             kotlin.runCatching {
                 EpubReader().readEpubLazy(zipFile, "utf-8")
             }.getOrElse { directError ->
-                if (!book.isPlainLocalBook) {
+                if (!book.isLocal) {
                     throw directError
                 }
                 AppLog.put("直接读取Epub失败, 尝试缓存后读取\n${directError.localizedMessage}", directError)
