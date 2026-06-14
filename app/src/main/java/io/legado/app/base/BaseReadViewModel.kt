@@ -238,6 +238,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 }
             } catch (e: Throwable) {
                 chapterListData.postValue(emptyList())
+                onLocalBookLoadError(book, e)
                 AppLog.put("LoadTocError:${e.localizedMessage}", e)
                 context.toastOnUi("LoadTocError:${e.localizedMessage}")
             }

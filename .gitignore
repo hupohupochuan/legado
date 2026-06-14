@@ -20,6 +20,7 @@ package-lock.json
 .kotlin/
 .vscode
 .proxyai
+.omo/
 AGENTS.md
 opencode.json
 /release签名

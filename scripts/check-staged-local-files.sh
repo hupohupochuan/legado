@@ -18,6 +18,7 @@ while IFS= read -r file; do
         .kotlin|.kotlin/*|\
         .vscode|.vscode/*|\
         .proxyai|.proxyai/*|\
+        .omo|.omo/*|\
         AGENTS.md|\
         opencode.json|\
         local.properties|\

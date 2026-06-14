@@ -10,6 +10,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.Authorization
+import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.remote.RemoteBook
 import io.legado.app.model.remote.RemoteBookWebDav
@@ -113,7 +114,11 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
                 remoteBook.isOnBookShelf = true
             }
         }.onError {
-            AppLog.put("导入出错\n${it.localizedMessage}", it, true)
+            if (it is WebDavException && it.localizedMessage?.contains("401") == true) {
+                AppLog.put("远程书籍导入失败：WebDAV 认证失败(401)\n${it.localizedMessage}", it, true)
+            } else {
+                AppLog.put("导入出错\n${it.localizedMessage}", it, true)
+            }
             if (it is SecurityException) permissionDenialLiveData.postValue(1)
         }.onFinally {
             finally()
@@ -138,7 +143,11 @@ class RemoteBookViewModel(application: Application) : BaseViewModel(application)
         }.onSuccess {
             success(it)
         }.onError {
-            AppLog.put("打开远程书籍出错\n${it.localizedMessage}", it, true)
+            if (it is WebDavException && it.localizedMessage?.contains("401") == true) {
+                AppLog.put("打开远程书籍失败：WebDAV 认证失败(401)\n${it.localizedMessage}", it, true)
+            } else {
+                AppLog.put("打开远程书籍出错\n${it.localizedMessage}", it, true)
+            }
             if (it is SecurityException) permissionDenialLiveData.postValue(1)
         }.onFinally {
             finally()

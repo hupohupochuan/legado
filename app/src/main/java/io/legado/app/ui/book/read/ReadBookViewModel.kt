@@ -144,15 +144,30 @@ class ReadBookViewModel(application: Application) : BaseReadViewModel(applicatio
 
     private suspend fun initBook(book: Book) {
         val isSameBook = ReadBook.book?.bookUrl == book.bookUrl
+        // 本地书先校验文件可读，失败时直接收口错误状态并停止后续加载/同步
+        if (book.isLocal) {
+            if (!checkLocalBookFileExist(book)) {
+                withContext(Dispatchers.Main) {
+                    ReadBook.chapterList = chapterListData.value
+                }
+                ReadBook.initData(book)
+                if (isSameBook) ReadBook.upMsg(ReadBook.msg)
+                isInitFinish = true
+                return
+            }
+        }
         withContext(Dispatchers.Main) {
             ReadBook.chapterList = chapterListData.value
         }
         ReadBook.initData(book)
         isInitFinish = true
-        if (book.isLocal && !checkLocalBookFileExist(book)) {
+        if (chapterListData.value.isNullOrEmpty()) {
+            if (book.isLocal) {
+                ReadBook.upMsg("打开本地书籍出错: 目录为空或无法加载，请选择书籍所在文件夹")
+                permissionDenialLiveData.postValue(0)
+            }
             return
         }
-        if (chapterListData.value.isNullOrEmpty()) return
         ReadBook.upMsg(null)
         if (!isSameBook) {
             ReadBook.loadContent(resetPageOffset = true)

@@ -8,6 +8,8 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.Restore
@@ -15,6 +17,7 @@ import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.lib.webdav.WebDavFile
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.FileUtils
@@ -386,6 +389,26 @@ object AppWebDav {
                     return@forEach
                 }
                 getBookProgress(book)?.let { bookProgress ->
+                    val maxChapterIndex = book.simulatedTotalChapterNum()
+                    if (maxChapterIndex <= 0 || bookProgress.durChapterIndex !in 0 until maxChapterIndex) {
+                        AppLog.put(
+                            "WebDav downloadAllBookProgress skip reason=outOfRange " +
+                                    "book=${book.name} remoteChapter=${bookProgress.durChapterIndex} " +
+                                    "maxChapter=${maxChapterIndex}"
+                        )
+                        return@forEach
+                    }
+                    if (book.isLocal) {
+                        kotlin.runCatching {
+                            FileBook.getBookInputStream(book).use { }
+                        }.onFailure {
+                            AppLog.put(
+                                "WebDav downloadAllBookProgress skip reason=localBookUnreadable " +
+                                        "book=${book.name}\n${it.localizedMessage}", it
+                            )
+                            return@forEach
+                        }
+                    }
                     if (bookProgress.durChapterIndex > book.durChapterIndex
                         || (bookProgress.durChapterIndex == book.durChapterIndex
                             && bookProgress.durChapterPos > book.durChapterPos)
