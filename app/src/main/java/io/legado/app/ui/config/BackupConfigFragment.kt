@@ -305,7 +305,7 @@ class BackupConfigFragment : PreferenceFragment(),
                 ) { _, index ->
                     if ((index in 0 until names.size)) {
                         listView.post {
-                            viewModel.restoreWebDav(names[index])
+                            selectWebDavRestoreMode(names[index])
                         }
                     }
                 }
@@ -318,6 +318,21 @@ class BackupConfigFragment : PreferenceFragment(),
                     }
                     cancelButton()
                 }
+            }
+        }
+    }
+
+    private fun selectWebDavRestoreMode(backupName: String) {
+        requireContext().selector(
+            title = getString(R.string.webdav_restore_mode_title),
+            items = listOf(
+                getString(R.string.restore_book_progress_only_recommended),
+                getString(R.string.restore_webdav_full_backup)
+            )
+        ) { _, index ->
+            when (index) {
+                0 -> viewModel.restoreWebDavProgressOnly()
+                1 -> viewModel.restoreWebDav(backupName)
             }
         }
     }

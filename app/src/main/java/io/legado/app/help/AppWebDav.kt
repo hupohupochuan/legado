@@ -57,6 +57,12 @@ object AppWebDav {
 
     private val configVersion = AtomicInteger()
 
+    private enum class BookProgressCheckResult {
+        CanApply,
+        OutOfRange,
+        LocalBookUnreadable
+    }
+
     init {
         runBlocking {
             upConfig()
@@ -352,28 +358,29 @@ object AppWebDav {
 
     suspend fun getBookProgressResult(book: Book): Result<BookProgress?> {
         val progressFileName = getProgressFileName(book.name, book.author)
-        val url = bookProgressUrl + progressFileName
         val authorization = authorization ?: run {
             AppLog.putDebug("WebDav getBookProgress skip reason=noAuthorization file=${progressFileName}")
             return Result.success(null)
         }
         return kotlin.runCatching {
-            WebDav(url, authorization).download().let { byteArray ->
-                val json = String(byteArray)
-                if (json.isJson()) {
-                    return@runCatching GSON.fromJsonObject<BookProgress>(json).getOrNull()?.also {
-                        AppLog.putDebug(
-                            "WebDav getBookProgress success file=${progressFileName} " +
-                                    "chapter=${it.durChapterIndex} pos=${it.durChapterPos}"
-                        )
-                    }
-                }
-                null
+            downloadBookProgress(progressFileName, authorization)?.also {
+                AppLog.putDebug(
+                    "WebDav getBookProgress success file=${progressFileName} " +
+                            "chapter=${it.durChapterIndex} pos=${it.durChapterPos}"
+                )
             }
         }
     }
 
     fun canApplyBookProgress(book: Book, bookProgress: BookProgress, logPrefix: String): Boolean {
+        return checkBookProgress(book, bookProgress, logPrefix) == BookProgressCheckResult.CanApply
+    }
+
+    private fun checkBookProgress(
+        book: Book,
+        bookProgress: BookProgress,
+        logPrefix: String
+    ): BookProgressCheckResult {
         val maxChapterIndex = book.simulatedTotalChapterNum()
         if (maxChapterIndex <= 0 || bookProgress.durChapterIndex !in 0 until maxChapterIndex) {
             AppLog.put(
@@ -381,7 +388,7 @@ object AppWebDav {
                         "book=${book.name} remoteChapter=${bookProgress.durChapterIndex} " +
                         "maxChapter=${maxChapterIndex}"
             )
-            return false
+            return BookProgressCheckResult.OutOfRange
         }
         if (book.isLocal) {
             kotlin.runCatching {
@@ -391,10 +398,24 @@ object AppWebDav {
                     "$logPrefix skip reason=localBookUnreadable " +
                             "book=${book.name}\n${it.localizedMessage}", it
                 )
-                return false
+                return BookProgressCheckResult.LocalBookUnreadable
             }
         }
-        return true
+        return BookProgressCheckResult.CanApply
+    }
+
+    private suspend fun downloadBookProgress(
+        progressFileName: String,
+        authorization: Authorization
+    ): BookProgress? {
+        val url = bookProgressUrl + progressFileName
+        return WebDav(url, authorization).download().let { byteArray ->
+            val json = String(byteArray)
+            if (json.isJson()) {
+                return@let GSON.fromJsonObject<BookProgress>(json).getOrNull()
+            }
+            null
+        }
     }
 
     suspend fun downloadAllBookProgress() {
@@ -446,6 +467,56 @@ object AppWebDav {
             currentCoroutineContext().ensureActive()
             AppLog.put("WebDav全量同步阅读进度失败\n${it.localizedMessage}", it)
         }
+    }
+
+    suspend fun restoreBookProgressOnly() {
+        val authorization = authorization ?: throw NoStackTraceException("webDav没有配置")
+        if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络未连接")
+        kotlin.runCatching {
+            val bookProgressFiles = WebDav(bookProgressUrl, authorization).listFiles()
+            val map = hashMapOf<String, WebDavFile>()
+            bookProgressFiles.forEach {
+                map[it.displayName] = it
+            }
+            var matchedCount = 0
+            var updatedCount = 0
+            var skippedInvalid = 0
+            var skippedUnreadable = 0
+            var skippedOutOfRange = 0
+            appDb.bookDao.all.forEach { book ->
+                val progressFileName = getProgressFileName(book.name, book.author)
+                map[progressFileName] ?: return@forEach
+                matchedCount++
+                val bookProgress = downloadBookProgress(progressFileName, authorization)
+                if (bookProgress == null) {
+                    skippedInvalid++
+                    return@forEach
+                }
+                when (checkBookProgress(book, bookProgress, "WebDav restoreProgressOnly")) {
+                    BookProgressCheckResult.CanApply -> {
+                        book.durChapterIndex = bookProgress.durChapterIndex
+                        book.durChapterPos = bookProgress.durChapterPos
+                        book.durChapterTitle = bookProgress.durChapterTitle
+                        book.durChapterTime = bookProgress.durChapterTime
+                        book.syncTime = System.currentTimeMillis()
+                        appDb.bookDao.update(book)
+                        updatedCount++
+                    }
+
+                    BookProgressCheckResult.OutOfRange -> skippedOutOfRange++
+                    BookProgressCheckResult.LocalBookUnreadable -> skippedUnreadable++
+                }
+            }
+            AppLog.putDebug(
+                "WebDav restoreProgressOnly success " +
+                        "remoteFiles=${bookProgressFiles.size} matched=${matchedCount} " +
+                        "updated=${updatedCount} skippedUnreadable=${skippedUnreadable} " +
+                        "skippedOutOfRange=${skippedOutOfRange} skippedInvalid=${skippedInvalid}"
+            )
+        }.onFailure {
+            currentCoroutineContext().ensureActive()
+            AppLog.put("WebDav仅恢复阅读进度失败\n${it.localizedMessage}", it)
+        }.getOrThrow()
     }
 
 }

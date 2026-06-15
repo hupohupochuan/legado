@@ -128,6 +128,11 @@
     <string name="backup_message">The new backup files will replace the original.\n Backup folder: YueDu</string>
     <string name="restore_confirmation">Restore confirmation</string>
     <string name="restore_message">Restoring the bookshelf data will overwrite the current Bookshelf.</string>
+    <string name="webdav_restore_mode_title">Select restore mode</string>
+    <string name="restore_book_progress_only_recommended">Restore reading progress only (recommended)</string>
+    <string name="restore_webdav_full_backup">Restore full backup</string>
+    <string name="restore_book_progress_only_running">Restoring reading progress...</string>
+    <string name="restore_book_progress_only_success">Reading progress restored</string>
     <string name="backup_success">Backup succeed</string>
     <string name="backup_fail">Backup failed\n%s</string>
     <string name="on_restore">Restoring</string>

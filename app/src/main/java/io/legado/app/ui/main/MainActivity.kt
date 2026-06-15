@@ -36,6 +36,7 @@ import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.onDismiss
 import io.legado.app.lib.dialogs.positiveButton
+import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.primaryColor
@@ -301,9 +302,24 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 alert(R.string.restore, R.string.webdav_after_local_restore_confirm) {
                     cancelButton()
                     okButton {
-                        viewModel.restoreWebDav(lastBackupFile.displayName)
+                        selectWebDavRestoreMode(lastBackupFile.displayName)
                     }
                 }
+            }
+        }
+    }
+
+    private fun selectWebDavRestoreMode(backupName: String) {
+        selector(
+            title = getString(R.string.webdav_restore_mode_title),
+            items = listOf(
+                getString(R.string.restore_book_progress_only_recommended),
+                getString(R.string.restore_webdav_full_backup)
+            )
+        ) { _, index ->
+            when (index) {
+                0 -> viewModel.restoreWebDavProgressOnly()
+                1 -> viewModel.restoreWebDav(backupName)
             }
         }
     }

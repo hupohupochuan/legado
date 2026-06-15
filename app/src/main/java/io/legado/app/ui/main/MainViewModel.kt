@@ -5,6 +5,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import androidx.recyclerview.widget.RecyclerView.RecycledViewPool
+import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -30,6 +31,7 @@ import io.legado.app.service.CacheBookService
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -322,6 +324,17 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     fun restoreWebDav(name: String) {
         execute {
             AppWebDav.restoreWebDav(name)
+        }
+    }
+
+    fun restoreWebDavProgressOnly() {
+        execute {
+            AppWebDav.restoreBookProgressOnly()
+        }.onSuccess {
+            context.toastOnUi(R.string.restore_book_progress_only_success)
+        }.onError {
+            AppLog.put("WebDav仅恢复阅读进度出错\n${it.localizedMessage}", it)
+            context.toastOnUi("WebDav仅恢复阅读进度出错\n${it.localizedMessage}")
         }
     }
 

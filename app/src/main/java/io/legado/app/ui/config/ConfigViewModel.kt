@@ -97,6 +97,20 @@ class ConfigViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
+    fun restoreWebDavProgressOnly() {
+        backupRestoreState.value = context.getString(R.string.restore_book_progress_only_running)
+        backupRestoreJob = execute {
+            AppWebDav.restoreBookProgressOnly()
+        }.onSuccess {
+            context.toastOnUi(R.string.restore_book_progress_only_success)
+        }.onError {
+            AppLog.put("WebDav仅恢复阅读进度出错\n${it.localizedMessage}", it)
+            appCtx.toastOnUi("WebDav仅恢复阅读进度出错\n${it.localizedMessage}")
+        }.onFinally {
+            backupRestoreState.value = null
+        }
+    }
+
     fun loadBackupNames(onSuccess: (List<String>) -> Unit) {
         backupRestoreState.value = context.getString(R.string.loading)
         backupRestoreJob = execute {
