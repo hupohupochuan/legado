@@ -16,6 +16,8 @@ import kotlinx.coroutines.CoroutineScope
 @Suppress("unused")
 object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
 
+    private const val GITHUB_RELEASE_REPO = "hupohupochuan/legado"
+
     private fun getCheckVariant(): AppVariant {
         return when (AppConfig.updateToVariant) {
             "official_version" -> AppVariant.OFFICIAL
@@ -30,9 +32,9 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
 
     private suspend fun getLatestRelease(checkVariant: AppVariant): List<AppReleaseInfo> {
         val url = if (checkVariant.isBeta()) {
-            "https://api.github.com/repos/huajideshutiao/legado/releases/tags/beta"
+            "https://api.github.com/repos/$GITHUB_RELEASE_REPO/releases/tags/beta"
         } else {
-            "https://api.github.com/repos/huajideshutiao/legado/releases/latest"
+            "https://api.github.com/repos/$GITHUB_RELEASE_REPO/releases/latest"
         }
         okHttpClient.newCallResponse { url(url) }.use { res ->
             if (!res.isSuccessful) throw NoStackTraceException("获取新版本出错(${res.code})")
