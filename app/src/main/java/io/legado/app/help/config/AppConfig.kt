@@ -523,6 +523,16 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     val autoCheckUpdate get() = appCtx.getPrefBoolean(PreferKey.autoCheckUpdate, true)
 
+    val checkUpdateInterval get() = appCtx.getPrefString(PreferKey.checkUpdateInterval, "1")
+
+    var lastCheckUpdateTime: Long
+        get() = appCtx.getPrefLong(PreferKey.lastCheckUpdateTime, 0L)
+        set(value) = appCtx.putPrefLong(PreferKey.lastCheckUpdateTime, value)
+
+    var skipUpdateVersion: String?
+        get() = appCtx.getPrefString(PreferKey.skipUpdateVersion)
+        set(value) = appCtx.putPrefString(PreferKey.skipUpdateVersion, value)
+
     val defaultHomePage get() = appCtx.getPrefString(PreferKey.defaultHomePage, "bookshelf")
 
     val updateToVariant get() = appCtx.getPrefString(PreferKey.updateToVariant, "default_version")

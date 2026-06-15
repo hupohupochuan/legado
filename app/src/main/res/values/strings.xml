@@ -250,6 +250,11 @@
     <string name="import_replace_rule">Import replace rules</string>
     <string name="import_replace_rule_on_line">Import online rules</string>
     <string name="check_update_interval">Check interval for updates</string>
+    <string name="check_update_never">Never</string>
+    <string name="check_update_every_start">Every launch</string>
+    <string name="check_update_weekly">Weekly</string>
+    <string name="check_update_monthly">Monthly</string>
+    <string name="skip_update_version">Skip this version</string>
     <string name="bookshelf_px_0">By recent list</string>
     <string name="bookshelf_px_1">By update time</string>
     <string name="bookshelf_px_2">By book title</string>

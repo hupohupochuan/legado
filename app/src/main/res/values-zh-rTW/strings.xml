@@ -240,6 +240,11 @@
     <string name="import_replace_rule">匯入取代規則</string>
     <string name="import_replace_rule_on_line">匯入線上規則</string>
     <string name="check_update_interval">檢查更新間隔</string>
+    <string name="check_update_never">不檢查</string>
+    <string name="check_update_every_start">每次啟動</string>
+    <string name="check_update_weekly">每週</string>
+    <string name="check_update_monthly">每月</string>
+    <string name="skip_update_version">跳過此版本</string>
     <string name="bookshelf_px_0">按閱讀時間</string>
     <string name="bookshelf_px_1">按更新時間</string>
     <string name="bookshelf_px_2">按書名</string>

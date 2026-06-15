@@ -7,4 +7,9 @@
         android:title="@string/action_download"
         app:showAsAction="always" />
 
+    <item
+        android:id="@+id/menu_skip_version"
+        android:title="@string/skip_update_version"
+        app:showAsAction="never" />
+
 </menu>

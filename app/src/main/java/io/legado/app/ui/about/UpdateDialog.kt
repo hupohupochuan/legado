@@ -5,6 +5,7 @@ import android.view.View
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogUpdateBinding
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.model.Download
 import io.legado.app.utils.toastOnUi
@@ -53,6 +54,13 @@ class UpdateDialog() : BaseDialogFragment(R.layout.dialog_update) {
                         Download.start(requireContext(), url, name)
                         toastOnUi(R.string.download_start)
                     }
+                }
+                R.id.menu_skip_version -> {
+                    val newVersion = arguments?.getString("newVersion")
+                    if (newVersion != null) {
+                        AppConfig.skipUpdateVersion = newVersion
+                    }
+                    dismiss()
                 }
             }
             return@setOnMenuItemClickListener true

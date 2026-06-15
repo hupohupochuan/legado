@@ -131,8 +131,15 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             //备份同步
             backupSync()
             //版本更新
-            if (AppConfig.autoCheckUpdate) {
-                AppUpdate.check(this@MainActivity.lifecycleScope, this@MainActivity, true)
+            val intervalDays = AppConfig.checkUpdateInterval?.toIntOrNull() ?: 1
+            if (intervalDays > 0) {
+                val now = System.currentTimeMillis()
+                val elapsed = now - AppConfig.lastCheckUpdateTime
+                val intervalMs = if (intervalDays == 1) 0L else intervalDays * 24 * 60 * 60 * 1000L
+                if (intervalDays == 1 || elapsed >= intervalMs) {
+                    AppConfig.lastCheckUpdateTime = now
+                    AppUpdate.check(this@MainActivity.lifecycleScope, this@MainActivity, true)
+                }
             }
         }
         viewModel.postLoad()

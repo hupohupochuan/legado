@@ -3,6 +3,7 @@ package io.legado.app.help.update
 import androidx.appcompat.app.AppCompatActivity
 import io.legado.app.R
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.about.UpdateDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.showDialogFragment
@@ -34,6 +35,9 @@ object AppUpdate {
             check(scope)
                 .onSuccess {
                     if (it != null) {
+                        if (silent && it.tagName == AppConfig.skipUpdateVersion) {
+                            return@onSuccess
+                        }
                         activity.showDialogFragment(UpdateDialog(it))
                     } else if (!silent) {
                         appCtx.toastOnUi(R.string.is_latest_version)
