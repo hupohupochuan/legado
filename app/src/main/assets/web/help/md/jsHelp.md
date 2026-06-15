@@ -14,7 +14,7 @@
 > 在书源规则中使用`@js` `<js>` `{{}}`可使用JavaScript调用阅读部分内置的类和方法
 
 >
-注意为了安全，阅读会屏蔽部分java类调用，见[RhinoClassShutter](https://github.com/huajideshutiao/legado/blob/master/modules/rhino/src/main/java/com/script/rhino/RhinoClassShutter.kt)
+注意为了安全，阅读会屏蔽部分java类调用，见[RhinoClassShutter](https://github.com/hupohupochuan/legado/blob/master/modules/rhino/src/main/java/com/script/rhino/RhinoClassShutter.kt)
 
 > 不同的书源规则中支持的调用的Java类和方法可能有所不同
 
@@ -25,23 +25,23 @@
 | java           | 当前类                                                                                                                          |
 | baseUrl        | 当前url,String                                                                                                                 |
 | result         | 上一步的结果                                                                                                                       |
-| book           | [书籍类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/data/entities/Book.kt)            |
-| rssArticle     | [Article类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/data/entities/RssArticle.kt) |
-| chapter        | [章节类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/data/entities/BookChapter.kt)     |
-| source         | [基础书源类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/data/entities/BaseSource.kt)    |
-| cookie         | [cookie操作类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/help/http/CookieStore.kt)   | 
-| cache          | [缓存操作类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/help/CacheManager.kt)           |
+| book           | [书籍类](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/data/entities/Book.kt)            |
+| rssArticle     | [Article类](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/data/entities/RssArticle.kt) |
+| chapter        | [章节类](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/data/entities/BookChapter.kt)     |
+| source         | [基础书源类](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/data/entities/BaseSource.kt)    |
+| cookie         | [cookie操作类](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/help/http/CookieStore.kt)   | 
+| cache          | [缓存操作类](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/help/CacheManager.kt)           |
 | title          | 章节当前标题 String                                                                                                                |
 | src            | 请求返回的源码                                                                                                                      |
 | nextChapterUrl | 下一章节url                                                                                                                      |
 
 ## 当前类对象的可使用的部分方法
 
-### [RssJsExtensions](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/ui/rss/read/RssJsExtensions.kt)
+### [RssJsExtensions](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/ui/rss/read/RssJsExtensions.kt)
 > 只能在订阅源`shouldOverrideUrlLoading`规则中使用  
 > 订阅添加跳转url拦截, js, 返回true拦截,js变量url,可以通过js打开url  
 > url跳转拦截规则不能执行耗时操作
-> 例子https://github.com/huajideshutiao/legado/discussions/3259
+> 例子https://github.com/hupohupochuan/legado/discussions/3259
 
 * 调用阅读搜索
 
@@ -55,7 +55,7 @@ java.searchBook(bookName: String)
 java.addBook(bookUrl: String)
 ```
 
-### [AnalyzeUrl](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt) 部分函数
+### [AnalyzeUrl](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt) 部分函数
 > js中通过java.调用,只在`登录检查JS`规则中有效
 ```js
 initUrl() //重新解析url,可以用于登录检测js登录后重新解析url重新访问
@@ -64,7 +64,7 @@ getStrResponse( jsStr: String? = null, sourceRegex: String? = null) //返回访�
 getResponse(): Response //返回访问结果,网络朗读引擎采用的是这个,调用登录后在调用这方法可以重新访问,参考阿里云登录检测
 ```
 
-### [AnalyzeRule](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeRule.kt) 部分函数
+### [AnalyzeRule](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeRule.kt) 部分函数
 * 获取文本/文本列表
 > `mContent` 待解析源代码，默认为当前页面  
 > `isUrl` 链接标识，默认为`false`
@@ -102,10 +102,10 @@ java.get(key)
 java.put(key, value)
 ```
 
-### [js扩展类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/help/JsExtensions.kt) 部分函数
+### [js扩展类](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/help/JsExtensions.kt) 部分函数
 
 *
-链接解析[JsURL](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/utils/JsURL.kt)
+链接解析[JsURL](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/utils/JsURL.kt)
 ```js
 java.toURL(url): JsURL
 java.toURL(url, baseUrl): JsURL
@@ -262,7 +262,7 @@ readTxtFile(path: String): String
 deleteFile(path: String) 
 ```
 
-### [js加解密类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/help/JsEncodeUtils.kt) 部分函数
+### [js加解密类](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/help/JsEncodeUtils.kt) 部分函数
 
 > 提供在JavaScript环境中快捷调用crypto算法的函数，由[hutool-crypto](https://www.hutool.cn/docs/#/crypto/概述)实现  
 > 由于兼容性问题，hutool-crypto当前版本为5.8.22  

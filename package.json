@@ -16,13 +16,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/huajideshutiao/legado.git"
+    "url": "git+https://github.com/hupohupochuan/legado.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/huajideshutiao/legado/issues"
+    "url": "https://github.com/hupohupochuan/legado/issues"
   },
-  "homepage": "https://github.com/huajideshutiao/legado#readme"
+  "homepage": "https://github.com/hupohupochuan/legado#readme"
 }
