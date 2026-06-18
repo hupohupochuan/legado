@@ -365,7 +365,13 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             if (progress.durChapterIndex == book.durChapterIndex && progress.durChapterPos == book.durChapterPos) {
                 return@onSuccess
             }
-            if (!AppWebDav.canApplyBookProgress(book, progress, "WebDav syncBookProgress")) {
+            if (!AppWebDav.canApplyBookProgress(
+                    book,
+                    progress,
+                    "WebDav syncBookProgress",
+                    AppWebDav.ProgressCheckMode.RangeOnly
+                )
+            ) {
                 return@onSuccess
             }
             if (progress.durChapterIndex < book.durChapterIndex || (progress.durChapterIndex == book.durChapterIndex && progress.durChapterPos < book.durChapterPos)) {

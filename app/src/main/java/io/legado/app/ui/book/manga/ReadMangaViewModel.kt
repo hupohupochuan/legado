@@ -511,7 +511,13 @@ class ReadMangaViewModel(application: Application) :
                 progress.durChapterPos > book.durChapterPos
             ) {
                 // 进度比服务器慢，执行传入动作
-                if (!AppWebDav.canApplyBookProgress(book, progress, "WebDav mangaSyncProgress")) {
+                if (!AppWebDav.canApplyBookProgress(
+                        book,
+                        progress,
+                        "WebDav mangaSyncProgress",
+                        AppWebDav.ProgressCheckMode.RangeOnly
+                    )
+                ) {
                     return@onSuccess
                 }
                 newProgressAction?.invoke(progress)

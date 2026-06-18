@@ -263,7 +263,13 @@ object ReadBook : CoroutineScope by MainScope() {
                 progress.durChapterPos > book.durChapterPos
             ) {
                 // 进度比服务器慢，执行传入动作
-                if (!AppWebDav.canApplyBookProgress(book, progress, "WebDav syncProgress")) {
+                if (!AppWebDav.canApplyBookProgress(
+                        book,
+                        progress,
+                        "WebDav syncProgress",
+                        AppWebDav.ProgressCheckMode.RangeOnly
+                    )
+                ) {
                     return@onSuccess
                 }
                 newProgressAction?.invoke(progress)

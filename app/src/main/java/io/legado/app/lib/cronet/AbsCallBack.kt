@@ -13,6 +13,8 @@ import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.EventListener
 import okhttp3.Headers
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Protocol
 import okhttp3.Request
@@ -153,7 +155,7 @@ abstract class AbsCallBack(
         onSuccess(response)
 
         //打印协议，用于调试
-        val msg = "onResponseStarted[${info.negotiatedProtocol}][${info.httpStatusCode}]${info.url}"
+        val msg = "onResponseStarted[${info.negotiatedProtocol}][${info.httpStatusCode}]${redactUrl(info.url)}"
         LogUtils.d(javaClass.simpleName, msg)
         if (eventListener != null) {
             eventListener.responseHeadersEnd(mCall, response)
@@ -267,6 +269,23 @@ abstract class AbsCallBack(
                     Protocol.HTTP_1_0
                 }
             }
+        }
+
+        //日志脱敏: 只保留 scheme://host[:port]/path, 去掉 userinfo 与 query, 避免泄露 WebDAV URL 中的凭据/参数
+        private fun redactUrl(url: String): String {
+            return kotlin.runCatching {
+                val httpUrl = url.toHttpUrlOrNull() ?: return@runCatching url
+                buildString {
+                    append(httpUrl.scheme)
+                    append("://")
+                    append(httpUrl.host)
+                    val defaultPort = HttpUrl.defaultPort(httpUrl.scheme)
+                    if (httpUrl.port != defaultPort) {
+                        append(':').append(httpUrl.port)
+                    }
+                    append(httpUrl.encodedPath)
+                }
+            }.getOrDefault(url)
         }
 
         private fun headersFromResponse(

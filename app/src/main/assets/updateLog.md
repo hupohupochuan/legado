@@ -10,6 +10,11 @@
 * 正文出现缺字漏字、内容缺失、排版错乱等情况，有可能是净化规则或简繁转换出现问题。
 
 
+**2026/06/18**
+修复 WebDAV 阅读进度同步时误触发本地书目录权限提示的问题：进度校验拆分 RangeOnly/ReadableRequired，仅同步进度不再对本地书执行 checkBookReadable，跨设备旧 content:// URI 失效时不再弹目录权限
+真正打开/加载本地书内容时仍保留可读性校验，不掩盖真实打不开书的问题
+cronet onResponseStarted 调试日志改用脱敏 URL（仅 host/path），避免泄露 WebDAV URL
+
 **2026/06/16**
 WebDAV 在线恢复新增“仅恢复阅读进度”模式，跨设备恢复本地书时不再写入其他设备的 SAF 路径
 WebDAV 备份恢复入口新增恢复方式选择，仍保留完整恢复备份

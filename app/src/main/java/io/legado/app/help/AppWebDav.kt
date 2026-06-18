@@ -63,6 +63,19 @@ object AppWebDav {
         LocalBookUnreadable
     }
 
+    /**
+     * 进度校验模式
+     * - [RangeOnly]: 仅校验 [Book.simulatedTotalChapterNum] 范围, 用于只同步进度的场景,
+     *   避免对本地书执行 [FileBook.checkBookReadable] 而误触发 SAF 目录权限提示
+     *   (跨设备恢复后旧 content:// URI 失效时会抛 SecurityException)。
+     * - [ReadableRequired]: 校验章节范围, 并对本地书执行 [FileBook.checkBookReadable],
+     *   用于真正需要加载本地书内容的场景, 不能掩盖真实打不开书的问题。
+     */
+    enum class ProgressCheckMode {
+        RangeOnly,
+        ReadableRequired
+    }
+
     init {
         runBlocking {
             upConfig()
@@ -372,14 +385,20 @@ object AppWebDav {
         }
     }
 
-    fun canApplyBookProgress(book: Book, bookProgress: BookProgress, logPrefix: String): Boolean {
-        return checkBookProgress(book, bookProgress, logPrefix) == BookProgressCheckResult.CanApply
+    fun canApplyBookProgress(
+        book: Book,
+        bookProgress: BookProgress,
+        logPrefix: String,
+        mode: ProgressCheckMode = ProgressCheckMode.RangeOnly
+    ): Boolean {
+        return checkBookProgress(book, bookProgress, logPrefix, mode) == BookProgressCheckResult.CanApply
     }
 
     private fun checkBookProgress(
         book: Book,
         bookProgress: BookProgress,
-        logPrefix: String
+        logPrefix: String,
+        mode: ProgressCheckMode = ProgressCheckMode.RangeOnly
     ): BookProgressCheckResult {
         val maxChapterIndex = book.simulatedTotalChapterNum()
         if (maxChapterIndex <= 0 || bookProgress.durChapterIndex !in 0 until maxChapterIndex) {
@@ -390,7 +409,7 @@ object AppWebDav {
             )
             return BookProgressCheckResult.OutOfRange
         }
-        if (book.isLocal) {
+        if (mode == ProgressCheckMode.ReadableRequired && book.isLocal) {
             kotlin.runCatching {
                 FileBook.checkBookReadable(book)
             }.onFailure {
@@ -442,7 +461,13 @@ object AppWebDav {
                     return@forEach
                 }
                 getBookProgress(book)?.let { bookProgress ->
-                    if (!canApplyBookProgress(book, bookProgress, "WebDav downloadAllBookProgress")) {
+                    if (!canApplyBookProgress(
+                            book,
+                            bookProgress,
+                            "WebDav downloadAllBookProgress",
+                            ProgressCheckMode.RangeOnly
+                        )
+                    ) {
                         return@forEach
                     }
                     if (bookProgress.durChapterIndex > book.durChapterIndex
@@ -492,7 +517,7 @@ object AppWebDav {
                     skippedInvalid++
                     return@forEach
                 }
-                when (checkBookProgress(book, bookProgress, "WebDav restoreProgressOnly")) {
+                when (checkBookProgress(book, bookProgress, "WebDav restoreProgressOnly", ProgressCheckMode.RangeOnly)) {
                     BookProgressCheckResult.CanApply -> {
                         book.durChapterIndex = bookProgress.durChapterIndex
                         book.durChapterPos = bookProgress.durChapterPos
