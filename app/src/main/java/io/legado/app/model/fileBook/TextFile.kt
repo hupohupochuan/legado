@@ -329,8 +329,6 @@ class TextFile(private var book: Book) {
                 }
             }
         }
-        System.gc()
-        System.runFinalization()
         return toc to bookWordCount
     }
 

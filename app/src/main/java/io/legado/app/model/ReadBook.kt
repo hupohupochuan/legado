@@ -40,7 +40,6 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -86,12 +85,15 @@ object ReadBook : CoroutineScope by MainScope() {
     /* web端阅读进度记录 */
     var webBookProgress: BookProgress? = null
 
-    var preDownloadTask: Job? = null
-    val downloadedChapters = hashSetOf<Int>()
-    val downloadFailChapters = hashMapOf<Int, Int>()
+    var preDownloadTask: Job?
+        get() = downloadState.preDownloadTask
+        set(value) { downloadState.preDownloadTask = value }
+    val downloadedChapters get() = downloadState.downloadedChapters
+    val downloadFailChapters get() = downloadState.downloadFailChapters
+    val downloadScope get() = downloadState.downloadScope
+    val preDownloadSemaphore get() = downloadState.preDownloadSemaphore
     var contentProcessor: ContentProcessor? = null
-    val downloadScope = CoroutineScope(SupervisorJob() + IO)
-    val preDownloadSemaphore = Semaphore(2)
+    private val downloadState = ContentDownloadState()
     val executor = globalExecutor
     private val chapterStore = ReadBookChapterStore(
         getChapterCount = { bookUrl -> appDb.bookChapterDao.getChapterCount(bookUrl) },
@@ -140,8 +142,7 @@ object ReadBook : CoroutineScope by MainScope() {
         upWebBook(book)
         synchronized(this) {
             chapterLoadState.clear()
-            downloadedChapters.clear()
-            downloadFailChapters.clear()
+            downloadState.clear()
         }
     }
 
@@ -546,7 +547,7 @@ object ReadBook : CoroutineScope by MainScope() {
         success: (() -> Unit)? = null
     ) {
         Coroutine.async {
-            val book = book!!
+            val book = book ?: return@async
             val chapter = getChapter(book, index) ?: return@async
             if (addLoading(index)) {
                 BookHelp.getContent(book, chapter)?.let {
@@ -609,7 +610,7 @@ object ReadBook : CoroutineScope by MainScope() {
         val book = book ?: return
         val chapter = getChapter(book, index) ?: return
         if (BookHelp.hasContent(book, chapter)) {
-            downloadedChapters.add(chapter.index)
+            downloadState.markDownloaded(chapter.index)
         } else {
             delay(1000)
             if (addLoading(index)) {
@@ -645,7 +646,7 @@ object ReadBook : CoroutineScope by MainScope() {
     }
 
     private suspend fun downloadAwait(chapter: BookChapter): String {
-        val book = book!!
+        val book = book ?: return "加载正文失败\n书籍未加载"
         val bookSource = bookSource
         if (bookSource != null) {
             return CacheBook.getOrCreate(bookSource, book).downloadAwait(chapter)
@@ -928,16 +929,16 @@ object ReadBook : CoroutineScope by MainScope() {
                     val maxChapterIndex =
                         min(durChapterIndex + AppConfig.preDownloadNum, chapterSize)
                     for (i in durChapterIndex.plus(2)..maxChapterIndex) {
-                        if (downloadedChapters.contains(i)) continue
-                        if ((downloadFailChapters[i] ?: 0) >= 3) continue
+                        if (downloadState.isDownloaded(i)) continue
+                        if (downloadState.isFailedTooMany(i)) continue
                         downloadIndex(i)
                     }
                 }
                 launch {
                     val minChapterIndex = durChapterIndex - min(5, AppConfig.preDownloadNum)
                     for (i in durChapterIndex.minus(2) downTo minChapterIndex) {
-                        if (downloadedChapters.contains(i)) continue
-                        if ((downloadFailChapters[i] ?: 0) >= 3) continue
+                        if (downloadState.isDownloaded(i)) continue
+                        if (downloadState.isFailedTooMany(i)) continue
                         downloadIndex(i)
                     }
                 }
@@ -947,8 +948,7 @@ object ReadBook : CoroutineScope by MainScope() {
 
     fun cancelPreDownloadTask() {
         if (contentLoadFinish) {
-            preDownloadTask?.cancel()
-            downloadScope.coroutineContext.cancelChildren()
+            downloadState.cancelPreDownload()
         }
     }
 
@@ -1000,8 +1000,7 @@ object ReadBook : CoroutineScope by MainScope() {
 
     private fun releaseAndCancel() {
         msg = null
-        preDownloadTask?.cancel()
-        downloadScope.coroutineContext.cancelChildren()
+        downloadState.cancelPreDownload()
         coroutineContext.cancelChildren()
         ImageProvider.clear()
         clearExpiredChapterLoadingJob(true)

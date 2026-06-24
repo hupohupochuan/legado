@@ -32,13 +32,16 @@ import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * webDav初始化会访问网络,不要放到主线程
+ *
+ * 初始化说明: 不在 [init] 块里 runBlocking 同步初始化, 避免单例首次被主线程访问时阻塞 UI.
+ * 改为由调用方在协程中主动调用 [upConfig] 完成异步初始化 (App.onCreate 的 IO 协程会预热).
+ * 在配置就绪前 [authorization] 为 null, 各读取点用 `?.let` / `?: throw` 安全降级, 不会崩溃.
  */
 object AppWebDav {
     private const val defaultWebDavUrl = "https://dav.jianguoyun.com/dav/"
@@ -74,12 +77,6 @@ object AppWebDav {
     enum class ProgressCheckMode {
         RangeOnly,
         ReadableRequired
-    }
-
-    init {
-        runBlocking {
-            upConfig()
-        }
     }
 
     private val serverWebDavUrl: String

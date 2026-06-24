@@ -105,6 +105,8 @@ class App : Application() {
         Coroutine.async {
             //调整排序序号
             SourceHelp.adjustSortNumber()
+            //预热 WebDAV 配置 (AppWebDav init 不再 runBlocking, 需在协程中主动初始化)
+            runCatching { AppWebDav.upConfig() }
             //同步阅读记录
             if (AppConfig.syncBookProgress) {
                 AppWebDav.downloadAllBookProgress()

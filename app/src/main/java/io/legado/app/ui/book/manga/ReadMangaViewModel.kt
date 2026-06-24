@@ -36,8 +36,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -61,11 +59,14 @@ class ReadMangaViewModel(application: Application) :
     var nextMangaChapter: MangaChapter? = null
     private val loadingChapters = arrayListOf<Int>()
     var simulatedChapterSize = 0
-    var preDownloadTask: Job? = null
-    val downloadedChapters = hashSetOf<Int>()
-    val downloadFailChapters = hashMapOf<Int, Int>()
-    val downloadScope = CoroutineScope(SupervisorJob() + IO)
-    val preDownloadSemaphore = Semaphore(2)
+    var preDownloadTask: Job?
+        get() = downloadState.preDownloadTask
+        set(value) { downloadState.preDownloadTask = value }
+    val downloadedChapters get() = downloadState.downloadedChapters
+    val downloadFailChapters get() = downloadState.downloadFailChapters
+    val downloadScope get() = downloadState.downloadScope
+    val preDownloadSemaphore get() = downloadState.preDownloadSemaphore
+    private val downloadState = io.legado.app.model.ContentDownloadState()
     var rateLimiter = ConcurrentRateLimiter(null)
     val hasNextChapter get() = durChapterIndex < simulatedChapterSize - 1
 
@@ -104,8 +105,7 @@ class ReadMangaViewModel(application: Application) :
         }
         synchronized(this) {
             loadingChapters.clear()
-            downloadedChapters.clear()
-            downloadFailChapters.clear()
+            downloadState.clear()
         }
     }
 
@@ -357,16 +357,16 @@ class ReadMangaViewModel(application: Application) :
                     val maxChapterIndex =
                         min(durChapterIndex + AppConfig.preDownloadNum, chapterSize)
                     for (i in durChapterIndex.plus(2)..maxChapterIndex) {
-                        if (downloadedChapters.contains(i)) continue
-                        if ((downloadFailChapters[i] ?: 0) >= 3) continue
+                        if (downloadState.isDownloaded(i)) continue
+                        if (downloadState.isFailedTooMany(i)) continue
                         downloadIndex(i)
                     }
                 }
                 launch {
                     val minChapterIndex = durChapterIndex - min(5, AppConfig.preDownloadNum)
                     for (i in durChapterIndex.minus(2) downTo minChapterIndex) {
-                        if (downloadedChapters.contains(i)) continue
-                        if ((downloadFailChapters[i] ?: 0) >= 3) continue
+                        if (downloadState.isDownloaded(i)) continue
+                        if (downloadState.isFailedTooMany(i)) continue
                         downloadIndex(i)
                     }
                 }
@@ -376,8 +376,7 @@ class ReadMangaViewModel(application: Application) :
 
     fun cancelPreDownloadTask() {
         if (curMangaChapter != null && nextMangaChapter != null) {
-            preDownloadTask?.cancel()
-            downloadScope.coroutineContext.cancelChildren()
+            downloadState.cancelPreDownload()
         }
     }
 
@@ -398,7 +397,7 @@ class ReadMangaViewModel(application: Application) :
                 return
             }
         if (BookHelp.hasContent(book, chapter)) {
-            downloadedChapters.add(chapter.index)
+            downloadState.markDownloaded(chapter.index)
         } else {
             delay(1000)
             if (addLoading(index)) {
@@ -419,12 +418,10 @@ class ReadMangaViewModel(application: Application) :
         val bookSource = curBookSource
         if (bookSource != null) {
             downloadNetworkContent(bookSource, scope, chapter, book, semaphore, success = {
-                downloadedChapters.add(chapter.index)
-                downloadFailChapters.remove(chapter.index)
+                downloadState.markDownloaded(chapter.index)
                 contentLoadFinish(chapter, it)
             }, error = {
-                downloadFailChapters[chapter.index] =
-                    (downloadFailChapters[chapter.index] ?: 0) + 1
+                downloadState.markFailed(chapter.index)
                 contentLoadFinish(chapter, null)
             }, cancel = {
                 contentLoadFinish(chapter, null, canceled = true)
@@ -673,7 +670,6 @@ class ReadMangaViewModel(application: Application) :
 
     override fun onCleared() {
         super.onCleared()
-        preDownloadTask?.cancel()
-        downloadScope.coroutineContext.cancelChildren()
+        downloadState.cancelPreDownload()
     }
 }

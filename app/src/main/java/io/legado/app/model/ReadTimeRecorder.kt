@@ -8,10 +8,11 @@ import io.legado.app.model.ReadTimeRecorder.end
 import io.legado.app.model.ReadTimeRecorder.flushAll
 import io.legado.app.model.ReadTimeRecorder.setBook
 import io.legado.app.model.ReadTimeRecorder.start
-import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
@@ -41,6 +42,13 @@ object ReadTimeRecorder {
     }
 
     private class BookSession(var refCount: Int, var startTime: Long)
+
+    /**
+     * 内部协程 scope: 用 SupervisorJob 包裹, 单个会话延迟 Job 失败不会影响其他会话.
+     * 延迟任务结束后自动从 [endJobs] 移除, 不残留; [flushAll]/[endImmediately] 显式 cancel.
+     * 不用 GlobalScope, 避免不可取消的协程泄漏.
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     /** source -> bookName. 空字符串表示已 start 但书名待补 (pending) */
     private val sourceBook = HashMap<String, String>()
@@ -73,12 +81,11 @@ object ReadTimeRecorder {
     }
 
     /** 标记 source 结束活跃. pending 状态也会一并清理. */
-    @OptIn(DelicateCoroutinesApi::class)
     fun end(source: String) {
         synchronized(lock) {
             val book = sourceBook[source] ?: return
             endJobs.remove(source)?.cancel()
-            endJobs[source] = GlobalScope.launch(Dispatchers.Main) {
+            endJobs[source] = scope.launch {
                 delay(SESSION_END_DELAY_MS)
                 synchronized(lock) {
                     if (sourceBook[source] == book) {
