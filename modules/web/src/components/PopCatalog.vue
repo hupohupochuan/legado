@@ -74,11 +74,18 @@ const virtualListIndex = computed(() => {
   // pc端 virtualListIitem有2个章节
   return Math.floor(index / 2)
 })
-onUpdated(() => {
-  // dom更新触发ResizeObserver，更新虚拟列表内部的sizes Map
+// 弹窗由 v-if 控制，每次打开都是全新挂载，onUpdated 在首次挂载不会触发；
+// 改为 onMounted + 等待两帧，让虚拟列表的 ResizeObserver 先填充 sizes Map，
+// 再滚动到当前章节，避免目录始终停在第一项。
+const scrollToCurrent = async () => {
   if (!popCataVisible.value) return
-  virtualListRef.value.scrollToIndex(virtualListIndex.value)
-})
+  await nextTick()
+  await new Promise<void>(r => requestAnimationFrame(() => r()))
+  await new Promise<void>(r => requestAnimationFrame(() => r()))
+  virtualListRef.value?.scrollToIndex(virtualListIndex.value)
+}
+onMounted(scrollToCurrent)
+watch(popCataVisible, scrollToCurrent)
 
 // 点击加载对应章节内容
 const emit = defineEmits(['getContent'])

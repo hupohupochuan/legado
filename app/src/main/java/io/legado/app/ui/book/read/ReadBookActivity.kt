@@ -806,6 +806,16 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 打开目录
      */
     override fun openChapterList() {
+        ReadBook.book?.let { book ->
+            book.durChapterIndex = ReadBook.durChapterIndex
+            book.durChapterPos = ReadBook.durChapterPos
+            ReadBook.chapterList?.getOrNull(ReadBook.durChapterIndex)?.let { chapter ->
+                book.durChapterTitle = chapter.getDisplayTitle(
+                    ContentProcessor.get(book.name, book.origin).getTitleReplaceRules(),
+                    book.getUseReplaceRule()
+                )
+            }
+        }
         IntentData.book = ReadBook.book
         IntentData.chapterList = ReadBook.chapterList
         tocActivity.launch("")

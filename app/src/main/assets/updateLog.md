@@ -10,10 +10,18 @@
 * 正文出现缺字漏字、内容缺失、排版错乱等情况，有可能是净化规则或简繁转换出现问题。
 
 
+**2026/06/25**
+修复目录弹窗不随当前章节定位的问题：Web 服务阅读页 BookChapter.vue 改用 store 中的 popCataVisible（PopCatalog.vue 的 onUpdated 钩子依赖此状态触发 scrollToIndex），消除本地 ref 与 store 不同步导致的滚动拦截；App 原生阅读页打开目录前同步 ReadBook 当前章节到传入目录页的 Book，避免异步保存进度尚未落库时目录仍定位旧章节
+
+**2026/06/24**
+修复阅读时长记录器协程泄漏：ReadTimeRecorder 改用内部 SupervisorJob scope 替代 GlobalScope，会话延迟结束协程随生命周期可控，不再残留不可取消的全局协程
+优化 WebDAV 初始化：AppWebDav 移除 init 块的 runBlocking 同步网络校验，改为 App.onCreate IO 协程异步预热，避免单例首次被主线程访问时阻塞 UI
+抽取 ContentDownloadState 共享类：统一 ReadBook 与 ReadMangaViewModel 的预下载状态字段（downloadedChapters/downloadFailChapters/downloadScope/preDownloadSemaphore/preDownloadTask），消除重复定义，附单元测试
+清理 ReadBook 中 book!! 强解包：loadContent/downloadAwait 改为安全返回，避免 book 为 null 时 NPE
+cronet onResponseStarted 调试日志改用脱敏 URL（仅 host/path），避免泄露 WebDAV URL
+
 **2026/06/18**
 修复 WebDAV 阅读进度同步时误触发本地书目录权限提示的问题：进度校验拆分 RangeOnly/ReadableRequired，仅同步进度不再对本地书执行 checkBookReadable，跨设备旧 content:// URI 失效时不再弹目录权限
-真正打开/加载本地书内容时仍保留可读性校验，不掩盖真实打不开书的问题
-cronet onResponseStarted 调试日志改用脱敏 URL（仅 host/path），避免泄露 WebDAV URL
 
 **2026/06/16**
 WebDAV 在线恢复新增“仅恢复阅读进度”模式，跨设备恢复本地书时不再写入其他设备的 SAF 路径
@@ -69,10 +77,3 @@ WebDAV 备份恢复入口新增恢复方式选择，仍保留完整恢复备份
 hupo on 2026/5/31 at 23:29兼容低版本获取书籍分组参数
 长标题有限条件自动换行
 统一前台服务启动入口为 safeStartForegroundService
-
-
-**原作者团队最后一次更新是**
-薯条 on 2026/5/30 at 02:52build: 更新多个核心依赖版本
-
-
-----

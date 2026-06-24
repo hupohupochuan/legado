@@ -102,9 +102,9 @@ const {
   bookProgress,
   theme,
   isNight,
+  popCataVisible,
 } = storeToRefs(store)
 
-const popCataVisible = ref(false)
 const readSettingsVisible = ref(false)
 
 const chapterPos = computed({
