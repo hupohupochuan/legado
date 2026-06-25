@@ -10,6 +10,9 @@
 * 正文出现缺字漏字、内容缺失、排版错乱等情况，有可能是净化规则或简繁转换出现问题。
 
 
+**2026/06/26**
+Android 17 (API 37) 适配前置闸门：compileSdk/targetSdk 抬至 37，验证 AGP 9.2.1 + Gradle 9.4.1 + Kotlin 2.3.21 + KSP 2.3.7 组合直接支持 API 37，无需升级 AGP；Debug 编译与完整 APK 打包均通过。后续行为变更适配以独立条目推进
+
 **2026/06/25**
 修复目录弹窗不随当前章节定位的问题：Web 服务阅读页 BookChapter.vue 改用 store 中的 popCataVisible（PopCatalog.vue 的 onUpdated 钩子依赖此状态触发 scrollToIndex），消除本地 ref 与 store 不同步导致的滚动拦截；App 原生阅读页打开目录前同步 ReadBook 当前章节到传入目录页的 Book，避免异步保存进度尚未落库时目录仍定位旧章节
 

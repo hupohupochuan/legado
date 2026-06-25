@@ -1,7 +1,8 @@
 # AI 编辑必看架构图
 
-> 最新修订: 2026-06-14 12:38 CST  
+> 最新修订: 2026-06-26 00:00 CST
 > 最近三次修订:
+> - 2026-06-26 00:00 CST: compileSdk/targetSdk 抬到 37 (Android 17) 前置闸门验证通过；AGP 9.2.1 无需升级；主文件 SDK 指标同步更新为 targetSdk/compileSdk=37。
 > - 2026-06-14 12:38 CST: 恢复并确认主从结构；主文件只保留入口、路由、红线，防止被误恢复为旧版长文。
 > - 2026-06-14: 将从文件移动到 `AI编辑必看/`，适配归档移动到 `文档归档/`，降低根目录噪声。
 > - 2026-06-14: 将 AI 必读架构文档拆为主从结构，降低默认读取 token。
@@ -22,7 +23,7 @@
 ## 项目概览
 
 - 项目: Legado (阅读) Android 电子书阅读器
-- SDK: minSdk 26, targetSdk 36, compileSdk 36
+- SDK: minSdk 26, targetSdk 37, compileSdk 37
 - 技术栈: Kotlin + 少量 Java, MVVM + Room, ViewBinding, Coroutines/Flow
 - 模块: `app`, `modules/book`, `modules/rhino`, `modules/web`
 - 资源边界: `modules/web/src/` 是 Web 源码，`app/src/main/assets/web/` 是 APK 实际加载资源

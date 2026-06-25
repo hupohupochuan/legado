@@ -42,7 +42,7 @@ android {
     defaultConfig {
         applicationId "shutiao.reader"
         minSdk 26
-        targetSdk 36
+        targetSdk 37
         versionCode 10000 + gitCommits
         versionName version
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
