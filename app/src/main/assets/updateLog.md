@@ -13,6 +13,7 @@
 **2026/06/26**
 Android 17 (API 37) 适配前置闸门：compileSdk/targetSdk 抬至 37，验证 AGP 9.2.1 + Gradle 9.4.1 + Kotlin 2.3.21 + KSP 2.3.7 组合直接支持 API 37，无需升级 AGP；Debug 编译与完整 APK 打包均通过。后续行为变更适配以独立条目推进
 16KB page size 验证：libarchive-jni.so 的 LOAD 段对齐 0x4000(16KB) 且 APK 内 zip 偏移已对齐；cronet .so 走系统 HttpEngine / play-services 侧，兜底下载路径不在 16KB 设备触发，当前无需升级 cronet/libarchive 或改任何代码
+修复 Android 14+/targetSdk 34+ 动态注册 receiver 需显式 flag 限制：4 处裸 registerReceiver 改 ContextCompat.registerReceiver + RECEIVER_EXPORTED（BecomingNoisyReceiver/AppFreezeMonitor/ContextExtensions/ReadBookActivity），避免系统级广播（音频/屏幕/电量/时间）注册时 SecurityException
 
 **2026/06/25**
 修复目录弹窗不随当前章节定位的问题：Web 服务阅读页 BookChapter.vue 改用 store 中的 popCataVisible（PopCatalog.vue 的 onUpdated 钩子依赖此状态触发 scrollToIndex），消除本地 ref 与 store 不同步导致的滚动拦截；App 原生阅读页打开目录前同步 ReadBook 当前章节到传入目录页的 Book，避免异步保存进度尚未落库时目录仍定位旧章节

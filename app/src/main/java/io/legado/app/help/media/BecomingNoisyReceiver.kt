@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
+import androidx.core.content.ContextCompat
 
 /**
  * 监听拔耳机 / 蓝牙断开 (ACTION_AUDIO_BECOMING_NOISY),触发 [onBecomingNoisy]。
@@ -25,7 +26,12 @@ class BecomingNoisyReceiver(
 
     fun register(context: Context) {
         if (registered) return
-        context.registerReceiver(this, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+        ContextCompat.registerReceiver(
+            context,
+            this,
+            IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
+            ContextCompat.RECEIVER_EXPORTED
+        )
         registered = true
     }
 

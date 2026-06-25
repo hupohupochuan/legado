@@ -321,7 +321,9 @@ fun Context.sendMail(mail: String) {
 val Context.sysBattery: Int
     get() {
         val iFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        val batteryStatus = registerReceiver(null, iFilter)
+        val batteryStatus = ContextCompat.registerReceiver(
+            this, null, iFilter, ContextCompat.RECEIVER_EXPORTED
+        )
         return batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
     }
 

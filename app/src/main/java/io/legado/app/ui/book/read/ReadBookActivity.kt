@@ -14,6 +14,7 @@ import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.view.get
 import androidx.core.view.size
@@ -329,7 +330,12 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
         }
         upSystemUiVisibility()
-        registerReceiver(timeBatteryReceiver, timeBatteryReceiver.filter)
+        ContextCompat.registerReceiver(
+            this,
+            timeBatteryReceiver,
+            timeBatteryReceiver.filter,
+            ContextCompat.RECEIVER_EXPORTED
+        )
         binding.readView.upTime()
         eventHandler.screenOffTimerStart()
         // 网络监听，当从无网切换到网络环境时同步进度（注意注册的同时就会收到监听，因此界面激活时无需重复执行同步操作）
