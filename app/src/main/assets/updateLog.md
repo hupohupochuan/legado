@@ -10,6 +10,9 @@
 * 正文出现缺字漏字、内容缺失、排版错乱等情况，有可能是净化规则或简繁转换出现问题。
 
 
+**2026/06/27**
+优化 Web 服务阅读页电脑端键盘翻屏滚动：阅读进度浏览器本地写入改为节流并在隐藏/离开前强制 flush，减少滚动动画期间同步 storage 写入；无限滚动新增下一章正文提前预取缓存，到底部优先使用缓存追加章节，降低章节末尾等待网络和解析造成的卡顿
+
 **2026/06/26**
 Android 17 (API 37) 适配前置闸门：compileSdk/targetSdk 抬至 37，验证 AGP 9.2.1 + Gradle 9.4.1 + Kotlin 2.3.21 + KSP 2.3.7 组合直接支持 API 37，无需升级 AGP；Debug 编译与完整 APK 打包均通过。后续行为变更适配以独立条目推进
 16KB page size 验证：libarchive-jni.so 的 LOAD 段对齐 0x4000(16KB) 且 APK 内 zip 偏移已对齐；cronet .so 走系统 HttpEngine / play-services 侧，兜底下载路径不在 16KB 设备触发，当前无需升级 cronet/libarchive 或改任何代码

@@ -120,13 +120,30 @@ const isSeachBook = computed({
   set: value => (store.readingBook.isSeachBook = value),
 })
 
+let persistReadingBookTimer: ReturnType<typeof setTimeout> | null = null
+const persistReadingBookNow = () => {
+  const book = store.readingBook
+  localStorage.setItem('readingRecent', JSON.stringify(book))
+  sessionStorage.setItem('chapterIndex', book.chapterIndex.toString())
+  sessionStorage.setItem('chapterPos', book.chapterPos.toString())
+}
+const persistReadingBookSoon = () => {
+  if (persistReadingBookTimer !== null) return
+  persistReadingBookTimer = setTimeout(() => {
+    persistReadingBookTimer = null
+    persistReadingBookNow()
+  }, 800)
+}
+const flushReadingBookPersist = () => {
+  if (persistReadingBookTimer !== null) {
+    clearTimeout(persistReadingBookTimer)
+    persistReadingBookTimer = null
+  }
+  persistReadingBookNow()
+}
 watch(
   () => store.readingBook,
-  book => {
-    localStorage.setItem('readingRecent', JSON.stringify(book))
-    sessionStorage.setItem('chapterIndex', book.chapterIndex.toString())
-    sessionStorage.setItem('chapterPos', book.chapterPos.toString())
-  },
+  () => persistReadingBookSoon(),
   { deep: 1 },
 )
 
@@ -135,21 +152,104 @@ const infiniteLoading = computed(() => store.config.infiniteLoading)
 // whole reader and shows as a white overlay at the end of each chapter.
 const isAppendingChapter = ref(false)
 let scrollObserver: IntersectionObserver | null
+let prefetchObserver: IntersectionObserver | null
 const loading = ref()
-watchEffect(() => {
-  if (!infiniteLoading.value) {
-    scrollObserver?.disconnect()
-  } else if (loading.value) {
-    scrollObserver?.observe(loading.value)
+type ChapterData = { index: number; content: string[]; title: string }
+const prefetchedChapters = new Map<number, ChapterData>()
+const prefetchingChapters = new Set<number>()
+const maxPrefetchedChapterCount = 2
+let prefetchGeneration = 0
+const clearPrefetchedChapters = () => {
+  prefetchGeneration++
+  prefetchedChapters.clear()
+  prefetchingChapters.clear()
+}
+const trimPrefetchedChapters = () => {
+  while (prefetchedChapters.size > maxPrefetchedChapterCount) {
+    const firstKey = prefetchedChapters.keys().next().value
+    if (firstKey === undefined) break
+    prefetchedChapters.delete(firstKey)
   }
-})
+}
+const fetchChapterData = async (index: number) => {
+  const bookUrl = store.readingBook.bookUrl
+  const chapter = catalog.value[index]
+  if (!bookUrl || !chapter) throw new Error('章节信息为空')
+  const { title, index: chapterIndex } = chapter
+  const res = await API.getBookContent(bookUrl, chapterIndex)
+  if (res.data.isSuccess) {
+    return {
+      chapter: {
+        index,
+        content: res.data.data.split(/\n+/),
+        title,
+      } as ChapterData,
+      isSuccess: true,
+      errorMsg: '',
+    }
+  }
+  return {
+    chapter: {
+      index,
+      content: [res.data.errorMsg],
+      title,
+    } as ChapterData,
+    isSuccess: false,
+    errorMsg: res.data.errorMsg,
+  }
+}
+const prefetchChapter = (index: number) => {
+  if (
+    index < 0 ||
+    index >= catalog.value.length ||
+    prefetchedChapters.has(index) ||
+    prefetchingChapters.has(index)
+  ) {
+    return
+  }
+  const generation = prefetchGeneration
+  prefetchingChapters.add(index)
+  fetchChapterData(index)
+    .then(({ chapter, isSuccess }) => {
+      if (isSuccess && generation === prefetchGeneration) {
+        prefetchedChapters.set(index, chapter)
+        trimPrefetchedChapters()
+      }
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      prefetchingChapters.delete(index)
+    })
+}
+const prefetchNextChapter = () => {
+  const lastChapter = chapterData.value.slice(-1)[0]
+  if (!lastChapter) return
+  const nextIndex = lastChapter.index + 1
+  if (catalog.value.length - 1 >= nextIndex) prefetchChapter(nextIndex)
+}
 const loadMore = () => {
   const lastChapter = chapterData.value.slice(-1)[0]
   if (!lastChapter) return
   const index = lastChapter.index
   if (catalog.value.length - 1 > index) {
-    getContent(index + 1, false)
-      .then(() => store.saveBookProgress())
+    const nextIndex = index + 1
+    const prefetched = prefetchedChapters.get(nextIndex)
+    if (prefetched) {
+      prefetchedChapters.delete(nextIndex)
+      isAppendingChapter.value = true
+      requestAnimationFrame(() => {
+        chapterData.value.push(prefetched)
+        isAppendingChapter.value = false
+        prefetchNextChapter()
+        store.saveBookProgress()
+      })
+      return
+    }
+    getContent(nextIndex, false)
+      .then(() => {
+        prefetchNextChapter()
+        store.saveBookProgress()
+      })
       .catch(() => undefined)
   }
 }
@@ -160,6 +260,23 @@ const onReachBottom = (entries: IntersectionObserverEntry[]) => {
     loadMore()
   }
 }
+const onReachPrefetch = (entries: IntersectionObserverEntry[]) => {
+  if (isLoading.value || isAppendingChapter.value) return
+  for (const { isIntersecting } of entries) {
+    if (!isIntersecting) return
+    prefetchNextChapter()
+  }
+}
+watchEffect(() => {
+  if (!infiniteLoading.value) {
+    scrollObserver?.disconnect()
+    prefetchObserver?.disconnect()
+    clearPrefetchedChapters()
+  } else if (loading.value) {
+    scrollObserver?.observe(loading.value)
+    prefetchObserver?.observe(loading.value)
+  }
+})
 
 const fontFamily = computed(() => {
   if (store.config.font >= 0) {
@@ -237,41 +354,42 @@ const toBottom = () => jump(bottom.value)
 const router = useRouter()
 const toShelf = () => router.push('/shelf')
 
-const chapterData = ref<{ index: number; content: string[]; title: string }[]>([])
+const chapterData = ref<ChapterData[]>([])
 const noPoint = ref(true)
 const getContent = (index: number, reloadChapter = true, chapterPos = 0) => {
   if (reloadChapter) {
+    clearPrefetchedChapters()
     store.setShowContent(false)
     jump(top.value, { duration: 0 })
     saveReadingBookProgressToBrowser(index, chapterPos)
     chapterData.value = []
   }
-  const bookUrl = store.readingBook.bookUrl
-  const { title, index: chapterIndex } = catalog.value[index]
 
-  const request = API.getBookContent(bookUrl, chapterIndex).then(
-    res => {
-      if (res.data.isSuccess) {
-        const data = res.data.data
-        const content = data.split(/\n+/)
-        chapterData.value.push({ index, content, title })
-        if (reloadChapter) toChapterPos(chapterPos)
-      } else {
-        toast.error(res.data.errorMsg)
-        const content = [res.data.errorMsg]
-        chapterData.value.push({ index, content, title })
+  const request = fetchChapterData(index).then(
+    ({ chapter, isSuccess, errorMsg }) => {
+      chapterData.value.push(chapter)
+      if (reloadChapter) {
+        toChapterPos(chapterPos)
+        if (infiniteLoading.value) prefetchChapter(index + 1)
+      }
+      if (!isSuccess) {
+        toast.error(errorMsg)
       }
       store.setContentLoading(true)
       noPoint.value = false
       store.setShowContent(true)
-      if (!res.data.isSuccess) {
-        throw res.data
+      if (!isSuccess) {
+        throw new Error(errorMsg)
       }
     },
     err => {
       if (reloadChapter) {
         const content = ['获取章节内容失败！']
-        chapterData.value.push({ index, content, title })
+        chapterData.value.push({
+          index,
+          content,
+          title: catalog.value[index]?.title || '',
+        })
       } else {
         toast.error('获取下一章内容失败！')
       }
@@ -300,8 +418,12 @@ const saveBookProgressThrottle = useThrottleFn(
   () => store.saveBookProgress(),
   60000,
 )
+let lastReadedProgressKey = ''
 
 const onReadedLengthChange = (index: number, pos: number) => {
+  const progressKey = `${index}:${pos}`
+  if (lastReadedProgressKey === progressKey) return
+  lastReadedProgressKey = progressKey
   saveReadingBookProgressToBrowser(index, pos)
   saveBookProgressThrottle()
 }
@@ -318,6 +440,7 @@ const saveReadingBookProgressToBrowser = (index: number, pos: number) => {
 const onVisibilityChange = () => {
   const _bookProgress = bookProgress.value
   if (document.visibilityState == 'hidden' && _bookProgress) {
+    flushReadingBookPersist()
     store.saveBookProgress(true)
   }
 }
@@ -431,7 +554,11 @@ onMounted(async () => {
       scrollObserver = new IntersectionObserver(onReachBottom, {
         rootMargin: '-100% 0% 20% 0%',
       })
+      prefetchObserver = new IntersectionObserver(onReachPrefetch, {
+        rootMargin: '0% 0% 150% 0%',
+      })
       if (infiniteLoading.value === true) scrollObserver.observe(loading.value)
+      if (infiniteLoading.value === true) prefetchObserver.observe(loading.value)
       document.title = '...'
       document.title = (name as string) + ' | ' + chapters[chapterIndex].title
     }),
@@ -447,6 +574,10 @@ onUnmounted(() => {
   popCataVisible.value = false
   scrollObserver?.disconnect()
   scrollObserver = null
+  prefetchObserver?.disconnect()
+  prefetchObserver = null
+  clearPrefetchedChapters()
+  flushReadingBookPersist()
 })
 
 const addToBookShelfConfirm = async () => {
@@ -468,6 +599,7 @@ const addToBookShelfConfirm = async () => {
 onBeforeRouteLeave(async (to, from, next) => {
   console.log('onBeforeRouteLeave')
   window.removeEventListener('keyup', handleKeyPress)
+  flushReadingBookPersist()
   await addToBookShelfConfirm()
   next()
 })
