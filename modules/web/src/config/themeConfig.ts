@@ -55,11 +55,11 @@ const settings = {
     },
   ],
   fonts: [
-    'Microsoft YaHei, PingFangSC-Regular, HelveticaNeue-Light, Helvetica Neue Light, sans-serif',
+    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif',
 
-    'PingFangSC-Regular, -apple-system, Simsun',
+    'Georgia, "Times New Roman", Times, "Songti SC", SimSun, "Noto Serif CJK SC", "Source Han Serif SC", serif',
 
-    'Kaiti',
+    'Georgia, "Times New Roman", Times, "Kaiti SC", KaiTi, STKaiti, "LXGW WenKai", serif',
   ],
 }
 export default settings
