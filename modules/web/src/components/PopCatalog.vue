@@ -98,6 +98,7 @@ watch(popCataVisible, scrollToCurrent)
 
 const refreshing = ref(false)
 const refreshCatalog = async () => {
+  if (refreshing.value) return
   refreshing.value = true
   try {
     await store.refreshCatalog()

@@ -119,6 +119,9 @@ const addLocalBook = async (file: File) => {
     new URL('addLocalBook', legado_http_entry_point).toString(),
     { method: 'POST', body: formData },
   )
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
   return { data: await response.json() }
 }
 

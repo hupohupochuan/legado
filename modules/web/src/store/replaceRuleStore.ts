@@ -2,8 +2,9 @@ import { defineStore } from 'pinia'
 import API from '@api'
 import type { ReplaceRule } from '@/replaceRule'
 
+let _idCounter = 0
 export const emptyReplaceRule = (): ReplaceRule => ({
-  id: Date.now(),
+  id: Date.now() * 1000 + (++_idCounter % 1000),
   name: '',
   group: '',
   pattern: '',
@@ -27,18 +28,6 @@ export const useReplaceRuleStore = defineStore('replaceRule', {
   },
   getters: {
     currentRuleId: state => state.currentRule.id,
-    rulesFiltered: state => {
-      return (key: string) => {
-        if (!key) return state.rules
-        const lowerKey = key.toLowerCase()
-        return state.rules.filter(
-          rule =>
-            rule.name.toLowerCase().includes(lowerKey) ||
-            (rule.group ?? '').toLowerCase().includes(lowerKey) ||
-            rule.pattern.toLowerCase().includes(lowerKey),
-        )
-      }
-    },
   },
   actions: {
     setRules(data: ReplaceRule[]) {
@@ -49,14 +38,6 @@ export const useReplaceRuleStore = defineStore('replaceRule', {
     },
     newRule() {
       this.currentRule = emptyReplaceRule()
-    },
-    saveCurrentRuleToList() {
-      const index = this.rules.findIndex(rule => rule.id === this.currentRule.id)
-      if (index > -1) {
-        this.rules[index] = JSON.parse(JSON.stringify(this.currentRule))
-      } else {
-        this.rules.push(JSON.parse(JSON.stringify(this.currentRule)))
-      }
     },
     deleteRuleFromList(rule: ReplaceRule) {
       const index = this.rules.findIndex(item => item.id === rule.id)
@@ -74,7 +55,9 @@ export const useReplaceRuleStore = defineStore('replaceRule', {
       const target = rule ?? this.currentRule
       const { data } = await API.saveReplaceRule(target)
       if (data.isSuccess) {
-        this.saveCurrentRuleToList()
+        await this.loadRules()
+        const saved = this.rules.find(r => r.id === target.id)
+        if (saved) this.currentRule = JSON.parse(JSON.stringify(saved))
       } else {
         throw new Error(data.errorMsg)
       }
