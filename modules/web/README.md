@@ -3,7 +3,7 @@
 ## 路由
 * http://localhost:8080/ 书架
 * http://localhost:8080/#/bookSource 书源编辑
-* http://localhost:8080/#/rssSource 订阅源编辑
+* http://localhost:8080/#/replaceRule 替换规则编辑
 
 ## 兼容性
 

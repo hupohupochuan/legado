@@ -12,6 +12,7 @@ import type {
   SeachBook,
 } from '@/book'
 import type { Source } from '@/source'
+import type { ReplaceRule } from '@/replaceRule'
 
 export type LeagdoApiResponse<T> = {
   isSuccess: boolean
@@ -77,6 +78,9 @@ const getChapterList = (bookUrl: string) =>
 const getBookContent = (bookUrl: string, chapterIndex: number) =>
   ajax.get('getBookContent?url=' + encodeURIComponent(bookUrl) + '&index=' + chapterIndex)
 
+const refreshToc = (bookUrl: string) =>
+  ajax.get('refreshToc?url=' + encodeURIComponent(bookUrl))
+
 const search = (
   searchKey: string,
   onReceive: (data: SeachBook[]) => void,
@@ -107,6 +111,17 @@ const search = (
 const saveBook = (book: BaseBook) => ajax.post('saveBook', book)
 const deleteBook = (book: BaseBook) => ajax.post('deleteBook', book)
 
+const addLocalBook = async (file: File) => {
+  const formData = new FormData()
+  formData.append('fileName', file.name)
+  formData.append('fileData', file)
+  const response = await fetch(
+    new URL('addLocalBook', legado_http_entry_point).toString(),
+    { method: 'POST', body: formData },
+  )
+  return { data: await response.json() }
+}
+
 const getSources = () => ajax.get('getBookSources')
 
 const saveSource = (data: Source) => ajax.post('saveBookSource', data)
@@ -114,6 +129,17 @@ const saveSource = (data: Source) => ajax.post('saveBookSource', data)
 const saveSources = (data: Source[]) => ajax.post('saveBookSources', data)
 
 const deleteSource = (data: Source[]) => ajax.post('deleteBookSources', data)
+
+const getReplaceRules = () => ajax.get('getReplaceRules')
+
+const saveReplaceRule = (rule: ReplaceRule) =>
+  ajax.post('saveReplaceRule', rule)
+
+const deleteReplaceRule = (rule: ReplaceRule) =>
+  ajax.post('deleteReplaceRule', rule)
+
+const testReplaceRule = (rule: ReplaceRule, text: string) =>
+  ajax.post('testReplaceRule', { rule, text })
 
 const debug = (
   sourceUrl: string,
@@ -175,15 +201,22 @@ export default {
   getBookShelf,
   getChapterList,
   getBookContent,
+  refreshToc,
   search,
   saveBook,
   deleteBook,
+  addLocalBook,
 
   getSources,
   saveSources,
   saveSource,
   deleteSource,
   debug,
+
+  getReplaceRules,
+  saveReplaceRule,
+  deleteReplaceRule,
+  testReplaceRule,
 
   getProxyCoverUrl,
   getProxyImageUrl,

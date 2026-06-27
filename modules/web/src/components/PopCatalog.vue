@@ -3,7 +3,16 @@
     :class="{ 'cata-wrapper': true, visible: popCataVisible }"
     :style="popupTheme"
   >
-    <div class="title">目录</div>
+    <div class="catalog-header">
+      <div class="title">目录</div>
+      <button
+        class="web-btn web-btn--text refresh-btn"
+        :disabled="refreshing"
+        @click="refreshCatalog"
+      >
+        {{ refreshing ? '刷新中' : '刷新' }}
+      </button>
+    </div>
     <virtual-list
       style="height: 300px; overflow: auto"
       :class="{ night: isNight, day: !isNight }"
@@ -87,6 +96,17 @@ const scrollToCurrent = async () => {
 onMounted(scrollToCurrent)
 watch(popCataVisible, scrollToCurrent)
 
+const refreshing = ref(false)
+const refreshCatalog = async () => {
+  refreshing.value = true
+  try {
+    await store.refreshCatalog()
+    await scrollToCurrent()
+  } finally {
+    refreshing.value = false
+  }
+}
+
 // 点击加载对应章节内容
 const emit = defineEmits(['getContent'])
 const gotoChapter = (chapter: BookChapter) => {
@@ -105,14 +125,26 @@ const gotoChapter = (chapter: BookChapter) => {
   padding: 18px 0 24px 25px;
 
   /* background: #ede7da url('../assets/imgs/themes/popup_1.png') repeat; */
-  .title {
-    font-size: 18px;
-    font-weight: 400;
-    font-family: FZZCYSK;
-    margin: 0 0 20px 0;
-    color: #ed4259;
-    width: fit-content;
-    border-bottom: 1px solid #ed4259;
+  .catalog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin: 0 20px 0 0;
+
+    .title {
+      font-size: 18px;
+      font-weight: 400;
+      font-family: FZZCYSK;
+      margin: 0 0 20px 0;
+      color: #ed4259;
+      width: fit-content;
+      border-bottom: 1px solid #ed4259;
+    }
+
+    .refresh-btn {
+      font-size: 14px;
+      color: #ed4259;
+    }
   }
   :deep(.data-wrapper) {
     .cata {

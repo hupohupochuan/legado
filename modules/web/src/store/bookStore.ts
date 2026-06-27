@@ -157,6 +157,26 @@ export const useBookStore = defineStore('book', {
         return await fetchChapterList_promise
       }
     },
+    async refreshCatalog() {
+      const bookUrl = this.readingBook.bookUrl
+      if (!bookUrl) {
+        toast.error('当前书籍地址为空')
+        return
+      }
+      try {
+        const res = await API.refreshToc(bookUrl)
+        const { isSuccess, data, errorMsg } = res.data
+        if (isSuccess === false) {
+          toast.error(errorMsg)
+          return
+        }
+        this.catalog = data
+        toast.success('目录已刷新')
+        return this.catalog
+      } catch {
+        toast.error('刷新目录失败')
+      }
+    },
     setPopCataVisible(visible: boolean) {
       this.popCataVisible = visible
     },

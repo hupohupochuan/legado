@@ -10,6 +10,10 @@
 * 正文出现缺字漏字、内容缺失、排版错乱等情况，有可能是净化规则或简繁转换出现问题。
 
 
+**2026/06/28**
+修复 Web 服务长时间运行后偶发不可访问：WebService 监听新章节加载完成事件（EventBus.SAVE_CONTENT），运行超过 3 小时后自动重建 HttpServer/WebSocketServer 实例，清理 NanoHTTPD 长时运行可能的连接泄漏和旧 IP 绑定，重启成功重新计时
+Web 服务书架新增本地上传、阅读页目录弹窗新增刷新目录、新增替换规则管理页面（#/replaceRule）：接入后端 addLocalBook、refreshToc、getReplaceRules/saveReplaceRule/deleteReplaceRule/testReplaceRule 接口
+
 **2026/06/27**
 优化 Web 服务阅读页电脑端键盘翻屏滚动：阅读进度浏览器本地写入改为节流并在隐藏/离开前强制 flush，减少滚动动画期间同步 storage 写入；无限滚动新增下一章正文提前预取缓存，到底部优先使用缓存追加章节，降低章节末尾等待网络和解析造成的卡顿
 优化 Web 服务阅读页中英文混排字体链：默认/宋体/楷体选项均改为英文和数字优先使用西文字体、中文回落到对应中文字体，不内置字体文件，避免增加 APK 体积

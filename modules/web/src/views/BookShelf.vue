@@ -66,10 +66,31 @@
             </span>
           </div>
         </div>
+        <div class="local-book-wrapper">
+          <div class="local-book-title">本地书籍</div>
+          <div class="local-book-item">
+            <button class="web-btn web-btn--primary" @click="selectLocalBook">
+              导入本地书
+            </button>
+            <input
+              ref="localBookInput"
+              type="file"
+              style="display: none"
+              accept=".txt,.epub,.pdf,.azw3,.mobi,.docx,.zip,.rar"
+              @change="onLocalBookSelected"
+            />
+          </div>
+        </div>
+        <div class="tool-wrapper">
+          <div class="tool-title">工具</div>
+          <div class="tool-item">
+            <button class="web-btn" @click="toReplaceRule">替换规则</button>
+          </div>
+        </div>
       </div>
       <div class="bottom-icons">
         <a
-          href="https://github.com/gedoor/legado_web_bookshelf"
+          href="https://github.com/hupohupochuan/legado"
           target="_blank"
         >
           <div class="bottom-icon">
@@ -127,6 +148,7 @@ const readingRecent = ref<typeof store.readingBook>({
 })
 
 const shelfWrapper = ref<HTMLElement>()
+const localBookInput = ref<HTMLInputElement>()
 const { showLoading, closeLoading, loadingWrapper, isLoading } = useLoading(
   shelfWrapper,
   '正在获取书籍信息',
@@ -296,6 +318,35 @@ const handleGroupChange = async (e: Event) => {
   }
 }
 
+const selectLocalBook = () => {
+  localBookInput.value?.click()
+}
+
+const onLocalBookSelected = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    showLoading()
+    const { data } = await API.addLocalBook(file)
+    if (data.isSuccess) {
+      toast.success(`《${file.name}》上传成功`)
+      await store.loadBookShelf(currentGroupId.value)
+    } else {
+      toast.error(data.errorMsg ?? '上传失败')
+    }
+  } catch {
+    toast.error('上传本地书失败')
+  } finally {
+    closeLoading()
+    input.value = ''
+  }
+}
+
+const toReplaceRule = () => {
+  router.push({ path: '/replaceRule' })
+}
+
 onMounted(() => {
   const readingRecentStr = localStorage.getItem('readingRecent')
   if (readingRecentStr != null) {
@@ -401,6 +452,42 @@ onMounted(() => {
       .setting-connect {
         margin-top: 16px;
         cursor: pointer;
+      }
+    }
+
+    .local-book-wrapper {
+      margin-top: 36px;
+
+      .local-book-title {
+        font-size: 14px;
+        color: #b1b1b1;
+        font-family: FZZCYSK;
+      }
+
+      .local-book-item {
+        margin-top: 16px;
+
+        .web-btn {
+          width: 100%;
+        }
+      }
+    }
+
+    .tool-wrapper {
+      margin-top: 36px;
+
+      .tool-title {
+        font-size: 14px;
+        color: #b1b1b1;
+        font-family: FZZCYSK;
+      }
+
+      .tool-item {
+        margin-top: 16px;
+
+        .web-btn {
+          width: 100%;
+        }
       }
     }
 
