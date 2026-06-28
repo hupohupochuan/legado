@@ -362,7 +362,8 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 return@onSuccess
             }
             progress ?: return@onSuccess
-            if (progress.durChapterIndex == book.durChapterIndex && progress.durChapterPos == book.durChapterPos) {
+            val compare = progress.compareReadPosition(book)
+            if (compare == 0) {
                 return@onSuccess
             }
             if (!AppWebDav.canApplyBookProgress(
@@ -374,7 +375,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             ) {
                 return@onSuccess
             }
-            if (progress.durChapterIndex < book.durChapterIndex || (progress.durChapterIndex == book.durChapterIndex && progress.durChapterPos < book.durChapterPos)) {
+            if (compare < 0) {
                 alertSync?.invoke(progress)
             } else if (progress.durChapterIndex < book.simulatedTotalChapterNum()) {
                 applyProgress(progress)

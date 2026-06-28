@@ -467,10 +467,7 @@ object AppWebDav {
                     ) {
                         return@forEach
                     }
-                    if (bookProgress.durChapterIndex > book.durChapterIndex
-                        || (bookProgress.durChapterIndex == book.durChapterIndex
-                            && bookProgress.durChapterPos > book.durChapterPos)
-                    ) {
+                    if (bookProgress.compareReadPosition(book) > 0) {
                         book.durChapterIndex = bookProgress.durChapterIndex
                         book.durChapterPos = bookProgress.durChapterPos
                         book.durChapterTitle = bookProgress.durChapterTitle
