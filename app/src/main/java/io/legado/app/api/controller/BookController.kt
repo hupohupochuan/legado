@@ -186,13 +186,20 @@ object BookController {
      */
     fun getBookContent(parameters: Map<String, List<String>>): ReturnData {
         val bookUrl = parameters["url"]?.firstOrNull()
-        val index = parameters["index"]?.firstOrNull()?.toInt()
+        val indexStr = parameters["index"]?.firstOrNull()
+        val index = indexStr?.toIntOrNull()
         val returnData = ReturnData()
         if (bookUrl.isNullOrEmpty()) {
             return returnData.setErrorMsg("参数url不能为空，请指定书籍地址")
         }
-        if (index == null) {
+        if (indexStr.isNullOrBlank()) {
             return returnData.setErrorMsg("参数index不能为空, 请指定目录序号")
+        }
+        if (index == null) {
+            return returnData.setErrorMsg("参数index格式不正确")
+        }
+        if (index < 0) {
+            return returnData.setErrorMsg("参数index不能为负数")
         }
         val book = appDb.bookDao.getBook(bookUrl)
         val chapter = runBlocking {
@@ -267,12 +274,22 @@ object BookController {
         GSON.fromJsonObject<BookProgress>(postData)
             .onFailure { it.printOnDebug() }
             .getOrNull()?.let { bookProgress ->
+                if (bookProgress.durChapterIndex < 0) {
+                    return returnData.setErrorMsg("durChapterIndex 不能为负数")
+                }
+                if (bookProgress.durChapterPos == Int.MIN_VALUE) {
+                    return returnData.setErrorMsg("durChapterPos 非法")
+                }
                 appDb.bookDao.getBook(bookProgress.name, bookProgress.author)?.let { book ->
-                    book.durChapterIndex = bookProgress.durChapterIndex
-                    book.durChapterPos = bookProgress.durChapterPos
+                    val chapterCount = appDb.bookChapterDao.getChapterCount(book.bookUrl)
+                    if (chapterCount <= 0) {
+                        return returnData.setErrorMsg("未找到章节")
+                    }
+                    book.durChapterIndex = bookProgress.durChapterIndex.coerceIn(0, chapterCount - 1)
+                    book.durChapterPos = kotlin.math.abs(bookProgress.durChapterPos)
                     book.durChapterTitle = bookProgress.durChapterTitle
                     book.durChapterTime = bookProgress.durChapterTime
-                    AppWebDav.uploadBookProgress(bookProgress) {
+                    AppWebDav.uploadBookProgress(book) {
                         book.syncTime = System.currentTimeMillis()
                     }
                     appDb.bookDao.update(book)

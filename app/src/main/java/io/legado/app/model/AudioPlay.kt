@@ -175,8 +175,8 @@ object AudioPlay {
         simulatedChapterSize =
             if (book.readSimulating()) book.simulatedTotalChapterNum() else chapterSize
         bookSource = book.getBookSource()
-        durChapterIndex = book.durChapterIndex
-        durChapterPos = book.durChapterPos
+        durChapterIndex = book.durChapterIndex.coerceIn(0, (simulatedChapterSize - 1).coerceAtLeast(0))
+        durChapterPos = kotlin.math.abs(book.durChapterPos)
         durPlayUrl = ""
         durAudioSize = 0
         upDurChapter()
@@ -185,7 +185,7 @@ object AudioPlay {
 
     suspend fun upDurChapter() {
         val book = book ?: return
-        durChapter = chapterList?.get(durChapterIndex) ?: withContext(Dispatchers.IO) {
+        durChapter = chapterList?.getOrNull(durChapterIndex) ?: withContext(Dispatchers.IO) {
             appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
         }
         durAudioSize = durChapter?.end?.toInt() ?: 0

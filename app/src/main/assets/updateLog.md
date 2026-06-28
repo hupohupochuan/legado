@@ -11,6 +11,7 @@
 
 
 **2026/06/29**
+补关键数值参数边界校验防止外部传入负值/越界导致崩溃：Web API 书源管理 saveBookProgress 校验 BookProgress.durChapterIndex<0 / durChapterPos==Int.MIN_VALUE，章节数为 0 时拒绝保存，越界时 coerceIn 兜底并用修正后的进度上传 WebDAV；getBookContent 改 toIntOrNull 安全解析并拒绝 index<0；ReadBook.setProgress/openChapter/skipToPage/setPageIndex 加负值校验；initData 发现越界 durChapterIndex 自动重置 0；AudioPlay.resetData 对 book.durChapterIndex coerceIn 校正，upDurChapter 的 chapterList?.get(idx) 改 getOrNull 防 IndexOutOfBoundsException
 修复 Web 服务 WebSocket 书源搜索字符串拼接 JSON 注入风险：搜索接口改为 JSON.stringify({ key: searchKey }) 形式发送，避免 searchKey 含特殊字符破坏 WS 消息结构；前端 index.html 同步重新构建
 修复 NetworkUtils.isIPv4Address() 误判 0.x.x.x 段合法 IPv4 地址：移除首字符 '1'..'9' 前置过滤，统一交由 Validator.isIpv4 完整校验；getLocalIPAddress() 改用 runCatching 简化异常处理
 修复 BookController 非法参数导致 NumberFormatException：toLong()/toInt() 直转改用 toLongOrNull()/toIntOrNull() 安全转换

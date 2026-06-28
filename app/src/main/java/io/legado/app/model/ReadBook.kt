@@ -135,6 +135,12 @@ object ReadBook : CoroutineScope by MainScope() {
             isLocalBook = book.isLocal
             clearTextChapter()
         }
+        if (simulatedChapterSize > 0 && durChapterIndex !in 0 until simulatedChapterSize) {
+            AppLog.put("initData 检测到越界 durChapterIndex=$durChapterIndex, simulatedChapterSize=$simulatedChapterSize, 已重置为 0")
+            book.durChapterIndex = 0
+            durChapterIndex = 0
+            durChapterPos = 0
+        }
         if (!isDiffBook){
             if (curTextChapter?.isCompleted == false) {
                 curTextChapter = null
@@ -196,11 +202,12 @@ object ReadBook : CoroutineScope by MainScope() {
 
     fun setProgress(progress: BookProgress) {
         val readChapterPos = progress.readChapterPos
-        if (progress.durChapterIndex < chapterSize &&
-            (durChapterIndex != progress.durChapterIndex
+        val targetIndex = progress.durChapterIndex.coerceAtLeast(0)
+        if (targetIndex < chapterSize &&
+            (durChapterIndex != targetIndex
                     || durChapterPos != readChapterPos)
         ) {
-            durChapterIndex = progress.durChapterIndex
+            durChapterIndex = targetIndex
             durChapterPos = readChapterPos
             clearTextChapter()
             callBack?.upContent()
@@ -415,7 +422,8 @@ object ReadBook : CoroutineScope by MainScope() {
     }
 
     fun skipToPage(index: Int, success: (() -> Unit)? = null) {
-        durChapterPos = curTextChapter?.getReadLength(index) ?: index
+        val safeIndex = index.coerceAtLeast(0)
+        durChapterPos = curTextChapter?.getReadLength(safeIndex) ?: safeIndex
         callBack?.upContent {
             success?.invoke()
         }
@@ -423,6 +431,7 @@ object ReadBook : CoroutineScope by MainScope() {
     }
 
     fun setPageIndex(index: Int) {
+        if (index < 0) return
         recycleRecorders(durPageIndex, index)
         durChapterPos = curTextChapter?.getReadLength(index) ?: index
         curPageChanged(true)
@@ -449,7 +458,7 @@ object ReadBook : CoroutineScope by MainScope() {
         upContent: Boolean = true,
         success: (() -> Unit)? = null
     ) {
-        if (index < chapterSize) {
+        if (index in 0 until chapterSize) {
             clearTextChapter()
             if (upContent) callBack?.upContent()
             durChapterIndex = index
