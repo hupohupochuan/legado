@@ -10,6 +10,13 @@
 * 正文出现缺字漏字、内容缺失、排版错乱等情况，有可能是净化规则或简繁转换出现问题。
 
 
+**2026/06/29**
+修复 Web 服务 WebSocket 书源搜索字符串拼接 JSON 注入风险：搜索接口改为 JSON.stringify({ key: searchKey }) 形式发送，避免 searchKey 含特殊字符破坏 WS 消息结构；前端 index.html 同步重新构建
+修复 NetworkUtils.isIPv4Address() 误判 0.x.x.x 段合法 IPv4 地址：移除首字符 '1'..'9' 前置过滤，统一交由 Validator.isIpv4 完整校验；getLocalIPAddress() 改用 runCatching 简化异常处理
+修复 BookController 非法参数导致 NumberFormatException：toLong()/toInt() 直转改用 toLongOrNull()/toIntOrNull() 安全转换
+HttpServer.serve() 大方法拆分（handleCorsPreflight/handlePost/handleGet/buildResponse）并补全 KDoc；BookController 提取 sortBooks() 消除排序嵌套；AppWebDav 合并两个 uploadBookProgress 重载为 uploadBookProgressJson 减少 ~40 行重复
+WebService.stop() 移入 IOException try-catch，定时器协程切到 Dispatchers.Default；BookProgress 提取 normalizePos() 消除重复；补充 ReadBook/Book/BookChapter/ReplaceRule/WebSocketServer/bookStore 等关键注释
+
 **2026/06/28**
 修复 WebDAV 云端阅读进度为章节最后一页标记（负数 durChapterPos，例如 pos=-3261）时，确认同步后阅读页加载异常的问题：同步比较与应用进度统一按有效正数位置处理，保留本地持久化负数语义
 修复 Web 服务长时间运行后偶发不可访问：WebService 监听新章节加载完成事件（EventBus.SAVE_CONTENT），运行超过 3 小时后自动重建 HttpServer/WebSocketServer 实例，清理 NanoHTTPD 长时运行可能的连接泄漏和旧 IP 绑定，重启成功重新计时；补兜底定时器（每 30 分钟轮询）覆盖长时间无新章节加载的静默场景，给 upWebServer 加重入保护避免并发重建

@@ -34,6 +34,12 @@ import java.io.File
 import java.util.WeakHashMap
 import java.util.concurrent.TimeUnit
 
+/**
+ * Web API 控制器 — 图书/章节/进度相关接口。
+ *
+ * 注意: 由于是 object（单例），getImg 中缓存的 book/bookSource/bookUrl
+ * 在多请求并发时可能被覆盖。当前使用场景为单用户顺序访问，暂未引入并发防护。
+ */
 object BookController {
 
     private lateinit var book: Book
@@ -41,9 +47,7 @@ object BookController {
     private var bookUrl: String = ""
     private val defaultCoverCache by lazy { WeakHashMap<Drawable, Bitmap>() }
 
-    /*
-    * 分组号及名称
-     */
+    /** 所有分组（id + name） */
     val groups: ReturnData
         get() {
             val returnData = ReturnData()
@@ -51,25 +55,25 @@ object BookController {
         }
 
     /**
-     * 通过group id获取书籍
+     * 按分组获取书籍列表，并按书架排序规则排序。
      */
     fun getBooks(parameters: Map<String, List<String>>): ReturnData {
-        val groupId = parameters["groupId"]?.firstOrNull()?.toLong()
+        val groupId = parameters["groupId"]?.firstOrNull()?.toLongOrNull()
         val books = if(groupId==null)appDb.bookDao.all else runBlocking{appDb.bookDao.flowByGroup(groupId).first()}
         return if (books.isEmpty()) {
             ReturnData().setErrorMsg("未找到")
         }else {
-            val data = when (AppConfig.bookshelfSort) {
-                1 -> books.sortedByDescending { it.latestChapterTime }
-                2 -> books.sortedWith { o1, o2 ->
-                    o1.name.cnCompare(o2.name)
-                }
-
-                3 -> books.sortedBy { it.order }
-                else -> books.sortedByDescending { it.durChapterTime }
-            }
-            ReturnData().setData(data)
+            val sorted = sortBooks(books)
+            ReturnData().setData(sorted)
         }
+    }
+
+    /** 按书架配置排序 */
+    private fun sortBooks(books: List<Book>): List<Book> = when (AppConfig.bookshelfSort) {
+        1 -> books.sortedByDescending { it.latestChapterTime }
+        2 -> books.sortedWith { o1, o2 -> o1.name.cnCompare(o2.name) }
+        3 -> books.sortedBy { it.order }
+        else -> books.sortedByDescending { it.durChapterTime }
     }
     /**
      * 获取封面
@@ -110,7 +114,7 @@ object BookController {
             ?: return returnData.setErrorMsg("bookUrl为空")
         val src = parameters["path"]?.firstOrNull()
             ?: return returnData.setErrorMsg("图片链接为空")
-        val width = parameters["width"]?.firstOrNull()?.toInt() ?: 640
+        val width = parameters["width"]?.firstOrNull()?.toIntOrNull() ?: 640
         if (this.bookUrl != bookUrl) {
             this.book = appDb.bookDao.getBook(bookUrl)
                 ?: return returnData.setErrorMsg("bookUrl不对")

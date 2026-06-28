@@ -70,6 +70,10 @@ data class ReplaceRule(
         return id.hashCode()
     }
 
+    /**
+     * 缓存编译后的 Regex 实例。
+     * 注意: 仅在 isValid() 校验通过后调用，否则可能抛 PatternSyntaxException。
+     */
     @delegate:Transient
     @delegate:Ignore
     @IgnoredOnParcel

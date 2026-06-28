@@ -56,6 +56,19 @@ import kotlin.math.max
 import kotlin.math.min
 
 
+/**
+ * 全局共享的阅读状态单例 + 协程作用域。
+ *
+ * 职责：
+ * - 持有当前阅读的 Book、ChapterList、TextChapter 状态
+ * - 提供翻页（nextPage/prevPage）、跳转（skipTo）、进度管理（setProgress）接口
+ * - 与 WebDAV 同步、Web 远程阅读、朗读服务交互
+ *
+ * 线程安全：
+ * - 可变字段在 Main 线程更新（通过 MainScope），ViewModel/Activity 直接读取
+ * - 后台加载通过 launch(IO) / withContext(IO) 切线程，结果 post 回 Main
+ * - 多章节并发加载用 Mutex + Semaphore 保护，避免竞争
+ */
 @Suppress("MemberVisibilityCanBePrivate")
 object ReadBook : CoroutineScope by MainScope() {
     var book: Book? = null
@@ -74,15 +87,17 @@ object ReadBook : CoroutineScope by MainScope() {
     var bookSource: BookSource? = null
     var msg: String? = null
     private val chapterLoadState = ChapterLoadState()
+    // 每个章节独立的加载 Job，用于取消正在加载的章节
     private val chapterLoadingJobs = ConcurrentHashMap<Int, Coroutine<*>>()
+    // 三章节预加载互斥锁，避免同一章节重复加载
     private val prevChapterLoadingLock = Mutex()
     private val curChapterLoadingLock = Mutex()
     private val nextChapterLoadingLock = Mutex()
 
-    /* 跳转进度前进度记录 */
+    /** 跳转进度前进度记录，用于「返回跳转前」功能 */
     var lastBookProgress: BookProgress? = null
 
-    /* web端阅读进度记录 */
+    /** web端阅读进度记录，用于 web 阅读时 app 在后台接收远程进度 */
     var webBookProgress: BookProgress? = null
 
     var preDownloadTask: Job?

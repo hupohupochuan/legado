@@ -93,6 +93,13 @@ data class BookChapter(
         return bookUrl + url
     }
 
+    /**
+     * 获取显示的章节标题（含繁简转换 + 替换规则处理）。
+     *
+     * @param replaceRules 替换规则列表，为 null 表示不做规则替换
+     * @param useReplace 是否启用替换规则
+     * @param chineseConvert 是否做繁简转换
+     */
     fun getDisplayTitle(
         replaceRules: List<ReplaceRule>? = null,
         useReplace: Boolean = true,
@@ -122,6 +129,7 @@ data class BookChapter(
                             displayTitle = mDisplayTitle
                         }
                     } catch (_: RegexTimeoutException) {
+                        // 超时 → 自动禁用该规则
                         item.isEnabled = false
                         appDb.replaceRuleDao.update(item)
                     } catch (_: CancellationException) {
@@ -136,8 +144,15 @@ data class BookChapter(
         return displayTitle
     }
 
+    /**
+     * 获取章节的绝对 URL。
+     *
+     * 如果章节地址含 URL 参数占位符（{xxx} 格式），
+     * 只对占位符之前的部分做绝对地址拼接，保留占位符原样。
+     * 卷标题且链接以卷名开头 → 返回目录页链接。
+     */
     fun getAbsoluteURL(book : Book): String {
-        //二级目录解析的卷链接为空 返回目录页的链接
+        // 二级目录解析的卷链接为空 返回目录页的链接
         if (url.startsWith(title) && isVolume) return book.tocUrl
         val urlMatcher = AnalyzeUrl.paramPattern.matcher(url)
         val urlBefore = if (urlMatcher.find()) url.substring(0, urlMatcher.start()) else url

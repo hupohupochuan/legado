@@ -15,6 +15,7 @@ node_modules/
 /app/gradle.properties
 /app/signing/
 package-lock.json
+pnpm-lock.yaml
 .idea/
 # Kotlin 2.0
 .kotlin/

@@ -19,20 +19,17 @@ data class BookProgress(
     )
 
     val readChapterPos: Int
-        get() = if (durChapterPos == Int.MIN_VALUE) Int.MAX_VALUE else kotlin.math.abs(durChapterPos)
+        get() = normalizePos(durChapterPos)
 
     fun compareReadPosition(book: Book): Int {
         val chapterCompare = durChapterIndex.compareTo(book.durChapterIndex)
-        val bookChapterPos = if (book.durChapterPos == Int.MIN_VALUE) {
-            Int.MAX_VALUE
-        } else {
-            kotlin.math.abs(book.durChapterPos)
-        }
-        return if (chapterCompare != 0) {
-            chapterCompare
-        } else {
-            readChapterPos.compareTo(bookChapterPos)
-        }
+        if (chapterCompare != 0) return chapterCompare
+        return readChapterPos.compareTo(normalizePos(book.durChapterPos))
+    }
+
+    companion object {
+        private fun normalizePos(pos: Int): Int =
+            if (pos == Int.MIN_VALUE) Int.MAX_VALUE else kotlin.math.abs(pos)
     }
 
 }

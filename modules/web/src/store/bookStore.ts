@@ -70,6 +70,7 @@ export const useBookStore = defineStore('book', {
     isNight: state => state.config.theme == 6,
   },
   actions: {
+    /** 加载分组列表 */
     async loadGroups() {
       try {
         const resp = await API.getGroups()
@@ -83,6 +84,10 @@ export const useBookStore = defineStore('book', {
         console.error('获取分组出错:', e)
       }
     },
+    /**
+     * 加载书架书籍列表。
+     * 如果已有缓存且分组不变则直接返回缓存，避免重复请求。
+     */
     async loadBookShelf(groupId?: number | string): Promise<Book[]> {
       const fetchBookshellf_promise = API.getBookShelf(groupId).then(resp => {
         console.log('API.getBookShelf数据返回')
@@ -224,6 +229,11 @@ export const useBookStore = defineStore('book', {
     clearSearchBooks() {
       this.searchBooks = []
     },
+    /**
+     * 保存阅读进度到后端。
+     * @param useBeacon 是否使用 navigator.sendBeacon（页面关闭前调用，
+     *                   仅做尽力交付，浏览器不会等待响应）。
+     */
     async saveBookProgress(useBeacon = false) {
       if (!this.bookProgress) return Promise.resolve()
       const { bookUrl } = this.readingBook

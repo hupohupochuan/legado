@@ -92,7 +92,7 @@ const search = (
   socket.onerror = wsOnError
 
   socket.onopen = () => {
-    socket.send(`{"key":"${searchKey}"}`)
+    socket.send(JSON.stringify({ key: searchKey }))
   }
   socket.onmessage = event => {
     try {

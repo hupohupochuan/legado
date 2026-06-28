@@ -158,8 +158,16 @@ data class Book(
     @IgnoredOnParcel
     val lastChapterIndex get() = totalChapterNum - 1
 
+    /**
+     * 真实作者（去除换行分隔的"别名::来源"格式后缀）。
+     * 例: "甲"\n"乙::来源" → "甲"\n"乙"
+     */
     fun getRealAuthor() = author.splitNotBlank("\n").joinToString("\n") { it.split("::")[0] }
 
+    /**
+     * 未读章节数 = 总章节 - 当前章节（末页标记时额外 -1 避免显示 1）。
+     * 末页标记: durChapterPos < 0 表示翻到了章节最后一页（而非某行位置）。
+     */
     fun getUnreadChapterNum() =
         (simulatedTotalChapterNum() - durChapterIndex + if (durChapterPos < 0) -1 else 0).coerceAtLeast(
             0

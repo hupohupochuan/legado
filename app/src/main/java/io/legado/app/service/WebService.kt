@@ -35,6 +35,7 @@ import io.legado.app.utils.stopService
 import io.legado.app.utils.toastOnUi
 import io.legado.app.web.HttpServer
 import io.legado.app.web.WebSocketServer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -140,7 +141,7 @@ class WebService : BaseService() {
 
     private fun startRestartChecker() {
         restartCheckerJob?.cancel()
-        restartCheckerJob = lifecycleScope.launch {
+        restartCheckerJob = lifecycleScope.launch(Dispatchers.Default) {
             while (isActive) {
                 delay(RESTART_CHECK_INTERVAL_MS)
                 tryRestartOnChapterLoaded()
@@ -199,18 +200,18 @@ class WebService : BaseService() {
             isRestarting = true
         }
         try {
-            if (httpServer?.isAlive == true) {
-                httpServer?.stop()
-            }
-            if (webSocketServer?.isAlive == true) {
-                webSocketServer?.stop()
-            }
             val addressList = NetworkUtils.getLocalIPAddress()
             if (addressList.any()) {
                 val port = getPort()
-                httpServer = HttpServer(port)
-                webSocketServer = WebSocketServer(port + 1)
                 try {
+                    if (httpServer?.isAlive == true) {
+                        httpServer?.stop()
+                    }
+                    if (webSocketServer?.isAlive == true) {
+                        webSocketServer?.stop()
+                    }
+                    httpServer = HttpServer(port)
+                    webSocketServer = WebSocketServer(port + 1)
                     httpServer?.start()
                     webSocketServer?.start(AppConst.timeLimit.toInt()) // 通信超时设置
                     notificationList.clear()

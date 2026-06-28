@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { shallowRef, markRaw } from 'vue'
 import {
   emptyBookSource,
   getSourceUniqueKey,

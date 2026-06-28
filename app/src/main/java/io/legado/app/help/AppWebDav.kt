@@ -290,61 +290,72 @@ object AppWebDav {
         }
     }
 
+    /**
+     * 上传书籍进度到 WebDAV（从 Book 构造 BookProgress）。
+     */
     suspend fun uploadBookProgress(
         book: Book,
         toast: Boolean = false,
         onSuccess: (() -> Unit)? = null
     ) {
-        val progressFileName = getProgressFileName(book.name, book.author)
-        val authorization = authorization ?: return AppLog.putDebug(
-            "WebDav uploadBookProgress skip reason=noAuthorization file=${progressFileName}"
+        uploadBookProgressJson(
+            progress = BookProgress(book),
+            fileName = getProgressFileName(book.name, book.author),
+            toast = toast,
+            onSuccess = onSuccess,
+            onProgressUpdate = { book.syncTime = System.currentTimeMillis() }
         )
-        if (!AppConfig.syncBookProgress) return AppLog.putDebug(
-            "WebDav uploadBookProgress skip reason=syncDisabled file=${progressFileName}"
-        )
-        if (!NetworkUtils.isAvailable()) return AppLog.putDebug(
-            "WebDav uploadBookProgress skip reason=networkUnavailable file=${progressFileName}"
-        )
-        try {
-            val bookProgress = BookProgress(book)
-            val json = GSON.toJson(bookProgress)
-            val url = bookProgressUrl + progressFileName
-            WebDav(url, authorization).upload(json.toByteArray(), "application/json")
-            book.syncTime = System.currentTimeMillis()
-            AppLog.putDebug(
-                "WebDav uploadBookProgress success file=${progressFileName} " +
-                        "chapter=${bookProgress.durChapterIndex} pos=${bookProgress.durChapterPos}"
-            )
-            onSuccess?.invoke()
-        } catch (e: Exception) {
-            currentCoroutineContext().ensureActive()
-            AppLog.put("上传进度失败 file=${progressFileName}\n${e.localizedMessage}", e, toast)
-        }
     }
 
+    /**
+     * 上传书籍进度到 WebDAV（直接使用 BookProgress 实例）。
+     */
     suspend fun uploadBookProgress(bookProgress: BookProgress, onSuccess: (() -> Unit)? = null) {
-        val progressFileName = getProgressFileName(bookProgress.name, bookProgress.author)
+        uploadBookProgressJson(
+            progress = bookProgress,
+            fileName = getProgressFileName(bookProgress.name, bookProgress.author),
+            toast = false,
+            onSuccess = onSuccess
+        )
+    }
+
+    /**
+     * 公共上传逻辑：跳过判断 → 序列化 → WebDAV PUT → 回调。
+     *
+     * @param progress 进度对象
+     * @param fileName WebDAV 上的文件名
+     * @param toast 失败时是否弹 Toast
+     * @param onProgressUpdate 上传成功后的额外回调（如更新 syncTime）
+     */
+    private suspend fun uploadBookProgressJson(
+        progress: BookProgress,
+        fileName: String,
+        toast: Boolean,
+        onSuccess: (() -> Unit)?,
+        onProgressUpdate: (() -> Unit)? = null
+    ) {
+        val authorization = authorization ?: return AppLog.putDebug(
+            "WebDav uploadBookProgress skip reason=noAuthorization file=${fileName}"
+        )
+        if (!AppConfig.syncBookProgress) return AppLog.putDebug(
+            "WebDav uploadBookProgress skip reason=syncDisabled file=${fileName}"
+        )
+        if (!NetworkUtils.isAvailable()) return AppLog.putDebug(
+            "WebDav uploadBookProgress skip reason=networkUnavailable file=${fileName}"
+        )
         try {
-            val authorization = authorization ?: return AppLog.putDebug(
-                "WebDav uploadBookProgress skip reason=noAuthorization file=${progressFileName}"
-            )
-            if (!AppConfig.syncBookProgress) return AppLog.putDebug(
-                "WebDav uploadBookProgress skip reason=syncDisabled file=${progressFileName}"
-            )
-            if (!NetworkUtils.isAvailable()) return AppLog.putDebug(
-                "WebDav uploadBookProgress skip reason=networkUnavailable file=${progressFileName}"
-            )
-            val json = GSON.toJson(bookProgress)
-            val url = bookProgressUrl + progressFileName
+            val json = GSON.toJson(progress)
+            val url = bookProgressUrl + fileName
             WebDav(url, authorization).upload(json.toByteArray(), "application/json")
+            onProgressUpdate?.invoke()
             AppLog.putDebug(
-                "WebDav uploadBookProgress success file=${progressFileName} " +
-                        "chapter=${bookProgress.durChapterIndex} pos=${bookProgress.durChapterPos}"
+                "WebDav uploadBookProgress success file=${fileName} " +
+                        "chapter=${progress.durChapterIndex} pos=${progress.durChapterPos}"
             )
             onSuccess?.invoke()
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
-            AppLog.put("上传进度失败 file=${progressFileName}\n${e.localizedMessage}", e)
+            AppLog.put("上传进度失败 file=${fileName}\n${e.localizedMessage}", e, toast)
         }
     }
 

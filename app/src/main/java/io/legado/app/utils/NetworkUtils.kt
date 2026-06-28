@@ -10,10 +10,8 @@ import okhttp3.internal.publicsuffix.PublicSuffixDatabase
 import splitties.systemservices.connectivityManager
 import java.net.InetAddress
 import java.net.NetworkInterface
-import java.net.SocketException
 import java.net.URL
 import java.util.BitSet
-import java.util.Enumeration
 
 @Suppress("MemberVisibilityCanBePrivate")
 object NetworkUtils {
@@ -217,19 +215,16 @@ object NetworkUtils {
     }
 
     /**
-     * Get local Ip address.
+     * 获取本地 IPv4 地址列表（排除回环地址）。
      */
     fun getLocalIPAddress(): List<InetAddress> {
-        val enumeration: Enumeration<NetworkInterface>
-        try {
-            enumeration = NetworkInterface.getNetworkInterfaces()
-        } catch (e: SocketException) {
-            e.printOnDebug()
-            return emptyList()
-        }
+        val enumeration = kotlin.runCatching {
+            NetworkInterface.getNetworkInterfaces()
+        }.onFailure {
+            it.printOnDebug()
+        }.getOrNull() ?: return emptyList()
 
         val addressList = mutableListOf<InetAddress>()
-
         while (enumeration.hasMoreElements()) {
             val nif = enumeration.nextElement()
             val addresses = nif.inetAddresses ?: continue
@@ -251,7 +246,6 @@ object NetworkUtils {
      */
     fun isIPv4Address(input: String?): Boolean {
         return input != null && input.isNotEmpty()
-                && input[0] in '1'..'9'
                 && input.count { it == '.' } == 3
                 && Validator.isIpv4(input)
     }
