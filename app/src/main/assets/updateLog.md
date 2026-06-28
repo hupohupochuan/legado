@@ -12,7 +12,7 @@
 
 **2026/06/28**
 修复 WebDAV 云端阅读进度为章节最后一页标记（负数 durChapterPos，例如 pos=-3261）时，确认同步后阅读页加载异常的问题：同步比较与应用进度统一按有效正数位置处理，保留本地持久化负数语义
-修复 Web 服务长时间运行后偶发不可访问：WebService 监听新章节加载完成事件（EventBus.SAVE_CONTENT），运行超过 3 小时后自动重建 HttpServer/WebSocketServer 实例，清理 NanoHTTPD 长时运行可能的连接泄漏和旧 IP 绑定，重启成功重新计时
+修复 Web 服务长时间运行后偶发不可访问：WebService 监听新章节加载完成事件（EventBus.SAVE_CONTENT），运行超过 3 小时后自动重建 HttpServer/WebSocketServer 实例，清理 NanoHTTPD 长时运行可能的连接泄漏和旧 IP 绑定，重启成功重新计时；补兜底定时器（每 30 分钟轮询）覆盖长时间无新章节加载的静默场景，给 upWebServer 加重入保护避免并发重建
 Web 服务书架新增本地上传、阅读页目录弹窗新增刷新目录、新增替换规则管理页面（#/replaceRule）：接入后端 addLocalBook、refreshToc、getReplaceRules/saveReplaceRule/deleteReplaceRule/testReplaceRule 接口
 
 **2026/06/27**

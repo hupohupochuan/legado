@@ -9,6 +9,7 @@ import android.os.PowerManager
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
@@ -16,10 +17,14 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.constant.PreferKey
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.receiver.NetworkChangedListener
+import io.legado.app.utils.LogUtils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.sendToClip
@@ -30,6 +35,10 @@ import io.legado.app.utils.stopService
 import io.legado.app.utils.toastOnUi
 import io.legado.app.web.HttpServer
 import io.legado.app.web.WebSocketServer
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import splitties.init.appCtx
 import splitties.systemservices.powerManager
 import splitties.systemservices.wifiManager
@@ -40,6 +49,9 @@ class WebService : BaseService() {
     companion object {
         var isRun = false
         var hostAddress = ""
+        private const val TAG = "WebService"
+        private const val RESTART_INTERVAL_MS = 3 * 60 * 60 * 1000L
+        private const val RESTART_CHECK_INTERVAL_MS = 30 * 60 * 1000L
 
         fun start(context: Context) {
             val intent = Intent(context, WebService::class.java)
@@ -80,6 +92,12 @@ class WebService : BaseService() {
     private var httpServer: HttpServer? = null
     private var webSocketServer: WebSocketServer? = null
     private var notificationList = mutableListOf(appCtx.getString(R.string.service_starting))
+    @Volatile
+    private var startTimeMs: Long = 0L
+    @Volatile
+    private var isRestarting: Boolean = false
+    private val restartGuard = Any()
+    private var restartCheckerJob: Job? = null
     private val networkChangedListener by lazy {
         NetworkChangedListener(this)
     }
@@ -92,6 +110,7 @@ class WebService : BaseService() {
             wifiLock?.acquire()
         }
         isRun = true
+        startTimeMs = System.currentTimeMillis()
         upTile(true)
         networkChangedListener.register()
         networkChangedListener.onNetworkChanged = {
@@ -113,6 +132,20 @@ class WebService : BaseService() {
             startForegroundNotification()
             postEvent(EventBus.WEB_SERVICE, hostAddress)
         }
+        observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) {
+            tryRestartOnChapterLoaded()
+        }
+        startRestartChecker()
+    }
+
+    private fun startRestartChecker() {
+        restartCheckerJob?.cancel()
+        restartCheckerJob = lifecycleScope.launch {
+            while (isActive) {
+                delay(RESTART_CHECK_INTERVAL_MS)
+                tryRestartOnChapterLoaded()
+            }
+        }
     }
 
     @SuppressLint("WakelockTimeout")
@@ -132,6 +165,8 @@ class WebService : BaseService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        restartCheckerJob?.cancel()
+        restartCheckerJob = null
         if (useWakeLock) {
             wakeLock.release()
             wifiLock?.release()
@@ -148,41 +183,61 @@ class WebService : BaseService() {
         upTile(false)
     }
 
+    private fun tryRestartOnChapterLoaded() {
+        if (!isRun) return
+        val elapsed = System.currentTimeMillis() - startTimeMs
+        if (elapsed < RESTART_INTERVAL_MS) return
+        LogUtils.d(TAG) {
+            "Web服务已运行${elapsed / 60000}分钟，触发重启"
+        }
+        upWebServer()
+    }
+
     private fun upWebServer() {
-        if (httpServer?.isAlive == true) {
-            httpServer?.stop()
+        synchronized(restartGuard) {
+            if (isRestarting) return
+            isRestarting = true
         }
-        if (webSocketServer?.isAlive == true) {
-            webSocketServer?.stop()
-        }
-        val addressList = NetworkUtils.getLocalIPAddress()
-        if (addressList.any()) {
-            val port = getPort()
-            httpServer = HttpServer(port)
-            webSocketServer = WebSocketServer(port + 1)
-            try {
-                httpServer?.start()
-                webSocketServer?.start(AppConst.timeLimit.toInt()) // 通信超时设置
-                notificationList.clear()
-                notificationList.addAll(addressList.map { address ->
-                    getString(
-                        R.string.http_ip,
-                        address.hostAddress,
-                        getPort()
-                    )
-                })
-                hostAddress = notificationList.first()
-                isRun = true
-                postEvent(EventBus.WEB_SERVICE, hostAddress)
-                startForegroundNotification()
-            } catch (e: IOException) {
-                toastOnUi(e.localizedMessage ?: "")
-                e.printOnDebug()
+        try {
+            if (httpServer?.isAlive == true) {
+                httpServer?.stop()
+            }
+            if (webSocketServer?.isAlive == true) {
+                webSocketServer?.stop()
+            }
+            val addressList = NetworkUtils.getLocalIPAddress()
+            if (addressList.any()) {
+                val port = getPort()
+                httpServer = HttpServer(port)
+                webSocketServer = WebSocketServer(port + 1)
+                try {
+                    httpServer?.start()
+                    webSocketServer?.start(AppConst.timeLimit.toInt()) // 通信超时设置
+                    notificationList.clear()
+                    notificationList.addAll(addressList.map { address ->
+                        getString(
+                            R.string.http_ip,
+                            address.hostAddress,
+                            getPort()
+                        )
+                    })
+                    hostAddress = notificationList.first()
+                    isRun = true
+                    startTimeMs = System.currentTimeMillis()
+                    postEvent(EventBus.WEB_SERVICE, hostAddress)
+                    startForegroundNotification()
+                    LogUtils.d(TAG) { "Web服务(重新)启动成功，重新开始计时" }
+                } catch (e: IOException) {
+                    toastOnUi(e.localizedMessage ?: "")
+                    e.printOnDebug()
+                    stopSelf()
+                }
+            } else {
+                toastOnUi("web service cant start, no ip address")
                 stopSelf()
             }
-        } else {
-            toastOnUi("web service cant start, no ip address")
-            stopSelf()
+        } finally {
+            isRestarting = false
         }
     }
 
