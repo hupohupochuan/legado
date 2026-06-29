@@ -17,6 +17,7 @@
 修复 BookController 非法参数导致 NumberFormatException：toLong()/toInt() 直转改用 toLongOrNull()/toIntOrNull() 安全转换
 HttpServer.serve() 大方法拆分（handleCorsPreflight/handlePost/handleGet/buildResponse）并补全 KDoc；BookController 提取 sortBooks() 消除排序嵌套；AppWebDav 合并两个 uploadBookProgress 重载为 uploadBookProgressJson 减少 ~40 行重复
 WebService.stop() 移入 IOException try-catch，定时器协程切到 Dispatchers.Default；BookProgress 提取 normalizePos() 消除重复；补充 ReadBook/Book/BookChapter/ReplaceRule/WebSocketServer/bookStore 等关键注释
+修复切后台后再打开阅读页偶发当前进度比实际少一页：onPause 保存进度前先调用 pageDelegate.abortAnim() 强制完成进行中的翻页动画, 避免 durChapterPos 仍是翻页前位置被持久化; saveRead 中 book 进度字段更新移到 executor 外同步执行, 消除与同在 onPause 启动的 syncProgress 异步竞争导致上传旧进度; onResume 防御性检查动画悬空并强制完成
 
 **2026/06/28**
 修复 WebDAV 云端阅读进度为章节最后一页标记（负数 durChapterPos，例如 pos=-3261）时，确认同步后阅读页加载异常的问题：同步比较与应用进度统一按有效正数位置处理，保留本地持久化负数语义

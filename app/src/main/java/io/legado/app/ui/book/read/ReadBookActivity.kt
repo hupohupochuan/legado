@@ -323,6 +323,10 @@ class ReadBookActivity : BaseReadBookActivity(),
             viewModel.initData(intent)
             justInitData = true
         } else {
+            // 防御: 进程未被杀但翻页动画悬空时(切后台后 computeScroll 停止驱动), 强制完成翻页
+            if (binding.readView.pageDelegate?.isStarted == true) {
+                binding.readView.pageDelegate?.abortAnim()
+            }
             //web端阅读时，app处于阅读界面，本地记录会覆盖web保存的进度，在此处恢复
             ReadBook.webBookProgress?.let {
                 ReadBook.setProgress(it)
@@ -351,6 +355,9 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onPause() {
         super.onPause()
         autoPageStop()
+        // 强制完成进行中的翻页动画, 防止切后台时 durChapterPos 仍是翻页前位置,
+        // 进程被杀后从 DB 恢复导致进度少一页
+        binding.readView.pageDelegate?.abortAnim()
         backupJob?.cancel()
         ReadTimeRecorder.end(ReadTimeRecorder.Source.READ_BOOK)
         ReadBook.saveRead()

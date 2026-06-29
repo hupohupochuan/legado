@@ -915,12 +915,14 @@ object ReadBook : CoroutineScope by MainScope() {
     }
 
     fun saveRead() {
+        val book = book ?: return
+        // 同步更新 book 进度字段, 避免与同在 onPause 启动的 syncProgress 异步竞争,
+        // 后者网络返回后会读取 book.durChapterPos, 若 executor 排队未执行则读到旧值并上传, 导致恢复后少一页
+        book.durChapterIndex = durChapterIndex
+        book.durChapterPos = durChapterPos * (if (curTextChapter != null && curTextChapter!!.isLastIndex(durPageIndex)) -1 else 1)
         executor.execute {
             kotlin.runCatching {
-                val book = book ?: return@execute
-                book.durChapterIndex = durChapterIndex
-                book.durChapterPos = durChapterPos * (if (curTextChapter != null && curTextChapter!!.isLastIndex(durPageIndex)) -1 else 1)
-                appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)?.let {
+                appDb.bookChapterDao.getChapter(book.bookUrl, book.durChapterIndex)?.let {
                     book.durChapterTitle = it.getDisplayTitle(
                         ContentProcessor.get(book.name, book.origin).getTitleReplaceRules(),
                         book.getUseReplaceRule()
