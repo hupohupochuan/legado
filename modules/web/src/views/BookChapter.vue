@@ -31,12 +31,12 @@
     </div>
     <div class="read-bar" :style="rightBarTheme">
       <div class="tools">
-        <div class="tool-icon" :class="{ 'no-point': noPoint }" @click="toPreChapter">
+        <div class="tool-icon" :class="{ 'no-point': noPoint }" @click="onReadBarPrev">
           <div class="iconfont">&#58920;</div>
-          <span v-if="miniInterface">上一章</span>
+          <span v-if="miniInterface">{{ activeBookMode ? '上一页' : '上一章' }}</span>
         </div>
-        <div class="tool-icon" :class="{ 'no-point': noPoint }" @click="toNextChapter">
-          <span v-if="miniInterface">下一章</span>
+        <div class="tool-icon" :class="{ 'no-point': noPoint }" @click="onReadBarNext">
+          <span v-if="miniInterface">{{ activeBookMode ? '下一页' : '下一章' }}</span>
           <div class="iconfont">&#58913;</div>
         </div>
       </div>
@@ -54,8 +54,8 @@
       </div>
     </div>
 
-    <div class="chapter" ref="content" :style="chapterTheme">
-      <div class="content">
+    <div class="chapter" ref="content" :class="{ 'book-mode': activeBookMode }" :style="chapterTheme">
+      <div class="content" :class="{ 'book-mode': activeBookMode }">
         <div class="top-bar" ref="top"></div>
         <template v-if="showContent && activeBookMode && currentChapterData">
           <book-page-reader
@@ -332,7 +332,13 @@ const bodyTheme = computed(() => {
   return { background: bodyColor.value }
 })
 const chapterTheme = computed(() => {
-  return { background: chapterColor.value, width: readWidth.value }
+  // 书本翻页模式每页是独立新内容、不滚动，给 .chapter 更大的宽度（吃满
+  // readWidth）配合更小的横向 padding，让单页正文比滚动模式更宽。
+  const w =
+    activeBookMode.value && !miniInterface.value
+      ? store.config.readWidth + 'px'
+      : readWidth.value
+  return { background: chapterColor.value, width: w }
 })
 const showToolBar = ref(false)
 const leftBarTheme = computed(() => {
@@ -393,6 +399,18 @@ const currentChapterData = computed<ChapterData | null>(() => {
   const idx = store.readingBook.chapterIndex
   return chapterData.value.find(d => d.index === idx) ?? null
 })
+
+// 底部 read-bar 上一章/下一章按钮：书本翻页模式下委托给 BookPageReader
+// 翻页（首尾页再由其 emit requestNext/PrevChapter 触发跨章），保持改动前
+// 仅底部按钮可点击翻页的范围，不放大到整页热区。
+const onReadBarPrev = () => {
+  if (activeBookMode.value) bookReaderRef.value?.flipPrev()
+  else toPreChapter()
+}
+const onReadBarNext = () => {
+  if (activeBookMode.value) bookReaderRef.value?.flipNext()
+  else toNextChapter()
+}
 
 const onBookRequestNextChapter = () => {
   const index = store.readingBook.chapterIndex + 1
@@ -795,6 +813,20 @@ onBeforeRouteLeave(async (to, from, next) => {
       .top-bar {
         height: 64px;
       }
+
+      // 书本翻页模式：每页独立不滚动，缩小上下占位让单页更高
+      &.book-mode {
+        .bottom-bar,
+        .top-bar {
+          height: 20px;
+        }
+      }
+    }
+
+    // 书本翻页模式：缩小横向 padding 让单页正文更宽，配合 chapterTheme 的
+    // 全 readWidth 宽度，整页吃满阅读宽度
+    &.book-mode {
+      padding: 0 20px;
     }
   }
 }

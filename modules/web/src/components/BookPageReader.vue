@@ -5,7 +5,6 @@
     :style="rootStyle"
     :data-effect="pageTurnEffectComputed"
     :class="{ night: isNight, day: !isNight }"
-    @click="onContainerClick"
     @touchstart="onTouchStart"
     @touchmove="onTouchMove"
     @touchend="onTouchEnd"
@@ -33,11 +32,7 @@
       aria-hidden="true"
     ></div>
 
-    <!-- 翻页热区（点击区域），覆盖在 stage 上但不阻挡工具栏点击 -->
-    <div class="bp-tap bp-tap--left" @click.stop="onTapLeft"></div>
-    <div class="bp-tap bp-tap--center" @click="onTapCenter"></div>
-    <div class="bp-tap bp-tap--right" @click.stop="onTapRight"></div>
-  </div>
+    </div>
 </template>
 
 <script setup lang="ts">
@@ -97,18 +92,29 @@ const currentPageKey = computed(
   () => `${props.chapterIndex}:${currentPageIndex.value}:${pages.value.length}`,
 )
 
+// 翻页方向：next/prev 决定 enter/leave 动画朝向，避免前进后退看起来一样
+const flipDirection = ref<'next' | 'prev'>('next')
 const transitionName = computed(() => {
   if (reducedMotion.value) return 'bp-none'
-  return (props.pageTurnEffect ?? 'book') === 'book' ? 'bp-book' : 'bp-slide'
+  const dir = flipDirection.value
+  return (props.pageTurnEffect ?? 'book') === 'book'
+    ? dir === 'next'
+      ? 'bp-book-next'
+      : 'bp-book-prev'
+    : dir === 'next'
+      ? 'bp-slide-next'
+      : 'bp-slide-prev'
 })
 const pageTurnEffectComputed = computed(
   () => props.pageTurnEffect ?? 'book',
 )
 
-// 视口（书页）尺寸：高度 = stage 高度，宽度 = readWidth（含 padding 内缩）
+// 视口（书页）尺寸：书本翻页每页都是全新内容、不滚动、不重复，所以比滚动
+// 模式给页更大的宽度（几乎吃满 readWidth）和更高的高度（只保留很小的上下留白）。
 const pageWidth = computed(() => {
   if (store.miniInterface) return window.innerWidth - 40
-  return props.readWidth - 130
+  // 滚动模式正文宽 = readWidth - 130；书本模式少扣两侧留白，页面更宽
+  return Math.max(props.readWidth - 40, 240)
 })
 const pageHeight = ref(0)
 
@@ -331,9 +337,9 @@ const onWindowResize = () => scheduleRepaginate()
 
 // ---------- 高度同步：按视口 + 顶/底工具栏预留 ----------
 const updateHeight = () => {
-  // 阅读页 .content 顶部/底部分别有 64px 占位条 (top-bar/bottom-bar)，
-  // 书本模式沿用同样净高，使总文档高度 = 100vh 不产生额外滚动。
-  pageHeight.value = Math.max(160, window.innerHeight - 128)
+  // 书本翻页每页内容独立、不滚动也不重复，去掉滚动模式那 2x64px 占位的
+  // 富余，只留小上下边距让页面更长，单页可容纳更多文本。
+  pageHeight.value = Math.max(160, window.innerHeight - 40)
 }
 
 // ---------- 翻页 ----------
@@ -362,6 +368,7 @@ const flipNext = () => {
     emit('requestNextChapter')
     return
   }
+  flipDirection.value = 'next'
   currentPageIndex.value += 1
   afterFlip(currentPage.value?.startPos ?? 0)
 }
@@ -372,20 +379,15 @@ const flipPrev = () => {
     emit('requestPrevChapter')
     return
   }
+  flipDirection.value = 'prev'
   currentPageIndex.value -= 1
   afterFlip(currentPage.value?.startPos ?? 0)
 }
 
 // ---------- 交互 ----------
-const onContainerClick = (_e: MouseEvent) => {
-  // 由 bp-tap 覆盖层处理
-}
-
-const onTapLeft = () => flipPrev()
-const onTapRight = () => flipNext()
-const onTapCenter = () => {
-  // 中间区域：交给父级显示工具栏（不翻页）
-}
+// 点击翻页热区不再覆盖整页：保持与改动前一致，仅底部 read-bar 的
+// 上一章/下一章按钮处可点击翻页（由父组件 BookChapter 调用 flipPrev/flipNext）。
+// 整页点击交给父级 .chapter-wrapper 的 @click 切换工具栏，沿用滚动模式行为。
 
 // 触摸横向滑动
 let touchStartX = 0
@@ -565,32 +567,56 @@ defineExpose({ flipNext, flipPrev, currentPageIndex, pages })
     }
   }
 
-  // 书本翻页：绕左边缘旋转 + 淡出
-  .bp-book-enter-active,
-  .bp-book-leave-active {
+  // 书本翻页：绕左边缘旋转 + 淡出。前进/后退方向相反
+  .bp-book-next-enter-active,
+  .bp-book-next-leave-active,
+  .bp-book-prev-enter-active,
+  .bp-book-prev-leave-active {
     transition: transform 0.45s ease-in-out, opacity 0.45s ease-in-out;
     transform-origin: left center;
   }
-  .bp-book-enter-from {
+  // 前进（下一页）：新页从右翻入，旧页向左翻出
+  .bp-book-next-enter-from {
     transform: rotateY(180deg);
     opacity: 0;
   }
-  .bp-book-leave-to {
+  .bp-book-next-leave-to {
     transform: rotateY(-180deg);
     opacity: 0;
   }
+  // 后退（上一页）：新页从左翻入，旧页向右翻出
+  .bp-book-prev-enter-from {
+    transform: rotateY(-180deg);
+    opacity: 0;
+  }
+  .bp-book-prev-leave-to {
+    transform: rotateY(180deg);
+    opacity: 0;
+  }
 
-  // 滑动翻页：横向平移
-  .bp-slide-enter-active,
-  .bp-slide-leave-active {
+  // 滑动翻页：横向平移。前进/后退方向相反
+  .bp-slide-next-enter-active,
+  .bp-slide-next-leave-active,
+  .bp-slide-prev-enter-active,
+  .bp-slide-prev-leave-active {
     transition: transform 0.28s ease-in-out, opacity 0.28s ease-in-out;
   }
-  .bp-slide-enter-from {
+  // 前进：新页从右侧滑入，旧页向左滑出
+  .bp-slide-next-enter-from {
     transform: translateX(100%);
     opacity: 0;
   }
-  .bp-slide-leave-to {
+  .bp-slide-next-leave-to {
     transform: translateX(-100%);
+    opacity: 0;
+  }
+  // 后退：新页从左侧滑入，旧页向右滑出
+  .bp-slide-prev-enter-from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  .bp-slide-prev-leave-to {
+    transform: translateX(100%);
     opacity: 0;
   }
 
@@ -637,26 +663,6 @@ defineExpose({ flipNext, flipPrev, currentPageIndex, pages })
       width: 100%;
       max-height: 100%;
     }
-  }
-
-  .bp-tap {
-    position: absolute;
-    top: 0;
-    height: 100%;
-    z-index: 5;
-    cursor: pointer;
-  }
-  .bp-tap--left {
-    left: 0;
-    width: 28%;
-  }
-  .bp-tap--center {
-    left: 28%;
-    width: 44%;
-  }
-  .bp-tap--right {
-    right: 0;
-    width: 28%;
   }
 
   .bp-hint {
