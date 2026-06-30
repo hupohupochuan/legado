@@ -25,6 +25,10 @@ const default_config: webReadConfig = {
     line: 0.8,
     letter: 0,
   },
+  // 默认仍为连续滚动模式，保证旧用户行为不变。
+  // 书本翻页模式出错会回退到滚动渲染，但不会覆盖用户持久化的配置。
+  pageMode: 'scroll',
+  pageTurnEffect: 'book',
 }
 let webReadConfigLoadedDate: Date | undefined
 
@@ -47,6 +51,9 @@ export const useBookStore = defineStore('book', {
       config: default_config,
       miniInterface: false,
       readSettingsVisible: false,
+      // 运行时生效的阅读模式。默认与 config.pageMode 一致；书本翻页组件
+      // 初始化失败时会切回 'scroll'，但不会回写 config，避免临时错误污染用户配置。
+      activePageMode: 'scroll' as 'scroll' | 'book',
     }
   },
   getters: {
@@ -215,6 +222,17 @@ export const useBookStore = defineStore('book', {
     },
     setMiniInterface(mini: boolean) {
       this.miniInterface = mini
+    },
+    /** 同步 config.pageMode 到运行时 activePageMode（用户主动切换或配置加载后调用） */
+    syncActivePageMode() {
+      this.activePageMode = this.config.pageMode || 'scroll'
+    },
+    /** 书本翻页组件初始化失败时切回滚动，不回写 config */
+    fallbackToScroll() {
+      this.activePageMode = 'scroll'
+    },
+    setActivePageMode(mode: 'scroll' | 'book') {
+      this.activePageMode = mode
     },
     async setSearchBooks(books: SeachBook[]) {
       books.forEach(book => {

@@ -63,9 +63,44 @@
       </div>
     </div>
     <div class="setting-row">
+      <span>阅读模式</span>
+      <div class="font-options">
+        <span
+          class="font-opt"
+          :class="{ active: activePageMode === 'scroll' }"
+          @click="setPageMode('scroll')"
+        >滚动</span>
+        <span
+          class="font-opt"
+          :class="{ active: activePageMode === 'book' }"
+          @click="setPageMode('book')"
+        >书本翻页</span>
+      </div>
+    </div>
+    <div class="setting-row" :class="{ 'setting-row--disabled': activePageMode !== 'book' }">
+      <span>翻页效果</span>
+      <div class="font-options">
+        <span
+          class="font-opt"
+          :class="{ active: store.config.pageTurnEffect === 'book' }"
+          @click="setPageTurnEffect('book')"
+        >书本</span>
+        <span
+          class="font-opt"
+          :class="{ active: store.config.pageTurnEffect === 'slide' }"
+          @click="setPageTurnEffect('slide')"
+        >滑动</span>
+      </div>
+    </div>
+    <div class="setting-row" :class="{ 'setting-row--disabled': activePageMode === 'book' }">
       <span>无限滚动</span>
       <label class="web-switch">
-        <input type="checkbox" :checked="store.config.infiniteLoading" @change="toggleInfinite" />
+        <input
+          type="checkbox"
+          :checked="store.config.infiniteLoading"
+          :disabled="activePageMode === 'book'"
+          @change="toggleInfinite"
+        />
         <span class="web-switch__slider"></span>
       </label>
     </div>
@@ -106,7 +141,25 @@ function changeSpacing(key: keyof typeof store.config.spacing, d: number) {
   API.saveReadConfig(store.config)
 }
 function toggleInfinite(e: Event) {
+  if (store.activePageMode === 'book') return
   store.config.infiniteLoading = (e.target as HTMLInputElement).checked
+  API.saveReadConfig(store.config)
+}
+const activePageMode = computed(() => store.activePageMode)
+function setPageMode(mode: 'scroll' | 'book') {
+  if (store.config.pageMode === mode) {
+    // 用户再次点当前模式时，确保运行时态同步
+    store.syncActivePageMode()
+    return
+  }
+  store.config.pageMode = mode
+  // 书本模式下逻辑层强制不启用无限滚动，避免组件怪态
+  if (mode === 'book') store.config.infiniteLoading = false
+  store.syncActivePageMode()
+  API.saveReadConfig(store.config)
+}
+function setPageTurnEffect(effect: 'slide' | 'book') {
+  store.config.pageTurnEffect = effect
   API.saveReadConfig(store.config)
 }
 function setCustomFont(v: string) {
@@ -131,4 +184,5 @@ function setCustomFont(v: string) {
 .size-btn { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--web-border); background: var(--web-bg-white); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; color: var(--web-text); }
 .size-btn:hover { border-color: var(--web-primary); color: var(--web-primary); }
 .size-val { min-width: 32px; text-align: center; font-weight: 600; font-size: 14px; }
+.setting-row--disabled { opacity: .45; pointer-events: none; }
 </style>

@@ -57,24 +57,45 @@
     <div class="chapter" ref="content" :style="chapterTheme">
       <div class="content">
         <div class="top-bar" ref="top"></div>
-        <div
-          v-for="data in chapterData"
-          :key="data.index"
-          ref="chapter"
-        >
-          <chapter-content
-            ref="chapterRef"
-            :chapterIndex="data.index"
-            :contents="data.content"
-            :title="data.title"
+        <template v-if="showContent && activeBookMode && currentChapterData">
+          <book-page-reader
+            ref="bookReaderRef"
+            :key="'bp-' + currentChapterData.index + '-' + bookReaderSeed"
+            :chapterIndex="currentChapterData.index"
+            :contents="currentChapterData.content"
+            :title="currentChapterData.title"
             :spacing="store.config.spacing"
             :fontSize="fontSize"
             :fontFamily="fontFamily"
-            @readedLengthChange="onReadedLengthChange"
-            v-if="showContent"
+            :readWidth="store.config.readWidth"
+            :pageTurnEffect="store.config.pageTurnEffect"
+            :initialChapterPos="bookInitialPos"
+            @progressChange="onReadedLengthChange"
+            @requestNextChapter="onBookRequestNextChapter"
+            @requestPrevChapter="onBookRequestPrevChapter"
+            @fallbackToScroll="onBookFallbackToScroll"
           />
-        </div>
-        <div class="loading" ref="loading"></div>
+        </template>
+        <template v-else>
+          <div
+            v-for="data in chapterData"
+            :key="data.index"
+            ref="chapter"
+          >
+            <chapter-content
+              ref="chapterRef"
+              :chapterIndex="data.index"
+              :contents="data.content"
+              :title="data.title"
+              :spacing="store.config.spacing"
+              :fontSize="fontSize"
+              :fontFamily="fontFamily"
+              @readedLengthChange="onReadedLengthChange"
+              v-if="showContent"
+            />
+          </div>
+        </template>
+        <div class="loading" ref="loading" v-if="!activeBookMode"></div>
         <div class="bottom-bar" ref="bottom"></div>
       </div>
     </div>
@@ -268,7 +289,8 @@ const onReachPrefetch = (entries: IntersectionObserverEntry[]) => {
   }
 }
 watchEffect(() => {
-  if (!infiniteLoading.value) {
+  // 书本翻页模式不使用无限滚动观察器，避免与翻页逻辑冲突
+  if (!infiniteLoading.value || activeBookMode.value) {
     scrollObserver?.disconnect()
     prefetchObserver?.disconnect()
     clearPrefetchedChapters()
@@ -356,12 +378,72 @@ const toShelf = () => router.push('/shelf')
 
 const chapterData = ref<ChapterData[]>([])
 const noPoint = ref(true)
-const getContent = (index: number, reloadChapter = true, chapterPos = 0) => {
+
+// ---------- 书本翻页模式 (Book page turn mode) ----------
+// 运行时生效的模式以 store.activePageMode 为准；初始化失败时由 BookPageReader
+// emit fallbackToScroll 切回滚动，不回写用户持久化配置。
+const activeBookMode = computed(() => store.activePageMode === 'book')
+const bookReaderRef = ref()
+// 传给 BookPageReader 的初始 chapterPos；切章时按需设为对应章/末页位置
+const bookInitialPos = ref(chapterPos.value)
+// 用于强制 BookPageReader 重新挂载（切回书本模式后复用同一章节时也重分页）
+const bookReaderSeed = ref(0)
+
+const currentChapterData = computed<ChapterData | null>(() => {
+  const idx = store.readingBook.chapterIndex
+  return chapterData.value.find(d => d.index === idx) ?? null
+})
+
+const onBookRequestNextChapter = () => {
+  const index = store.readingBook.chapterIndex + 1
+  if (catalog.value[index] === undefined) {
+    toast.error('本章是最后一章')
+    return
+  }
+  toast.info('下一章')
+  // 下一章落到第一页：readingBook 持久化 0，初始页定位也用 0
+  bookInitialPos.value = 0
+  getContent(index, true, 0)
+  // 不在此立即 saveBookProgress：BookPageReader 分页后 emit progressChange
+  // 触发 onReadedLengthChange，章节切换会立即保存，避免保存过渡态/哨兵位置
+}
+
+const onBookRequestPrevChapter = () => {
+  const index = store.readingBook.chapterIndex - 1
+  if (catalog.value[index] === undefined) {
+    toast.error('本章是第一章')
+    return
+  }
+  toast.info('上一章')
+  // 上一章落到最后一页：
+  // - 传给 getContent 的 chapterPos=0 是写入 readingBook 的安全值（哨兵不能进入持久化进度）
+  // - bookInitialPos 用哨兵（仅作为 BookPageReader 初始定位参数），分页后由
+  //   findPageIndexByPos 兜底取最后一页，随后 emit 真实末页 startPos 更新 readingBook
+  bookInitialPos.value = Number.MAX_SAFE_INTEGER
+  getContent(index, true, 0, Number.MAX_SAFE_INTEGER)
+}
+
+const onBookFallbackToScroll = () => {
+  store.fallbackToScroll()
+  // 复用当前章节内容切回滚动渲染；保持当前阅读进度
+  bookReaderSeed.value++
+}
+const getContent = (
+  index: number,
+  reloadChapter = true,
+  chapterPos = 0,
+  // 书本翻页模式专用：传给 BookPageReader 的初始页定位参数。
+  // 默认与持久化 chapterPos 一致；上一章"落到最后一页"场景传哨兵
+  // (Number.MAX_SAFE_INTEGER)，仅在组件内部用于定位，不会进入 readingBook。
+  initialPos?: number,
+) => {
   if (reloadChapter) {
     clearPrefetchedChapters()
     store.setShowContent(false)
     jump(top.value, { duration: 0 })
     saveReadingBookProgressToBrowser(index, chapterPos)
+    // 书本翻页模式：整章重载时把初始页定位参数对齐
+    if (activeBookMode.value) bookInitialPos.value = initialPos ?? chapterPos
     chapterData.value = []
   }
 
@@ -408,8 +490,11 @@ const getContent = (index: number, reloadChapter = true, chapterPos = 0) => {
 const chapter = ref()
 const chapterRef = ref()
 const toChapterPos = (pos: number) => {
+  // 书本翻页模式由 BookPageReader 自行按 chapterPos 定位页，
+  // 且此时模板不渲染 chapter-content，chapterRef 为 undefined。
+  if (activeBookMode.value) return
   nextTick(() => {
-    if (chapterRef.value.length === 1)
+    if (chapterRef.value && chapterRef.value.length === 1)
       chapterRef.value[0].scrollToReadedLength(pos)
   })
 }
@@ -419,13 +504,21 @@ const saveBookProgressThrottle = useThrottleFn(
   60000,
 )
 let lastReadedProgressKey = ''
+// 跟踪上次保存进度的章节 index；章节切换时立即保存（绕过 60s 节流），
+// 确保书本翻页上一章/下一章落到真实末页/首页位置后能立刻持久化。
+let lastProgressIndex = -1
 
 const onReadedLengthChange = (index: number, pos: number) => {
   const progressKey = `${index}:${pos}`
   if (lastReadedProgressKey === progressKey) return
   lastReadedProgressKey = progressKey
   saveReadingBookProgressToBrowser(index, pos)
-  saveBookProgressThrottle()
+  if (index !== lastProgressIndex) {
+    lastProgressIndex = index
+    store.saveBookProgress()
+  } else {
+    saveBookProgressThrottle()
+  }
 }
 
 watchEffect(() => {
@@ -475,12 +568,13 @@ const handleKeyPress = (event: KeyboardEvent) => {
     case 'ArrowLeft':
       event.stopPropagation()
       event.preventDefault()
-      toPreChapter()
+      // 书本模式下左右键由 BookPageReader 处理页面翻转，这里不再切章
+      if (!activeBookMode.value) toPreChapter()
       break
     case 'ArrowRight':
       event.stopPropagation()
       event.preventDefault()
-      toNextChapter()
+      if (!activeBookMode.value) toNextChapter()
       break
     case 'ArrowUp':
       event.stopPropagation()
@@ -524,6 +618,8 @@ const ignoreKeyPress = (event: KeyboardEvent) => {
 
 onMounted(async () => {
   await store.loadWebConfig()
+  // 运行时阅读模式与用户配置保持同步；之后由 fallback 逻辑保护
+  store.syncActivePageMode()
   const bookUrl = sessionStorage.getItem('bookUrl')
   const name = sessionStorage.getItem('bookName')
   const author = sessionStorage.getItem('bookAuthor')

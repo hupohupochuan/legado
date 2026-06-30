@@ -10,93 +10,73 @@
 * 正文出现缺字漏字、内容缺失、排版错乱等情况，有可能是净化规则或简繁转换出现问题。
 
 
+**2026/07/01**
+Web 服务阅读页新增可选书本翻页模式，默认仍为连续滚动。
+
 **2026/06/29**
-补关键数值参数边界校验防止外部传入负值/越界导致崩溃：Web API 书源管理 saveBookProgress 校验 BookProgress.durChapterIndex<0 / durChapterPos==Int.MIN_VALUE，章节数为 0 时拒绝保存，越界时 coerceIn 兜底并用修正后的进度上传 WebDAV；getBookContent 改 toIntOrNull 安全解析并拒绝 index<0；ReadBook.setProgress/openChapter/skipToPage/setPageIndex 加负值校验；initData 发现越界 durChapterIndex 自动重置 0；AudioPlay.resetData 对 book.durChapterIndex coerceIn 校正，upDurChapter 的 chapterList?.get(idx) 改 getOrNull 防 IndexOutOfBoundsException
-修复 Web 服务 WebSocket 书源搜索字符串拼接 JSON 注入风险：搜索接口改为 JSON.stringify({ key: searchKey }) 形式发送，避免 searchKey 含特殊字符破坏 WS 消息结构；前端 index.html 同步重新构建
-修复 NetworkUtils.isIPv4Address() 误判 0.x.x.x 段合法 IPv4 地址：移除首字符 '1'..'9' 前置过滤，统一交由 Validator.isIpv4 完整校验；getLocalIPAddress() 改用 runCatching 简化异常处理
-修复 BookController 非法参数导致 NumberFormatException：toLong()/toInt() 直转改用 toLongOrNull()/toIntOrNull() 安全转换
-HttpServer.serve() 大方法拆分（handleCorsPreflight/handlePost/handleGet/buildResponse）并补全 KDoc；BookController 提取 sortBooks() 消除排序嵌套；AppWebDav 合并两个 uploadBookProgress 重载为 uploadBookProgressJson 减少 ~40 行重复
-WebService.stop() 移入 IOException try-catch，定时器协程切到 Dispatchers.Default；BookProgress 提取 normalizePos() 消除重复；补充 ReadBook/Book/BookChapter/ReplaceRule/WebSocketServer/bookStore 等关键注释
-修复切后台后再打开阅读页偶发当前进度比实际少一页：onPause 保存进度前先调用 pageDelegate.abortAnim() 强制完成进行中的翻页动画, 避免 durChapterPos 仍是翻页前位置被持久化; saveRead 中 book 进度字段更新移到 executor 外同步执行, 消除与同在 onPause 启动的 syncProgress 异步竞争导致上传旧进度; onResume 防御性检查动画悬空并强制完成
+修复多处异常参数可能导致崩溃的问题。
+修复 Web 服务搜索和网络地址判断的边界问题。
+修复切后台后再打开阅读页进度偶发回退的问题。
 
 **2026/06/28**
-修复 WebDAV 云端阅读进度为章节最后一页标记（负数 durChapterPos，例如 pos=-3261）时，确认同步后阅读页加载异常的问题：同步比较与应用进度统一按有效正数位置处理，保留本地持久化负数语义
-修复 Web 服务长时间运行后偶发不可访问：WebService 监听新章节加载完成事件（EventBus.SAVE_CONTENT），运行超过 3 小时后自动重建 HttpServer/WebSocketServer 实例，清理 NanoHTTPD 长时运行可能的连接泄漏和旧 IP 绑定，重启成功重新计时；补兜底定时器（每 30 分钟轮询）覆盖长时间无新章节加载的静默场景，给 upWebServer 加重入保护避免并发重建
-Web 服务书架新增本地上传、阅读页目录弹窗新增刷新目录、新增替换规则管理页面（#/replaceRule）：接入后端 addLocalBook、refreshToc、getReplaceRules/saveReplaceRule/deleteReplaceRule/testReplaceRule 接口
+修复 WebDAV 云端进度在章节最后一页时同步后加载异常的问题。
+修复 Web 服务长时间运行后偶发不可访问的问题。
+Web 服务新增本地书上传、刷新目录和替换规则管理。
 
 **2026/06/27**
-优化 Web 服务阅读页电脑端键盘翻屏滚动：阅读进度浏览器本地写入改为节流并在隐藏/离开前强制 flush，减少滚动动画期间同步 storage 写入；无限滚动新增下一章正文提前预取缓存，到底部优先使用缓存追加章节，降低章节末尾等待网络和解析造成的卡顿
-优化 Web 服务阅读页中英文混排字体链：默认/宋体/楷体选项均改为英文和数字优先使用西文字体、中文回落到对应中文字体，不内置字体文件，避免增加 APK 体积
+优化 Web 服务阅读页键盘翻屏和无限滚动体验。
+优化 Web 服务阅读页中英文混排字体显示。
 
 **2026/06/26**
-Android 17 (API 37) 适配前置闸门：compileSdk/targetSdk 抬至 37，验证 AGP 9.2.1 + Gradle 9.4.1 + Kotlin 2.3.21 + KSP 2.3.7 组合直接支持 API 37，无需升级 AGP；Debug 编译与完整 APK 打包均通过。后续行为变更适配以独立条目推进
-16KB page size 验证：libarchive-jni.so 的 LOAD 段对齐 0x4000(16KB) 且 APK 内 zip 偏移已对齐；cronet .so 走系统 HttpEngine / play-services 侧，兜底下载路径不在 16KB 设备触发，当前无需升级 cronet/libarchive 或改任何代码
-修复 Android 14+/targetSdk 34+ 动态注册 receiver 需显式 flag 限制：4 处裸 registerReceiver 改 ContextCompat.registerReceiver + RECEIVER_EXPORTED（BecomingNoisyReceiver/AppFreezeMonitor/ContextExtensions/ReadBookActivity），避免系统级广播（音频/屏幕/电量/时间）注册时 SecurityException
+适配 Android 17 目标版本。
+修复 Android 14+ 部分系统广播注册失败的问题。
 
 **2026/06/25**
-修复目录弹窗不随当前章节定位的问题：Web 服务阅读页 BookChapter.vue 改用 store 中的 popCataVisible（PopCatalog.vue 的 onUpdated 钩子依赖此状态触发 scrollToIndex），消除本地 ref 与 store 不同步导致的滚动拦截；App 原生阅读页打开目录前同步 ReadBook 当前章节到传入目录页的 Book，避免异步保存进度尚未落库时目录仍定位旧章节
+修复目录弹窗不随当前章节定位的问题。
 
 **2026/06/24**
-修复阅读时长记录器协程泄漏：ReadTimeRecorder 改用内部 SupervisorJob scope 替代 GlobalScope，会话延迟结束协程随生命周期可控，不再残留不可取消的全局协程
-优化 WebDAV 初始化：AppWebDav 移除 init 块的 runBlocking 同步网络校验，改为 App.onCreate IO 协程异步预热，避免单例首次被主线程访问时阻塞 UI
-抽取 ContentDownloadState 共享类：统一 ReadBook 与 ReadMangaViewModel 的预下载状态字段（downloadedChapters/downloadFailChapters/downloadScope/preDownloadSemaphore/preDownloadTask），消除重复定义，附单元测试
-清理 ReadBook 中 book!! 强解包：loadContent/downloadAwait 改为安全返回，避免 book 为 null 时 NPE
-cronet onResponseStarted 调试日志改用脱敏 URL（仅 host/path），避免泄露 WebDAV URL
+修复阅读时长统计可能残留后台任务的问题。
+优化 WebDAV 初始化速度和日志脱敏。
+优化阅读内容预下载稳定性。
 
 **2026/06/18**
-修复 WebDAV 阅读进度同步时误触发本地书目录权限提示的问题：进度校验拆分 RangeOnly/ReadableRequired，仅同步进度不再对本地书执行 checkBookReadable，跨设备旧 content:// URI 失效时不再弹目录权限
+修复 WebDAV 仅同步阅读进度时误弹本地书目录权限的问题。
 
 **2026/06/16**
-WebDAV 在线恢复新增“仅恢复阅读进度”模式，跨设备恢复本地书时不再写入其他设备的 SAF 路径
-WebDAV 备份恢复入口新增恢复方式选择，仍保留完整恢复备份
+WebDAV 在线恢复新增“仅恢复阅读进度”模式，跨设备恢复本地书时不再写入其他设备的 SAF 路径。
+WebDAV 备份恢复入口新增恢复方式选择，仍保留完整恢复备份。
 
 
 **2026/06/15**
-新增自动更新检查间隔设置（不检查/每次启动/每周/每月）
-新增"跳过此版本"功能，取消更新对话框时可跳过当前版本
-修复自动更新检查仍指向旧 fork 仓库的问题
-清理分享文案和远程资源中的旧项目链接
-清理 README 顶部旧站点链接和社区频道入口
+新增自动更新检查间隔设置和“跳过此版本”功能。
+修复自动更新检查仍指向旧 fork 仓库的问题。
+清理旧项目链接。
 
 
 **2026/06/14**
-修复 EPUB/ZIP 目录读取失败时错误显示空指针的问题
-修复云端进度异常时仍可能影响本地书打开的问题
-修复本地书籍读取失败时阅读页卡在加载中的问题
-修复 WebDAV 全量同步进度时可能把远端进度写入不可读本地书的问题
-修复远程书籍入口 401 认证失败与本地权限错误混在一起的问题
-修复 WebDAV 下载到本地的 EPUB 书籍在部分设备上无法打开的问题（缓存回退路径对 WebDAV 来源书籍生效）
+修复 EPUB/ZIP 读取失败时错误提示不清的问题。
+修复部分本地书和 WebDAV 进度异常导致阅读页加载失败的问题。
+修复 WebDAV 下载的 EPUB 在部分设备上无法打开的问题。
 
 
 **2026/06/10**
-书架新增 RSS 订阅角标，列表和网格模式下可直接区分订阅与普通书籍
+书架新增 RSS 订阅角标，列表和网格模式下可直接区分订阅与普通书籍。
 
 **2026/06/08**
-修复本地 EPUB 读取权限丢失后阅读页卡加载中的问题
-修复远程书籍同名本地文件失效后仍直接打开失效路径的问题
+修复本地 EPUB 权限失效后阅读页卡加载的问题。
+修复远程书籍误打开失效本地路径的问题。
 
 **2026/06/06**
-修复全文搜索章节查询丢失 bookUrl 的问题
-修复阅读器切换已缓存章节偶发卡加载中的问题
-更新本地环境文件忽略规则
-新增提交前本地敏感文件检查
-新增本地 Debug 编译验证脚本
-增强 WebDAV 配置和进度同步日志
-新增 Web 前端 assets 同步提交检查
-新增阅读器章节加载状态单元测试
-收敛本地书籍和 WebDAV 书籍边界命名
-收敛阅读器章节加载状态表达
-抽离阅读器章节读取职责
-清理 Kotlin 编译警告
+修复全文搜索章节查询和已缓存章节切换问题。
+新增提交前检查与本地 Debug 编译验证脚本。
+优化 WebDAV 日志、阅读器章节加载和 Web 前端资源同步检查。
 
 **2026/06/05**
-修复本地 epub 图片加载与预加载
-恢复书架导出菜单和 WebDAV 上传菜单入口
-抽取书架导出逻辑为公共工具类
-同步 Web 端修复与构建配置
+修复本地 EPUB 图片加载与预加载。
+恢复书架导出菜单和 WebDAV 上传菜单入口。
+同步 Web 端修复与构建配置。
 
 **2026/06/01**
-开源阅读原github删库，本人水平不足只能做兼容性更新
-hupo on 2026/5/31 at 23:29兼容低版本获取书籍分组参数
-长标题有限条件自动换行
-统一前台服务启动入口为 safeStartForegroundService
+开源阅读原 GitHub 删库，本人水平不足只能做兼容性更新。
+兼容低版本获取书籍分组参数。
+优化长标题换行和前台服务启动。
