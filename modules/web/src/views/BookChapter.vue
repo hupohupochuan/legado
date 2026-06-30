@@ -289,8 +289,12 @@ const onReachPrefetch = (entries: IntersectionObserverEntry[]) => {
   }
 }
 watchEffect(() => {
-  // 书本翻页模式不使用无限滚动观察器，避免与翻页逻辑冲突
-  if (!infiniteLoading.value || activeBookMode.value) {
+  // 书本翻页模式不使用无限滚动观察器，但保留预取缓存供跨章即时切换；
+  // 仅滚动模式且未开启无限滚动时才清空预取。
+  if (activeBookMode.value) {
+    scrollObserver?.disconnect()
+    prefetchObserver?.disconnect()
+  } else if (!infiniteLoading.value) {
     scrollObserver?.disconnect()
     prefetchObserver?.disconnect()
     clearPrefetchedChapters()
@@ -400,6 +404,37 @@ const currentChapterData = computed<ChapterData | null>(() => {
   return chapterData.value.find(d => d.index === idx) ?? null
 })
 
+// 书本翻页模式预取相邻章节：避免每次跨章都走 loading mask 重新拉取。
+const prefetchBookAdjacent = (index: number) => {
+  if (!activeBookMode.value) return
+  prefetchChapter(index + 1)
+  prefetchChapter(index - 1)
+}
+
+// 书本翻页跨章即时切换：若目标章已在预取缓存/已加载，直接复用，不显示
+// "正在获取信息" loading mask，只重挂 BookPageReader 重新分页。返回 true 表示命中。
+const switchBookChapter = (targetIndex: number, initialPos: number, safePos: number): boolean => {
+  const cached =
+    prefetchedChapters.get(targetIndex) ??
+    chapterData.value.find(d => d.index === targetIndex)
+  if (!cached) return false
+  if (!chapterData.value.some(d => d.index === targetIndex)) {
+    chapterData.value.push(cached)
+  }
+  // 书本模式只渲染当前章，限制已加载章节留存数量避免内存无限增长
+  if (chapterData.value.length > 3) {
+    chapterData.value = chapterData.value.slice(-3)
+  }
+  prefetchedChapters.delete(targetIndex)
+  bookInitialPos.value = initialPos
+  // 先更新持久化进度（safePos 是安全值，不会是哨兵），再重挂组件。
+  saveReadingBookProgressToBrowser(targetIndex, safePos)
+  bookReaderSeed.value++
+  store.saveBookProgress()
+  prefetchBookAdjacent(targetIndex)
+  return true
+}
+
 // 底部 read-bar 上一章/下一章按钮：书本翻页模式下委托给 BookPageReader
 // 翻页（首尾页再由其 emit requestNext/PrevChapter 触发跨章），保持改动前
 // 仅底部按钮可点击翻页的范围，不放大到整页热区。
@@ -420,10 +455,9 @@ const onBookRequestNextChapter = () => {
   }
   toast.info('下一章')
   // 下一章落到第一页：readingBook 持久化 0，初始页定位也用 0
-  bookInitialPos.value = 0
+  // 优先用预取缓存即时切换，避免每次跨章都弹 loading mask；未命中再走网络加载。
+  if (switchBookChapter(index, 0, 0)) return
   getContent(index, true, 0)
-  // 不在此立即 saveBookProgress：BookPageReader 分页后 emit progressChange
-  // 触发 onReadedLengthChange，章节切换会立即保存，避免保存过渡态/哨兵位置
 }
 
 const onBookRequestPrevChapter = () => {
@@ -434,10 +468,10 @@ const onBookRequestPrevChapter = () => {
   }
   toast.info('上一章')
   // 上一章落到最后一页：
-  // - 传给 getContent 的 chapterPos=0 是写入 readingBook 的安全值（哨兵不能进入持久化进度）
+  // - 持久化 chapterPos=0 是安全值（哨兵不能进入 readingBook）
   // - bookInitialPos 用哨兵（仅作为 BookPageReader 初始定位参数），分页后由
   //   findPageIndexByPos 兜底取最后一页，随后 emit 真实末页 startPos 更新 readingBook
-  bookInitialPos.value = Number.MAX_SAFE_INTEGER
+  if (switchBookChapter(index, Number.MAX_SAFE_INTEGER, 0)) return
   getContent(index, true, 0, Number.MAX_SAFE_INTEGER)
 }
 
@@ -471,6 +505,8 @@ const getContent = (
       if (reloadChapter) {
         toChapterPos(chapterPos)
         if (infiniteLoading.value) prefetchChapter(index + 1)
+        // 书本模式跨章后预取相邻章节，供下次跨章即时切换，避免再次弹 loading mask
+        if (activeBookMode.value) prefetchBookAdjacent(index)
       }
       if (!isSuccess) {
         toast.error(errorMsg)
