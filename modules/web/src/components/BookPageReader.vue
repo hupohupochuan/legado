@@ -217,6 +217,10 @@ const measureApi = {
   ): PageBlock[] => {
     const measureEl = measureRef.value
     if (!measureEl) return [block]
+    // 测量容器还没拿到真实尺寸（首挂载同步分页/样式未 flush）时，单字符
+    // 都会判定为溢出，递归对 1 字符 chunk 再次切分会无限递归直至栈溢出。
+    // 此时直接放弃切分，让外层 place 把段落到独立页，布局就绪后重分页修正。
+    if (measureEl.clientHeight <= 0 || measureEl.clientWidth <= 0) return [block]
     // 取纯文本，按字符二分；图片标签会丢失（仅在不正常超长段触发）
     const text = stripHtml(block.html)
     if (!text.length) return [block]
@@ -288,6 +292,12 @@ const doPaginate = () => {
     })
     measureApi.reset()
     pages.value = paginateBlocks(blocks, measureApi)
+    // 测量容器没有拿到真实尺寸时，递归 place/splitParagraph 会无限切分
+    // 单字符块直至栈溢出；此时不要判定为初始化失败，等布局就绪后由
+    // ResizeObserver / resize / fonts.ready 触发的重分页修正即可。
+    if (pages.value.length === 0) {
+      console.warn('[BookPageReader] paginate produced 0 pages, layout not ready')
+    }
   } catch (e) {
     console.error('[BookPageReader] paginate failed', e)
     if (!fallbackEmitted) {
@@ -430,8 +440,24 @@ const onKey = (e: KeyboardEvent) => {
 // ---------- 生命周期 ----------
 let resizeObserver: ResizeObserver | null = null
 
-const init = () => {
+// 等待测量容器拿到真实尺寸：首挂载时 pageHeight 初始为 0，rootStyle 的
+// CSS 变量要等 Vue 下一帧才 flush 到 DOM，同步立即分页会让 0 高度容器
+// 把所有块判为溢出、splitParagraph 把段落切成 1 字符块再无限递归栈溢出。
+const waitForLayout = () =>
+  new Promise<void>(resolve => {
+    const start = performance.now()
+    const check = () => {
+      const el = measureRef.value
+      if (el && el.clientHeight > 0 && el.clientWidth > 0) return resolve()
+      if (performance.now() - start > 2000) return resolve()
+      requestAnimationFrame(check)
+    }
+    check()
+  })
+
+const init = async () => {
   updateHeight()
+  await waitForLayout()
   doPaginate()
   if (pages.value.length === 0) return
   initialized = true
@@ -440,26 +466,24 @@ const init = () => {
 }
 
 onMounted(() => {
-  try {
-    init()
-    window.addEventListener('keydown', onKey)
-    window.addEventListener('resize', onWindowResize)
-    if (typeof ResizeObserver !== 'undefined' && stageRef.value) {
-      resizeObserver = new ResizeObserver(() => scheduleRepaginate())
-      resizeObserver.observe(stageRef.value)
-    }
-    // 字体加载后重分页一次
-    document.fonts?.ready.then(() => scheduleRepaginate(60)).catch(() => undefined)
-    // 图片加载后重分页
-    document.addEventListener('load', onAnyLoad, true)
-  } catch (e) {
+  init().catch(e => {
     console.error('[BookPageReader] init failed', e)
     if (!fallbackEmitted) {
       fallbackEmitted = true
       toast.warning('书本翻页初始化失败，已切换为滚动阅读')
       emit('fallbackToScroll')
     }
+  })
+  window.addEventListener('keydown', onKey)
+  window.addEventListener('resize', onWindowResize)
+  if (typeof ResizeObserver !== 'undefined' && stageRef.value) {
+    resizeObserver = new ResizeObserver(() => scheduleRepaginate())
+    resizeObserver.observe(stageRef.value)
   }
+  // 字体加载后重分页一次
+  document.fonts?.ready.then(() => scheduleRepaginate(60)).catch(() => undefined)
+  // 图片加载后重分页
+  document.addEventListener('load', onAnyLoad, true)
 })
 
 const onAnyLoad = (e: Event) => {
