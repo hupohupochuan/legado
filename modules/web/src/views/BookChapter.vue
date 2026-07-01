@@ -31,11 +31,11 @@
     </div>
     <div class="read-bar" :style="rightBarTheme">
       <div class="tools">
-        <div class="tool-icon" :class="{ 'no-point': noPoint }" @click="onReadBarPrev">
+        <div class="tool-icon" :class="{ 'no-point': readBarDisabled }" @click="onReadBarPrev">
           <div class="iconfont">&#58920;</div>
           <span v-if="miniInterface">{{ activeBookMode ? '上一页' : '上一章' }}</span>
         </div>
-        <div class="tool-icon" :class="{ 'no-point': noPoint }" @click="onReadBarNext">
+        <div class="tool-icon" :class="{ 'no-point': readBarDisabled }" @click="onReadBarNext">
           <span v-if="miniInterface">{{ activeBookMode ? '下一页' : '下一章' }}</span>
           <div class="iconfont">&#58913;</div>
         </div>
@@ -388,6 +388,8 @@ const toShelf = () => router.push('/shelf')
 
 const chapterData = ref<ChapterData[]>([])
 const noPoint = ref(true)
+const bookChapterSwitching = ref(false)
+const readBarDisabled = computed(() => noPoint.value || bookChapterSwitching.value)
 
 // ---------- 书本翻页模式 (Book page turn mode) ----------
 // 运行时生效的模式以 store.activePageMode 为准；初始化失败时由 BookPageReader
@@ -411,20 +413,50 @@ const prefetchBookAdjacent = (index: number) => {
   prefetchChapter(index - 1)
 }
 
+const resolveBookChapterForTurn = async (index: number): Promise<ChapterData> => {
+  const cached =
+    prefetchedChapters.get(index) ??
+    chapterData.value.find(d => d.index === index)
+  if (cached) return cached
+  const { chapter, isSuccess, errorMsg } = await fetchChapterData(index)
+  if (!isSuccess) {
+    toast.error(errorMsg)
+    throw new Error(errorMsg)
+  }
+  return chapter
+}
+
+const rememberBookChapter = (chapter: ChapterData) => {
+  const existingIndex = chapterData.value.findIndex(d => d.index === chapter.index)
+  if (existingIndex >= 0) {
+    chapterData.value[existingIndex] = chapter
+  } else {
+    chapterData.value.push(chapter)
+  }
+  // 书本模式只需要当前章和相邻缓存，按目标章距离保留最近 3 章。
+  if (chapterData.value.length > 3) {
+    chapterData.value = chapterData.value
+      .slice()
+      .sort((a, b) => Math.abs(a.index - chapter.index) - Math.abs(b.index - chapter.index))
+      .slice(0, 3)
+      .sort((a, b) => a.index - b.index)
+  }
+}
+
 // 书本翻页跨章即时切换：若目标章已在预取缓存/已加载，直接复用，不显示
 // "正在获取信息" loading mask，只重挂 BookPageReader 重新分页。返回 true 表示命中。
-const switchBookChapter = (targetIndex: number, initialPos: number, safePos: number): boolean => {
+const switchBookChapter = (
+  targetIndex: number,
+  initialPos: number,
+  safePos: number,
+  chapter?: ChapterData,
+): boolean => {
   const cached =
+    chapter ??
     prefetchedChapters.get(targetIndex) ??
     chapterData.value.find(d => d.index === targetIndex)
   if (!cached) return false
-  if (!chapterData.value.some(d => d.index === targetIndex)) {
-    chapterData.value.push(cached)
-  }
-  // 书本模式只渲染当前章，限制已加载章节留存数量避免内存无限增长
-  if (chapterData.value.length > 3) {
-    chapterData.value = chapterData.value.slice(-3)
-  }
+  rememberBookChapter(cached)
   prefetchedChapters.delete(targetIndex)
   bookInitialPos.value = initialPos
   // 先更新持久化进度（safePos 是安全值，不会是哨兵），再重挂组件。
@@ -433,6 +465,55 @@ const switchBookChapter = (targetIndex: number, initialPos: number, safePos: num
   store.saveBookProgress()
   prefetchBookAdjacent(targetIndex)
   return true
+}
+
+const finishBookChapterSwitching = () => {
+  bookChapterSwitching.value = false
+  noPoint.value = false
+}
+
+const turnBookChapter = async (direction: 'next' | 'prev') => {
+  if (bookChapterSwitching.value) return
+  const targetIndex =
+    direction === 'next'
+      ? store.readingBook.chapterIndex + 1
+      : store.readingBook.chapterIndex - 1
+  if (catalog.value[targetIndex] === undefined) {
+    toast.error(direction === 'next' ? '本章是最后一章' : '本章是第一章')
+    return
+  }
+
+  toast.info(direction === 'next' ? '下一章' : '上一章')
+  bookChapterSwitching.value = true
+  noPoint.value = true
+  const initialPos = direction === 'next' ? 0 : Number.MAX_SAFE_INTEGER
+  const fallbackSafePos = direction === 'next' ? 0 : 0
+
+  try {
+    const targetChapter = await resolveBookChapterForTurn(targetIndex)
+    const started =
+      bookReaderRef.value?.flipToChapter?.(
+        targetChapter,
+        initialPos,
+        direction,
+        {
+          onFinished: (_chapterIndex: number, pos: number) => {
+            switchBookChapter(targetIndex, pos, pos, targetChapter)
+            finishBookChapterSwitching()
+          },
+          onCancel: finishBookChapterSwitching,
+        },
+      ) === true
+
+    if (!started) {
+      if (!switchBookChapter(targetIndex, initialPos, fallbackSafePos, targetChapter)) {
+        getContent(targetIndex, true, fallbackSafePos, initialPos)
+      }
+      finishBookChapterSwitching()
+    }
+  } catch {
+    finishBookChapterSwitching()
+  }
 }
 
 // 底部 read-bar 上一章/下一章按钮：书本翻页模式下委托给 BookPageReader
@@ -448,31 +529,11 @@ const onReadBarNext = () => {
 }
 
 const onBookRequestNextChapter = () => {
-  const index = store.readingBook.chapterIndex + 1
-  if (catalog.value[index] === undefined) {
-    toast.error('本章是最后一章')
-    return
-  }
-  toast.info('下一章')
-  // 下一章落到第一页：readingBook 持久化 0，初始页定位也用 0
-  // 优先用预取缓存即时切换，避免每次跨章都弹 loading mask；未命中再走网络加载。
-  if (switchBookChapter(index, 0, 0)) return
-  getContent(index, true, 0)
+  turnBookChapter('next')
 }
 
 const onBookRequestPrevChapter = () => {
-  const index = store.readingBook.chapterIndex - 1
-  if (catalog.value[index] === undefined) {
-    toast.error('本章是第一章')
-    return
-  }
-  toast.info('上一章')
-  // 上一章落到最后一页：
-  // - 持久化 chapterPos=0 是安全值（哨兵不能进入 readingBook）
-  // - bookInitialPos 用哨兵（仅作为 BookPageReader 初始定位参数），分页后由
-  //   findPageIndexByPos 兜底取最后一页，随后 emit 真实末页 startPos 更新 readingBook
-  if (switchBookChapter(index, Number.MAX_SAFE_INTEGER, 0)) return
-  getContent(index, true, 0, Number.MAX_SAFE_INTEGER)
+  turnBookChapter('prev')
 }
 
 const onBookFallbackToScroll = () => {

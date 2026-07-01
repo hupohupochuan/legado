@@ -75,6 +75,17 @@ const props = defineProps<{
   initialChapterPos: number
 }>()
 
+type ChapterPageSource = {
+  index: number
+  content: string[]
+  title: string
+}
+
+type ExternalFlipCallbacks = {
+  onFinished?: (chapterIndex: number, pos: number) => void
+  onCancel?: () => void
+}
+
 const emit = defineEmits<{
   (e: 'progressChange', index: number, pos: number): void
   (e: 'requestNextChapter'): void
@@ -98,20 +109,26 @@ const pages = ref<BookPage[]>([])
 const paginating = ref(false)
 const currentPageIndex = ref(0)
 const targetPageIndex = ref<number | null>(null)
+const targetExternalPage = ref<BookPage | null>(null)
+const targetExternalChapterIndex = ref<number | null>(null)
 const animating = ref(false)
 let initialized = false
 let fallbackEmitted = false
 
 const currentPage = computed(() => pages.value[currentPageIndex.value])
 const targetPage = computed(() =>
-  targetPageIndex.value === null ? null : pages.value[targetPageIndex.value],
+  targetExternalPage.value ??
+  (targetPageIndex.value === null ? null : pages.value[targetPageIndex.value]),
 )
 const currentPageKey = computed(
   () => `${props.chapterIndex}:${currentPageIndex.value}:${pages.value.length}`,
 )
-const targetPageKey = computed(
-  () => `${props.chapterIndex}:${targetPageIndex.value ?? 'none'}:${pages.value.length}`,
-)
+const targetPageKey = computed(() => {
+  if (targetExternalPage.value) {
+    return `${targetExternalChapterIndex.value ?? 'external'}:${targetExternalPage.value.startPos}:${targetExternalPage.value.endPos}`
+  }
+  return `${props.chapterIndex}:${targetPageIndex.value ?? 'none'}:${pages.value.length}`
+})
 
 // 翻页方向：next/prev 决定 enter/leave 动画朝向，避免前进后退看起来一样
 const flipDirection = ref<'next' | 'prev'>('next')
@@ -307,18 +324,22 @@ function stripHtml(html: string): string {
   return tmp.textContent || tmp.innerText || ''
 }
 
+const paginateChapter = (contents: string[], title: string): BookPage[] => {
+  const blocks = buildBlocks({
+    contents,
+    title,
+    spacing: props.spacing,
+    fontFamily: props.fontFamily,
+    fontSize: props.fontSize,
+  })
+  measureApi.reset()
+  return paginateBlocks(blocks, measureApi)
+}
+
 const doPaginate = () => {
   paginating.value = true
   try {
-    const blocks = buildBlocks({
-      contents: props.contents,
-      title: props.title,
-      spacing: props.spacing,
-      fontFamily: props.fontFamily,
-      fontSize: props.fontSize,
-    })
-    measureApi.reset()
-    pages.value = paginateBlocks(blocks, measureApi)
+    pages.value = paginateChapter(props.contents, props.title)
     // 测量容器没有拿到真实尺寸时，递归 place/splitParagraph 会无限切分
     // 单字符块直至栈溢出；此时不要判定为初始化失败，等布局就绪后由
     // ResizeObserver / resize / fonts.ready 触发的重分页修正即可。
@@ -367,6 +388,8 @@ const updateHeight = () => {
 // ---------- 翻页 ----------
 let flipLock = false
 let flipTimer: ReturnType<typeof setTimeout> | null = null
+let externalFlipFinished: ((pos: number) => void) | null = null
+let externalFlipCanceled: (() => void) | null = null
 
 const flipDuration = () => {
   if (reducedMotion.value) return 0
@@ -375,10 +398,16 @@ const flipDuration = () => {
 
 const cancelFlipAnimation = () => {
   if (flipTimer) clearTimeout(flipTimer)
+  const onCancel = externalFlipCanceled
   flipTimer = null
   targetPageIndex.value = null
+  targetExternalPage.value = null
+  targetExternalChapterIndex.value = null
+  externalFlipFinished = null
+  externalFlipCanceled = null
   animating.value = false
   flipLock = false
+  onCancel?.()
 }
 
 const finishFlip = (nextIndex: number) => {
@@ -387,6 +416,20 @@ const finishFlip = (nextIndex: number) => {
   animating.value = false
   flipLock = false
   emit('progressChange', props.chapterIndex, currentPage.value?.startPos ?? 0)
+}
+
+const finishExternalFlip = () => {
+  const pos = targetExternalPage.value?.startPos ?? 0
+  const onFinished = externalFlipFinished
+  flipTimer = null
+  targetPageIndex.value = null
+  targetExternalPage.value = null
+  targetExternalChapterIndex.value = null
+  externalFlipFinished = null
+  externalFlipCanceled = null
+  animating.value = false
+  flipLock = false
+  onFinished?.(pos)
 }
 
 const startFlip = (nextIndex: number, direction: 'next' | 'prev') => {
@@ -404,6 +447,55 @@ const startFlip = (nextIndex: number, direction: 'next' | 'prev') => {
     flipTimer = null
     finishFlip(nextIndex)
   }, flipDuration())
+}
+
+const startExternalFlip = (
+  chapterIndex: number,
+  page: BookPage,
+  direction: 'next' | 'prev',
+  callbacks: ExternalFlipCallbacks = {},
+): boolean => {
+  if (flipLock || paginating.value || pages.value.length === 0 || !currentPage.value) {
+    return false
+  }
+  flipDirection.value = direction
+  if (reducedMotion.value) {
+    callbacks.onFinished?.(chapterIndex, page.startPos)
+    return true
+  }
+  flipLock = true
+  targetPageIndex.value = null
+  targetExternalPage.value = page
+  targetExternalChapterIndex.value = chapterIndex
+  externalFlipFinished = pos => callbacks.onFinished?.(chapterIndex, pos)
+  externalFlipCanceled = callbacks.onCancel ?? null
+  animating.value = true
+  if (flipTimer) clearTimeout(flipTimer)
+  flipTimer = setTimeout(() => {
+    finishExternalFlip()
+  }, flipDuration())
+  return true
+}
+
+const flipToChapter = (
+  chapter: ChapterPageSource,
+  initialPos: number,
+  direction: 'next' | 'prev',
+  callbacks: ExternalFlipCallbacks = {},
+): boolean => {
+  if (flipLock || paginating.value || pages.value.length === 0) return false
+  let targetPages: BookPage[]
+  try {
+    targetPages = paginateChapter(chapter.content, chapter.title)
+  } catch (e) {
+    console.error('[BookPageReader] target chapter paginate failed', e)
+    return false
+  }
+  if (targetPages.length === 0) return false
+  const nextIndex = findPageIndexByPos(targetPages, initialPos)
+  const page = targetPages[nextIndex]
+  if (!page) return false
+  return startExternalFlip(chapter.index, page, direction, callbacks)
 }
 
 const flipNext = () => {
@@ -564,12 +656,12 @@ onUnmounted(() => {
   document.removeEventListener('load', onAnyLoad, true)
   resizeObserver?.disconnect()
   resizeObserver = null
-  if (flipTimer) clearTimeout(flipTimer)
+  cancelFlipAnimation()
   if (paginateTimer) clearTimeout(paginateTimer)
   measureApi.reset()
 })
 
-defineExpose({ flipNext, flipPrev, currentPageIndex, pages })
+defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
 </script>
 
 <style lang="scss" scoped>
