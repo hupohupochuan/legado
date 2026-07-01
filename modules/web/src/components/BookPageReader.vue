@@ -49,6 +49,7 @@
 
 <script setup lang="ts">
 import API from '@api'
+import settings from '@/config/themeConfig'
 import { isLegadoUrl } from '@/utils/utils'
 import { toast } from '@/utils/toast'
 import {
@@ -117,6 +118,9 @@ const flipDirection = ref<'next' | 'prev'>('next')
 const pageTurnEffectComputed = computed(
   () => props.pageTurnEffect ?? 'book',
 )
+const pageBackground = computed(
+  () => settings.themes[store.config.theme]?.content ?? '#ede7da',
+)
 const stageClass = computed(() => {
   if (!animating.value || reducedMotion.value) return {}
   return {
@@ -146,6 +150,7 @@ const rootStyle = computed(() => ({
     'calc(1 + ' + (props.spacing.line ?? 0) + ')',
   '--bp-paragraph':
     'calc(' + (props.spacing.paragraph ?? 0) + ' * 1em)',
+  '--bp-page-bg': pageBackground.value,
 }))
 
 const measureStyle = rootStyle
@@ -592,7 +597,7 @@ defineExpose({ flipNext, flipPrev, currentPageIndex, pages })
     box-sizing: border-box;
     padding: 0;
     overflow: hidden;
-    background: inherit;
+    background: var(--bp-page-bg);
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
     transform-style: preserve-3d;
