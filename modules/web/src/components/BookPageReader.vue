@@ -365,7 +365,7 @@ let flipTimer: ReturnType<typeof setTimeout> | null = null
 
 const flipDuration = () => {
   if (reducedMotion.value) return 0
-  return pageTurnEffectComputed.value === 'book' ? 480 : 260
+  return pageTurnEffectComputed.value === 'book' ? 440 : 260
 }
 
 const cancelFlipAnimation = () => {
@@ -625,28 +625,30 @@ defineExpose({ flipNext, flipPrev, currentPageIndex, pages })
     pointer-events: none;
   }
 
-  // 固定纸质书效果：不跟随手指，只在触发后播放预设 3D 翻页。
+  // 固定纸质书效果：不跟随手指，底页保持稳定，只让翻动页和页边阴影运动。
   .bp-stage.bp-book-next {
     .bp-page-current {
       z-index: 3;
-      transform-origin: left center;
-      animation: bp-book-current-next 0.48s cubic-bezier(0.2, 0.68, 0.18, 1) forwards;
+      animation: bp-book-current-next 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
 
       .bp-page-shade {
+        width: 36%;
+        left: 0;
+        right: auto;
         background:
-          linear-gradient(90deg, rgba(0, 0, 0, 0.26), rgba(0, 0, 0, 0.08) 38%, transparent 72%),
-          linear-gradient(270deg, rgba(255, 255, 255, 0.2), transparent 46%);
-        animation: bp-book-current-shade 0.48s ease-in-out forwards;
+          linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.28) 55%, rgba(255, 255, 255, 0.2) 74%, transparent),
+          linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.1));
+        animation: bp-book-edge-next 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
       }
     }
 
     .bp-page-target {
       z-index: 1;
-      animation: bp-book-target-next 0.48s ease-out forwards;
+      transform: none;
 
       .bp-page-shade {
-        background: linear-gradient(90deg, rgba(0, 0, 0, 0.18), transparent 48%);
-        animation: bp-book-target-shade 0.48s ease-out forwards;
+        background: linear-gradient(90deg, rgba(0, 0, 0, 0.18), transparent 42%);
+        animation: bp-book-target-shade 0.44s ease-out forwards;
       }
     }
   }
@@ -654,24 +656,26 @@ defineExpose({ flipNext, flipPrev, currentPageIndex, pages })
   .bp-stage.bp-book-prev {
     .bp-page-current {
       z-index: 1;
-      animation: bp-book-current-prev 0.48s ease-out forwards;
+      transform: none;
 
       .bp-page-shade {
-        background: linear-gradient(270deg, rgba(0, 0, 0, 0.16), transparent 52%);
-        animation: bp-book-target-shade 0.48s ease-out forwards;
+        background: linear-gradient(270deg, rgba(0, 0, 0, 0.16), transparent 46%);
+        animation: bp-book-target-shade 0.44s ease-out forwards;
       }
     }
 
     .bp-page-target {
       z-index: 3;
-      transform-origin: left center;
-      animation: bp-book-target-prev 0.48s cubic-bezier(0.2, 0.68, 0.18, 1) forwards;
+      animation: bp-book-target-prev 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
 
       .bp-page-shade {
+        width: 36%;
+        left: 0;
+        right: auto;
         background:
-          linear-gradient(90deg, rgba(0, 0, 0, 0.26), rgba(0, 0, 0, 0.08) 38%, transparent 72%),
-          linear-gradient(270deg, rgba(255, 255, 255, 0.2), transparent 46%);
-        animation: bp-book-current-shade 0.48s ease-in-out reverse forwards;
+          linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22) 28%, rgba(0, 0, 0, 0.24) 55%, transparent),
+          linear-gradient(90deg, rgba(0, 0, 0, 0.1), transparent);
+        animation: bp-book-edge-prev 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
       }
     }
   }
@@ -787,77 +791,65 @@ defineExpose({ flipNext, flipPrev, currentPageIndex, pages })
 
 @keyframes bp-book-current-next {
   0% {
-    opacity: 1;
-    transform: rotateY(0deg) translateZ(2px);
-    box-shadow: none;
+    clip-path: inset(0 0 0 0);
   }
-  52% {
-    opacity: 0.94;
-    transform: rotateY(-64deg) translateZ(18px);
-    box-shadow: -18px 0 28px rgba(0, 0, 0, 0.18);
+  48% {
+    clip-path: inset(0 42% 0 0);
   }
   100% {
-    opacity: 0;
-    transform: rotateY(-108deg) translateZ(4px);
-    box-shadow: -28px 0 34px rgba(0, 0, 0, 0.08);
-  }
-}
-
-@keyframes bp-book-target-next {
-  0% {
-    opacity: 0.72;
-    transform: translateX(14px) scale(0.996);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
-}
-
-@keyframes bp-book-current-prev {
-  0% {
-    opacity: 0.86;
-    transform: translateX(-10px) scale(0.998);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0) scale(1);
+    clip-path: inset(0 100% 0 0);
   }
 }
 
 @keyframes bp-book-target-prev {
   0% {
-    opacity: 0;
-    transform: rotateY(-108deg) translateZ(4px);
-    box-shadow: -28px 0 34px rgba(0, 0, 0, 0.08);
+    clip-path: inset(0 100% 0 0);
   }
   52% {
-    opacity: 0.94;
-    transform: rotateY(-64deg) translateZ(18px);
-    box-shadow: -18px 0 28px rgba(0, 0, 0, 0.18);
+    clip-path: inset(0 42% 0 0);
   }
   100% {
-    opacity: 1;
-    transform: rotateY(0deg) translateZ(2px);
-    box-shadow: none;
+    clip-path: inset(0 0 0 0);
   }
 }
 
-@keyframes bp-book-current-shade {
+@keyframes bp-book-edge-next {
   0% {
-    opacity: 0;
+    opacity: 0.1;
+    transform: translateX(186%);
   }
   46% {
-    opacity: 0.72;
+    opacity: 0.82;
+  }
+  92% {
+    opacity: 0.42;
   }
   100% {
-    opacity: 0.18;
+    opacity: 0;
+    transform: translateX(-42%);
+  }
+}
+
+@keyframes bp-book-edge-prev {
+  0% {
+    opacity: 0;
+    transform: translateX(-42%);
+  }
+  12% {
+    opacity: 0.44;
+  }
+  56% {
+    opacity: 0.82;
+  }
+  100% {
+    opacity: 0.08;
+    transform: translateX(186%);
   }
 }
 
 @keyframes bp-book-target-shade {
   0% {
-    opacity: 0.42;
+    opacity: 0.36;
   }
   100% {
     opacity: 0;
