@@ -649,7 +649,7 @@ defineExpose({ flipNext, flipPrev, currentPageIndex, pages })
 
     .bp-page-target {
       z-index: 1;
-      transform: none;
+      animation: bp-book-target-next 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
 
       .bp-page-shade {
         background: linear-gradient(90deg, rgba(0, 0, 0, 0.18), transparent 42%);
@@ -661,7 +661,7 @@ defineExpose({ flipNext, flipPrev, currentPageIndex, pages })
   .bp-stage.bp-book-prev {
     .bp-page-current {
       z-index: 1;
-      transform: none;
+      animation: bp-book-current-prev 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
 
       .bp-page-shade {
         background: linear-gradient(270deg, rgba(0, 0, 0, 0.16), transparent 46%);
@@ -803,6 +803,30 @@ defineExpose({ flipNext, flipPrev, currentPageIndex, pages })
   }
   100% {
     clip-path: inset(0 100% 0 0);
+  }
+}
+
+@keyframes bp-book-target-next {
+  0% {
+    clip-path: inset(0 0 0 100%);
+  }
+  48% {
+    clip-path: inset(0 0 0 58%);
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes bp-book-current-prev {
+  0% {
+    clip-path: inset(0 0 0 0);
+  }
+  52% {
+    clip-path: inset(0 0 0 42%);
+  }
+  100% {
+    clip-path: inset(0 0 0 100%);
   }
 }
 
