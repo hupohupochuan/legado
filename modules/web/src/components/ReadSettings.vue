@@ -84,7 +84,7 @@
           class="font-opt"
           :class="{ active: store.config.pageTurnEffect === 'book' }"
           @click="setPageTurnEffect('book')"
-        >书本</span>
+        >纸质书</span>
         <span
           class="font-opt"
           :class="{ active: store.config.pageTurnEffect === 'slide' }"

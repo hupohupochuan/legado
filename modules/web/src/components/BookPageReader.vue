@@ -9,17 +9,29 @@
     @touchmove="onTouchMove"
     @touchend="onTouchEnd"
   >
-    <div class="bp-stage" ref="stageRef">
-      <Transition :name="transitionName">
-        <div
-          v-if="currentPage"
-          class="bp-page"
-          :key="currentPageKey"
-          :style="pageStyle(currentPage)"
-        >
-          <div class="bp-page-inner" v-html="renderBlocks(currentPage.blocks)"></div>
-        </div>
-      </Transition>
+    <div
+      class="bp-stage"
+      ref="stageRef"
+      :class="stageClass"
+    >
+      <div
+        v-if="currentPage"
+        class="bp-page bp-page-current"
+        :key="'current-' + currentPageKey"
+        :style="pageStyle(currentPage)"
+      >
+        <div class="bp-page-inner" v-html="renderBlocks(currentPage.blocks)"></div>
+        <div class="bp-page-shade" aria-hidden="true"></div>
+      </div>
+      <div
+        v-if="animating && targetPage"
+        class="bp-page bp-page-target"
+        :key="'target-' + targetPageKey"
+        :style="pageStyle(targetPage)"
+      >
+        <div class="bp-page-inner" v-html="renderBlocks(targetPage.blocks)"></div>
+        <div class="bp-page-shade" aria-hidden="true"></div>
+      </div>
     </div>
 
     <div class="bp-hint" v-if="paginating">分页中…</div>
@@ -84,30 +96,34 @@ const measureRef = ref<HTMLElement>()
 const pages = ref<BookPage[]>([])
 const paginating = ref(false)
 const currentPageIndex = ref(0)
+const targetPageIndex = ref<number | null>(null)
+const animating = ref(false)
 let initialized = false
 let fallbackEmitted = false
 
 const currentPage = computed(() => pages.value[currentPageIndex.value])
+const targetPage = computed(() =>
+  targetPageIndex.value === null ? null : pages.value[targetPageIndex.value],
+)
 const currentPageKey = computed(
   () => `${props.chapterIndex}:${currentPageIndex.value}:${pages.value.length}`,
+)
+const targetPageKey = computed(
+  () => `${props.chapterIndex}:${targetPageIndex.value ?? 'none'}:${pages.value.length}`,
 )
 
 // 翻页方向：next/prev 决定 enter/leave 动画朝向，避免前进后退看起来一样
 const flipDirection = ref<'next' | 'prev'>('next')
-const transitionName = computed(() => {
-  if (reducedMotion.value) return 'bp-none'
-  const dir = flipDirection.value
-  return (props.pageTurnEffect ?? 'book') === 'book'
-    ? dir === 'next'
-      ? 'bp-book-next'
-      : 'bp-book-prev'
-    : dir === 'next'
-      ? 'bp-slide-next'
-      : 'bp-slide-prev'
-})
 const pageTurnEffectComputed = computed(
   () => props.pageTurnEffect ?? 'book',
 )
+const stageClass = computed(() => {
+  if (!animating.value || reducedMotion.value) return {}
+  return {
+    'bp-animating': true,
+    [`bp-${pageTurnEffectComputed.value}-${flipDirection.value}`]: true,
+  }
+})
 
 // 视口（书页）尺寸：书本翻页每页都是全新内容、不滚动、不重复，所以比滚动
 // 模式给页更大的宽度（几乎吃满 readWidth）和更高的高度（只保留很小的上下留白）。
@@ -327,6 +343,7 @@ let paginateTimer: ReturnType<typeof setTimeout> | null = null
 const scheduleRepaginate = (delay = 200) => {
   if (paginateTimer) clearTimeout(paginateTimer)
   paginateTimer = setTimeout(() => {
+    cancelFlipAnimation()
     const prevPos = currentPage.value?.startPos ?? props.initialChapterPos
     doPaginate()
     if (pages.value.length === 0) return
@@ -344,22 +361,44 @@ const updateHeight = () => {
 
 // ---------- 翻页 ----------
 let flipLock = false
-let flipUnlockTimer: ReturnType<typeof setTimeout> | null = null
+let flipTimer: ReturnType<typeof setTimeout> | null = null
 
-const afterFlip = (pos: number) => {
-  emit('progressChange', props.chapterIndex, pos)
-  // 翻页动画期间锁住，避免连点导致状态错乱
-  const dur = reducedMotion.value
-    ? 0
-    : (props.pageTurnEffect ?? 'book') === 'book'
-      ? 450
-      : 280
-  if (flipUnlockTimer) clearTimeout(flipUnlockTimer)
+const flipDuration = () => {
+  if (reducedMotion.value) return 0
+  return pageTurnEffectComputed.value === 'book' ? 480 : 260
+}
+
+const cancelFlipAnimation = () => {
+  if (flipTimer) clearTimeout(flipTimer)
+  flipTimer = null
+  targetPageIndex.value = null
+  animating.value = false
+  flipLock = false
+}
+
+const finishFlip = (nextIndex: number) => {
+  currentPageIndex.value = nextIndex
+  targetPageIndex.value = null
+  animating.value = false
+  flipLock = false
+  emit('progressChange', props.chapterIndex, currentPage.value?.startPos ?? 0)
+}
+
+const startFlip = (nextIndex: number, direction: 'next' | 'prev') => {
+  if (flipLock || paginating.value || pages.value.length === 0) return
+  flipDirection.value = direction
+  if (reducedMotion.value) {
+    finishFlip(nextIndex)
+    return
+  }
   flipLock = true
-  flipUnlockTimer = setTimeout(() => {
-    flipLock = false
-    flipUnlockTimer = null
-  }, dur)
+  targetPageIndex.value = nextIndex
+  animating.value = true
+  if (flipTimer) clearTimeout(flipTimer)
+  flipTimer = setTimeout(() => {
+    flipTimer = null
+    finishFlip(nextIndex)
+  }, flipDuration())
 }
 
 const flipNext = () => {
@@ -368,9 +407,7 @@ const flipNext = () => {
     emit('requestNextChapter')
     return
   }
-  flipDirection.value = 'next'
-  currentPageIndex.value += 1
-  afterFlip(currentPage.value?.startPos ?? 0)
+  startFlip(currentPageIndex.value + 1, 'next')
 }
 
 const flipPrev = () => {
@@ -379,9 +416,7 @@ const flipPrev = () => {
     emit('requestPrevChapter')
     return
   }
-  flipDirection.value = 'prev'
-  currentPageIndex.value -= 1
-  afterFlip(currentPage.value?.startPos ?? 0)
+  startFlip(currentPageIndex.value - 1, 'prev')
 }
 
 // ---------- 交互 ----------
@@ -524,7 +559,7 @@ onUnmounted(() => {
   document.removeEventListener('load', onAnyLoad, true)
   resizeObserver?.disconnect()
   resizeObserver = null
-  if (flipUnlockTimer) clearTimeout(flipUnlockTimer)
+  if (flipTimer) clearTimeout(flipTimer)
   if (paginateTimer) clearTimeout(paginateTimer)
   measureApi.reset()
 })
@@ -547,6 +582,8 @@ defineExpose({ flipNext, flipPrev, currentPageIndex, pages })
     width: var(--bp-page-width);
     height: var(--bp-page-height);
     perspective: 1800px;
+    transform-style: preserve-3d;
+    isolation: isolate;
   }
 
   .bp-page {
@@ -558,72 +595,110 @@ defineExpose({ flipNext, flipPrev, currentPageIndex, pages })
     background: inherit;
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
+    transform-style: preserve-3d;
     will-change: transform, opacity;
+    z-index: 1;
 
     .bp-page-inner {
       font-size: var(--bp-font-size);
       line-height: var(--bp-line);
       font-family: var(--bp-font-family);
     }
+
+    .bp-page-shade {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0;
+    }
   }
 
-  // 书本翻页：绕左边缘旋转 + 淡出。前进/后退方向相反
-  .bp-book-next-enter-active,
-  .bp-book-next-leave-active,
-  .bp-book-prev-enter-active,
-  .bp-book-prev-leave-active {
-    transition: transform 0.45s ease-in-out, opacity 0.45s ease-in-out;
-    transform-origin: left center;
-  }
-  // 前进（下一页）：新页从右翻入，旧页向左翻出
-  .bp-book-next-enter-from {
-    transform: rotateY(180deg);
-    opacity: 0;
-  }
-  .bp-book-next-leave-to {
-    transform: rotateY(-180deg);
-    opacity: 0;
-  }
-  // 后退（上一页）：新页从左翻入，旧页向右翻出
-  .bp-book-prev-enter-from {
-    transform: rotateY(-180deg);
-    opacity: 0;
-  }
-  .bp-book-prev-leave-to {
-    transform: rotateY(180deg);
-    opacity: 0;
+  .bp-page-current {
+    z-index: 2;
   }
 
-  // 滑动翻页：横向平移。前进/后退方向相反
-  .bp-slide-next-enter-active,
-  .bp-slide-next-leave-active,
-  .bp-slide-prev-enter-active,
-  .bp-slide-prev-leave-active {
-    transition: transform 0.28s ease-in-out, opacity 0.28s ease-in-out;
-  }
-  // 前进：新页从右侧滑入，旧页向左滑出
-  .bp-slide-next-enter-from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  .bp-slide-next-leave-to {
-    transform: translateX(-100%);
-    opacity: 0;
-  }
-  // 后退：新页从左侧滑入，旧页向右滑出
-  .bp-slide-prev-enter-from {
-    transform: translateX(-100%);
-    opacity: 0;
-  }
-  .bp-slide-prev-leave-to {
-    transform: translateX(100%);
-    opacity: 0;
+  .bp-page-target {
+    z-index: 1;
   }
 
-  // 无动画
-  .bp-none-enter-active,
-  .bp-none-leave-active {
-    transition: none;
+  .bp-stage.bp-animating {
+    pointer-events: none;
+  }
+
+  // 固定纸质书效果：不跟随手指，只在触发后播放预设 3D 翻页。
+  .bp-stage.bp-book-next {
+    .bp-page-current {
+      z-index: 3;
+      transform-origin: left center;
+      animation: bp-book-current-next 0.48s cubic-bezier(0.2, 0.68, 0.18, 1) forwards;
+
+      .bp-page-shade {
+        background:
+          linear-gradient(90deg, rgba(0, 0, 0, 0.26), rgba(0, 0, 0, 0.08) 38%, transparent 72%),
+          linear-gradient(270deg, rgba(255, 255, 255, 0.2), transparent 46%);
+        animation: bp-book-current-shade 0.48s ease-in-out forwards;
+      }
+    }
+
+    .bp-page-target {
+      z-index: 1;
+      animation: bp-book-target-next 0.48s ease-out forwards;
+
+      .bp-page-shade {
+        background: linear-gradient(90deg, rgba(0, 0, 0, 0.18), transparent 48%);
+        animation: bp-book-target-shade 0.48s ease-out forwards;
+      }
+    }
+  }
+
+  .bp-stage.bp-book-prev {
+    .bp-page-current {
+      z-index: 1;
+      animation: bp-book-current-prev 0.48s ease-out forwards;
+
+      .bp-page-shade {
+        background: linear-gradient(270deg, rgba(0, 0, 0, 0.16), transparent 52%);
+        animation: bp-book-target-shade 0.48s ease-out forwards;
+      }
+    }
+
+    .bp-page-target {
+      z-index: 3;
+      transform-origin: left center;
+      animation: bp-book-target-prev 0.48s cubic-bezier(0.2, 0.68, 0.18, 1) forwards;
+
+      .bp-page-shade {
+        background:
+          linear-gradient(90deg, rgba(0, 0, 0, 0.26), rgba(0, 0, 0, 0.08) 38%, transparent 72%),
+          linear-gradient(270deg, rgba(255, 255, 255, 0.2), transparent 46%);
+        animation: bp-book-current-shade 0.48s ease-in-out reverse forwards;
+      }
+    }
+  }
+
+  // 固定滑动效果：触发后直接左右移入/移出，不做跟手位移。
+  .bp-stage.bp-slide-next {
+    .bp-page-current {
+      z-index: 2;
+      animation: bp-slide-current-next 0.26s ease-out forwards;
+    }
+
+    .bp-page-target {
+      z-index: 3;
+      animation: bp-slide-target-next 0.26s ease-out forwards;
+    }
+  }
+
+  .bp-stage.bp-slide-prev {
+    .bp-page-current {
+      z-index: 2;
+      animation: bp-slide-current-prev 0.26s ease-out forwards;
+    }
+
+    .bp-page-target {
+      z-index: 3;
+      animation: bp-slide-target-prev 0.26s ease-out forwards;
+    }
   }
 
   .bp-measure {
@@ -708,5 +783,120 @@ defineExpose({ flipNext, flipPrev, currentPageIndex, pages })
 .night .bp-page {
   border: 1px solid #444;
   color: #666;
+}
+
+@keyframes bp-book-current-next {
+  0% {
+    opacity: 1;
+    transform: rotateY(0deg) translateZ(2px);
+    box-shadow: none;
+  }
+  52% {
+    opacity: 0.94;
+    transform: rotateY(-64deg) translateZ(18px);
+    box-shadow: -18px 0 28px rgba(0, 0, 0, 0.18);
+  }
+  100% {
+    opacity: 0;
+    transform: rotateY(-108deg) translateZ(4px);
+    box-shadow: -28px 0 34px rgba(0, 0, 0, 0.08);
+  }
+}
+
+@keyframes bp-book-target-next {
+  0% {
+    opacity: 0.72;
+    transform: translateX(14px) scale(0.996);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes bp-book-current-prev {
+  0% {
+    opacity: 0.86;
+    transform: translateX(-10px) scale(0.998);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes bp-book-target-prev {
+  0% {
+    opacity: 0;
+    transform: rotateY(-108deg) translateZ(4px);
+    box-shadow: -28px 0 34px rgba(0, 0, 0, 0.08);
+  }
+  52% {
+    opacity: 0.94;
+    transform: rotateY(-64deg) translateZ(18px);
+    box-shadow: -18px 0 28px rgba(0, 0, 0, 0.18);
+  }
+  100% {
+    opacity: 1;
+    transform: rotateY(0deg) translateZ(2px);
+    box-shadow: none;
+  }
+}
+
+@keyframes bp-book-current-shade {
+  0% {
+    opacity: 0;
+  }
+  46% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 0.18;
+  }
+}
+
+@keyframes bp-book-target-shade {
+  0% {
+    opacity: 0.42;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes bp-slide-current-next {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes bp-slide-target-next {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes bp-slide-current-prev {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes bp-slide-target-prev {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
 }
 </style>
