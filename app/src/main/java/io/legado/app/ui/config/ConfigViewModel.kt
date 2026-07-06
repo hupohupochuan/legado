@@ -8,6 +8,7 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.BookProgressSyncProvider
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.Restore
@@ -100,7 +101,7 @@ class ConfigViewModel(application: Application) : BaseViewModel(application) {
     fun restoreWebDavProgressOnly() {
         backupRestoreState.value = context.getString(R.string.restore_book_progress_only_running)
         backupRestoreJob = execute {
-            AppWebDav.restoreBookProgressOnly()
+            BookProgressSyncProvider.current.restoreBookProgressOnly()
         }.onSuccess {
             context.toastOnUi(R.string.restore_book_progress_only_success)
         }.onError {

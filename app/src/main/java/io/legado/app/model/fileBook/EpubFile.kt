@@ -8,6 +8,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.HtmlFormatter
@@ -33,7 +34,7 @@ import java.nio.charset.Charset
 
 class EpubFile(var book: Book) {
 
-    companion object : BaseFileBook {
+    companion object : LocalBookFormatHandler {
         private var eFile: EpubFile? = null
 
         @Synchronized
@@ -46,6 +47,27 @@ class EpubFile(var book: Book) {
             }
             eFile?.book = book
             return eFile!!
+        }
+
+        override fun supports(book: Book): Boolean = book.isEpub
+
+        @Throws(IOException::class, SecurityException::class)
+        override fun checkReadable(book: Book) {
+            val pfd = BookHelp.getBookPFD(book) ?: throw IOException("文件不可读")
+            val zipFile = AndroidZipFile(pfd, book.originName)
+            val directResult = runCatching {
+                zipFile.entries().hasMoreElements()
+            }
+            try {
+                directResult.getOrThrow()
+            } catch (directError: Throwable) {
+                if (!book.isLocal) throw directError
+                BookHelp.getEpubFile(book).use {
+                    it.entries().hasMoreElements()
+                }
+            } finally {
+                zipFile.close()
+            }
         }
 
         override fun getChapterList(book: Book): ArrayList<BookChapter> {

@@ -9,6 +9,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.getLocalUri
+import io.legado.app.help.book.isPdf
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SystemUtils
@@ -22,7 +23,7 @@ import kotlin.math.ceil
 
 
 class PdfFile(var book: Book) {
-    companion object : BaseFileBook {
+    companion object : LocalBookFormatHandler {
         private var pFile: PdfFile? = null
 
         /**
@@ -40,6 +41,8 @@ class PdfFile(var book: Book) {
             pFile?.book = book
             return pFile!!
         }
+
+        override fun supports(book: Book): Boolean = book.isPdf
 
         @Synchronized
         override fun upBookInfo(book: Book) {

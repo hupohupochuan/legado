@@ -17,8 +17,9 @@ import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.BookProgressSyncProvider
 import io.legado.app.help.IntentData
+import io.legado.app.help.ProgressCheckMode
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.getBookSource
@@ -353,7 +354,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     ) {
         if (!AppConfig.syncBookProgress) return
         execute {
-            AppWebDav.getBookProgressResult(book)
+            BookProgressSyncProvider.current.getBookProgressResult(book)
         }.onError {
             AppLog.put("拉取阅读进度失败《${book.name}》\n${it.localizedMessage}", it)
         }.onSuccess { result ->
@@ -366,11 +367,11 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             if (compare == 0) {
                 return@onSuccess
             }
-            if (!AppWebDav.canApplyBookProgress(
+            if (!BookProgressSyncProvider.current.canApplyBookProgress(
                     book,
                     progress,
                     "WebDav syncBookProgress",
-                    AppWebDav.ProgressCheckMode.RangeOnly
+                    ProgressCheckMode.RangeOnly
                 )
             ) {
                 return@onSuccess

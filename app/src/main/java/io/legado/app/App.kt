@@ -27,6 +27,7 @@ import io.legado.app.data.entities.rule.ExploreRule
 import io.legado.app.data.entities.rule.SearchRule
 import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.BookProgressSyncProvider
 import io.legado.app.help.CrashHandler
 import io.legado.app.help.DefaultData
 import io.legado.app.help.DispatchersMonitor
@@ -109,7 +110,7 @@ class App : Application() {
             runCatching { AppWebDav.upConfig() }
             //同步阅读记录
             if (AppConfig.syncBookProgress) {
-                AppWebDav.downloadAllBookProgress()
+                BookProgressSyncProvider.current.downloadAllBookProgress()
             }
         }
     }

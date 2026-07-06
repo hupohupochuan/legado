@@ -43,7 +43,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * 改为由调用方在协程中主动调用 [upConfig] 完成异步初始化 (App.onCreate 的 IO 协程会预热).
  * 在配置就绪前 [authorization] 为 null, 各读取点用 `?.let` / `?: throw` 安全降级, 不会崩溃.
  */
-object AppWebDav {
+object AppWebDav : BookProgressSync {
     private const val defaultWebDavUrl = "https://dav.jianguoyun.com/dav/"
     private val bookProgressUrl get() = "${rootWebDavUrl}bookProgress/"
     private val exportsWebDavUrl get() = "${rootWebDavUrl}books/"
@@ -64,19 +64,6 @@ object AppWebDav {
         CanApply,
         OutOfRange,
         LocalBookUnreadable
-    }
-
-    /**
-     * 进度校验模式
-     * - [RangeOnly]: 仅校验 [Book.simulatedTotalChapterNum] 范围, 用于只同步进度的场景,
-     *   避免对本地书执行 [FileBook.checkBookReadable] 而误触发 SAF 目录权限提示
-     *   (跨设备恢复后旧 content:// URI 失效时会抛 SecurityException)。
-     * - [ReadableRequired]: 校验章节范围, 并对本地书执行 [FileBook.checkBookReadable],
-     *   用于真正需要加载本地书内容的场景, 不能掩盖真实打不开书的问题。
-     */
-    enum class ProgressCheckMode {
-        RangeOnly,
-        ReadableRequired
     }
 
     private val serverWebDavUrl: String
@@ -293,10 +280,10 @@ object AppWebDav {
     /**
      * 上传书籍进度到 WebDAV（从 Book 构造 BookProgress）。
      */
-    suspend fun uploadBookProgress(
+    override suspend fun uploadBookProgress(
         book: Book,
-        toast: Boolean = false,
-        onSuccess: (() -> Unit)? = null
+        toast: Boolean,
+        onSuccess: (() -> Unit)?
     ) {
         uploadBookProgressJson(
             progress = BookProgress(book),
@@ -307,16 +294,28 @@ object AppWebDav {
         )
     }
 
+    suspend fun uploadBookProgress(book: Book) {
+        uploadBookProgress(book, false, null)
+    }
+
+    suspend fun uploadBookProgress(book: Book, onSuccess: (() -> Unit)) {
+        uploadBookProgress(book, false, onSuccess)
+    }
+
     /**
      * 上传书籍进度到 WebDAV（直接使用 BookProgress 实例）。
      */
-    suspend fun uploadBookProgress(bookProgress: BookProgress, onSuccess: (() -> Unit)? = null) {
+    override suspend fun uploadBookProgress(bookProgress: BookProgress, onSuccess: (() -> Unit)?) {
         uploadBookProgressJson(
             progress = bookProgress,
             fileName = getProgressFileName(bookProgress.name, bookProgress.author),
             toast = false,
             onSuccess = onSuccess
         )
+    }
+
+    suspend fun uploadBookProgress(bookProgress: BookProgress) {
+        uploadBookProgress(bookProgress, null)
     }
 
     /**
@@ -366,7 +365,7 @@ object AppWebDav {
     /**
      * 获取书籍进度
      */
-    suspend fun getBookProgress(book: Book): BookProgress? {
+    override suspend fun getBookProgress(book: Book): BookProgress? {
         return getBookProgressResult(book)
             .onFailure {
                 currentCoroutineContext().ensureActive()
@@ -377,7 +376,7 @@ object AppWebDav {
             }.getOrNull()
     }
 
-    suspend fun getBookProgressResult(book: Book): Result<BookProgress?> {
+    override suspend fun getBookProgressResult(book: Book): Result<BookProgress?> {
         val progressFileName = getProgressFileName(book.name, book.author)
         val authorization = authorization ?: run {
             AppLog.putDebug("WebDav getBookProgress skip reason=noAuthorization file=${progressFileName}")
@@ -393,11 +392,11 @@ object AppWebDav {
         }
     }
 
-    fun canApplyBookProgress(
+    override fun canApplyBookProgress(
         book: Book,
         bookProgress: BookProgress,
         logPrefix: String,
-        mode: ProgressCheckMode = ProgressCheckMode.RangeOnly
+        mode: ProgressCheckMode
     ): Boolean {
         return checkBookProgress(book, bookProgress, logPrefix, mode) == BookProgressCheckResult.CanApply
     }
@@ -406,7 +405,7 @@ object AppWebDav {
         book: Book,
         bookProgress: BookProgress,
         logPrefix: String,
-        mode: ProgressCheckMode = ProgressCheckMode.RangeOnly
+        mode: ProgressCheckMode
     ): BookProgressCheckResult {
         val maxChapterIndex = book.simulatedTotalChapterNum()
         if (maxChapterIndex <= 0 || bookProgress.durChapterIndex !in 0 until maxChapterIndex) {
@@ -445,7 +444,7 @@ object AppWebDav {
         }
     }
 
-    suspend fun downloadAllBookProgress() {
+    override suspend fun downloadAllBookProgress() {
         val authorization = authorization ?: return AppLog.putDebug(
             "WebDav downloadAllBookProgress skip reason=noAuthorization"
         )
@@ -499,7 +498,7 @@ object AppWebDav {
         }
     }
 
-    suspend fun restoreBookProgressOnly() {
+    override suspend fun restoreBookProgressOnly() {
         val authorization = authorization ?: throw NoStackTraceException("webDav没有配置")
         if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络未连接")
         kotlin.runCatching {
@@ -522,7 +521,14 @@ object AppWebDav {
                     skippedInvalid++
                     return@forEach
                 }
-                when (checkBookProgress(book, bookProgress, "WebDav restoreProgressOnly", ProgressCheckMode.RangeOnly)) {
+                when (
+                    checkBookProgress(
+                        book,
+                        bookProgress,
+                        "WebDav restoreProgressOnly",
+                        ProgressCheckMode.RangeOnly
+                    )
+                ) {
                     BookProgressCheckResult.CanApply -> {
                         book.durChapterIndex = bookProgress.durChapterIndex
                         book.durChapterPos = bookProgress.durChapterPos

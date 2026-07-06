@@ -24,10 +24,7 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isArchive
-import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
-import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isPdf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
@@ -46,14 +43,12 @@ import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
-import me.ag2s.epublib.util.zip.AndroidZipFile
 import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
-import java.util.Locale.getDefault
 import java.util.regex.Pattern
 
 /**
@@ -69,20 +64,21 @@ object FileBook : BaseFileBook {
         Pattern.compile("(^)(.+) by (.+)$")
     )
 
-    fun Book.getHandler(): BaseFileBook {
-        val originName = originName.lowercase(getDefault())
-        return when {
-            isPdf -> PdfFile
-            isLocal && (originName.endsWith(".mobi") || originName.endsWith(".azw3") || originName.endsWith(
-                ".azw"
-            )) -> MobiFile
+    private val formatHandlers: List<LocalBookFormatHandler> = listOf(
+        PdfFile,
+        MobiFile,
+        EpubFile,
+        UmdFile,
+        CbzFile,
+        TextFile
+    )
 
-            isEpub -> EpubFile
-            isLocal && originName.endsWith(".umd") -> UmdFile
-            isLocal && (originName.endsWith(".cbz") || originName.endsWith(".zip") && isImage) -> CbzFile
+    fun Book.getHandler(): LocalBookFormatHandler {
+        return formatHandlers.first { it.supports(this) }
+    }
 
-            else -> TextFile
-        }
+    private fun Book.getReadableCheckHandler(): LocalBookFormatHandler {
+        return formatHandlers.firstOrNull { it.supportsReadableCheck(this) } ?: TextFile
     }
 
     fun isBookFile(fileName: String): Boolean = AppPattern.bookFileRegex.matches(fileName)
@@ -120,37 +116,7 @@ object FileBook : BaseFileBook {
 
     @Throws(IOException::class, SecurityException::class)
     fun checkBookReadable(book: Book) {
-        when {
-            book.isEpub -> {
-                val pfd = BookHelp.getBookPFD(book) ?: throw IOException("文件不可读")
-                val zipFile = AndroidZipFile(pfd, book.originName)
-                val directResult = runCatching {
-                    zipFile.entries().hasMoreElements()
-                }
-                try {
-                    directResult.getOrThrow()
-                } catch (directError: Throwable) {
-                    if (!book.isLocal) throw directError
-                    BookHelp.getEpubFile(book).use {
-                        it.entries().hasMoreElements()
-                    }
-                } finally {
-                    zipFile.close()
-                }
-            }
-
-            book.originName.endsWith(".cbz", true) || book.originName.endsWith(".zip", true) -> {
-                val result = ZipFileWrapper.create(book) ?: throw IOException("压缩包不可读")
-                try {
-                    result.wrapper.entries().hasMoreElements()
-                } finally {
-                    result.wrapper.close()
-                    result.fileDescriptor?.close()
-                }
-            }
-
-            else -> getBookInputStream(book).use { }
-        }
+        book.getReadableCheckHandler().checkReadable(book)
     }
 
     fun getCoverPath(bookUrl: String) =
@@ -186,6 +152,7 @@ object FileBook : BaseFileBook {
 
     override fun upBookInfo(book: Book) = book.getHandler().upBookInfo(book)
     override fun getImage(book: Book, href: String) = book.getHandler().getImage(book, href)
+    override fun clear() = formatHandlers.forEach { it.clear() }
 
     /* 导入压缩包内的书籍 */
     fun importFromArchive(

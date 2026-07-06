@@ -9,7 +9,8 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.BookProgressSyncProvider
+import io.legado.app.help.ProgressCheckMode
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isImage
@@ -245,7 +246,7 @@ object ReadBook : CoroutineScope by MainScope() {
     fun uploadProgress(toast: Boolean = false, successAction: (() -> Unit)? = null) {
         book?.let {
             launch(IO) {
-                AppWebDav.uploadBookProgress(it, toast) {
+                BookProgressSyncProvider.current.uploadBookProgress(it, toast) {
                     successAction?.invoke()
                 }
                 ensureActive()
@@ -266,7 +267,7 @@ object ReadBook : CoroutineScope by MainScope() {
         if (!AppConfig.syncBookProgress) return
         val book = book ?: return
         Coroutine.async {
-            AppWebDav.getBookProgressResult(book)
+            BookProgressSyncProvider.current.getBookProgressResult(book)
         }.onError {
             AppLog.put("拉取阅读进度失败", it)
         }.onSuccess { result ->
@@ -278,16 +279,19 @@ object ReadBook : CoroutineScope by MainScope() {
             if (compare == null || compare < 0) {
                 // 服务器没有进度或者进度比服务器快，上传现有进度
                 Coroutine.async {
-                    AppWebDav.uploadBookProgress(BookProgress(book), uploadSuccessAction)
+                    BookProgressSyncProvider.current.uploadBookProgress(
+                        BookProgress(book),
+                        uploadSuccessAction
+                    )
                     book.update()
                 }
             } else if (compare > 0) {
                 // 进度比服务器慢，执行传入动作
-                if (!AppWebDav.canApplyBookProgress(
+                if (!BookProgressSyncProvider.current.canApplyBookProgress(
                         book,
                         progress,
                         "WebDav syncProgress",
-                        AppWebDav.ProgressCheckMode.RangeOnly
+                        ProgressCheckMode.RangeOnly
                     )
                 ) {
                     return@onSuccess

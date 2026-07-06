@@ -23,7 +23,7 @@ import kotlin.math.min
 class TextFile(private var book: Book) {
 
     @Suppress("ConstPropertyName")
-    companion object : BaseFileBook {
+    companion object : LocalBookFormatHandler {
         private val padRegex = "^[\\n\\s]+".toRegex()
         private const val txtBufferSize = 8 * 1024 * 1024
         private var textFile: TextFile? = null
@@ -39,6 +39,8 @@ class TextFile(private var book: Book) {
         }
 
         override fun upBookInfo(book: Book) {}
+
+        override fun supports(book: Book): Boolean = true
 
         @Throws(FileNotFoundException::class)
         override fun getChapterList(book: Book): ArrayList<BookChapter> {

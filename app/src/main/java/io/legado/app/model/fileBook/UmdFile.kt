@@ -2,6 +2,7 @@ package io.legado.app.model.fileBook
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.isLocal
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.printOnDebug
@@ -11,7 +12,7 @@ import java.io.File
 import java.io.InputStream
 
 class UmdFile(var book: Book) {
-    companion object : BaseFileBook {
+    companion object : LocalBookFormatHandler {
         private var uFile: UmdFile? = null
 
         @Synchronized
@@ -22,6 +23,10 @@ class UmdFile(var book: Book) {
             }
             uFile?.book = book
             return uFile!!
+        }
+
+        override fun supports(book: Book): Boolean {
+            return book.isLocal && book.originName.endsWith(".umd", true)
         }
 
         override fun getChapterList(book: Book): ArrayList<BookChapter> {

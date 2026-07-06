@@ -7,6 +7,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isLocal
 import io.legado.app.lib.mobi.KF6Book
 import io.legado.app.lib.mobi.KF8Book
 import io.legado.app.lib.mobi.MobiBook
@@ -22,7 +23,7 @@ import java.io.InputStream
 
 class MobiFile(var book: Book) {
 
-    companion object : BaseFileBook {
+    companion object : LocalBookFormatHandler {
         private var mFile: MobiFile? = null
         private val xmlDeclarationRegex = "<\\?xml[^>]*>".toRegex()
         private val doctypeDeclarationRegex = "<!DOCTYPE[^>]*>".toRegex()
@@ -35,6 +36,13 @@ class MobiFile(var book: Book) {
             }
             mFile?.book = book
             return mFile!!
+        }
+
+        override fun supports(book: Book): Boolean {
+            return book.isLocal &&
+                    (book.originName.endsWith(".mobi", true) ||
+                            book.originName.endsWith(".azw3", true) ||
+                            book.originName.endsWith(".azw", true))
         }
 
         override fun getChapterList(book: Book): ArrayList<BookChapter> {

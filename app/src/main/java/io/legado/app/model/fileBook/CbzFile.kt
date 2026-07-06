@@ -8,6 +8,8 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isLocal
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.EncodingDetect
 import io.legado.app.utils.FileUtils
@@ -17,11 +19,12 @@ import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.nio.charset.Charset
 
 class CbzFile(var book: Book) {
 
-    companion object : BaseFileBook {
+    companion object : LocalBookFormatHandler {
         private var eFile: CbzFile? = null
 
         @Synchronized
@@ -30,6 +33,28 @@ class CbzFile(var book: Book) {
                 eFile?.close()
                 CbzFile(book).also { eFile = it }
             }).apply { this.book = book }
+
+        override fun supports(book: Book): Boolean {
+            return book.isLocal &&
+                    (book.originName.endsWith(".cbz", true) ||
+                            book.originName.endsWith(".zip", true) && book.isImage)
+        }
+
+        override fun supportsReadableCheck(book: Book): Boolean {
+            return book.originName.endsWith(".cbz", true) ||
+                    book.originName.endsWith(".zip", true)
+        }
+
+        @Throws(IOException::class, SecurityException::class)
+        override fun checkReadable(book: Book) {
+            val result = ZipFileWrapper.create(book) ?: throw IOException("压缩包不可读")
+            try {
+                result.wrapper.entries().hasMoreElements()
+            } finally {
+                result.wrapper.close()
+                result.fileDescriptor?.close()
+            }
+        }
 
         override fun getChapterList(book: Book) = getEFile(book).getChapterList()
 
