@@ -366,14 +366,35 @@ const restoreIndex = () => {
 }
 
 let paginateTimer: ReturnType<typeof setTimeout> | null = null
+// 动画进行中触发的重分页请求挂起，避免打断跨章/章内翻页动画：
+// 旧实现回调里无条件 cancelFlipAnimation()，跨章动画刚启动就会被
+// 目标章图片 load / document.fonts.ready 触发的重分页定时器取消，
+// 表现为跨章翻页没有动画、停在旧章。动画结束后再补一次重分页。
+let pendingRepaginateAfterFlip = false
+
+const runRepaginate = () => {
+  cancelFlipAnimation()
+  const prevPos = currentPage.value?.startPos ?? props.initialChapterPos
+  doPaginate()
+  if (pages.value.length === 0) return
+  currentPageIndex.value = findPageIndexByPos(pages.value, prevPos)
+}
+
 const scheduleRepaginate = (delay = 200) => {
+  // 动画进行中只挂起请求，不安排/触发会取消动画的重分页定时器。
+  if (animating.value || flipLock) {
+    pendingRepaginateAfterFlip = true
+    return
+  }
   if (paginateTimer) clearTimeout(paginateTimer)
   paginateTimer = setTimeout(() => {
-    cancelFlipAnimation()
-    const prevPos = currentPage.value?.startPos ?? props.initialChapterPos
-    doPaginate()
-    if (pages.value.length === 0) return
-    currentPageIndex.value = findPageIndexByPos(pages.value, prevPos)
+    paginateTimer = null
+    // 定时器到期时可能已经进入动画（启动晚于调度），再次校验。
+    if (animating.value || flipLock) {
+      pendingRepaginateAfterFlip = true
+      return
+    }
+    runRepaginate()
   }, delay)
 }
 const onWindowResize = () => scheduleRepaginate()
@@ -407,6 +428,8 @@ const cancelFlipAnimation = () => {
   externalFlipCanceled = null
   animating.value = false
   flipLock = false
+  // 跨章动画取消后父组件不会再重挂，丢弃挂起的重分页避免误触发。
+  pendingRepaginateAfterFlip = false
   onCancel?.()
 }
 
@@ -416,6 +439,13 @@ const finishFlip = (nextIndex: number) => {
   animating.value = false
   flipLock = false
   emit('progressChange', props.chapterIndex, currentPage.value?.startPos ?? 0)
+  // 章内翻页动画期间被挂起的重分页（字号/字体/图片加载等）此时补做一次，
+  // 把当前进度恢复到对应页。跨章动画走 finishExternalFlip，结束后父组件重挂，
+  // 不需要在此补分页。
+  if (pendingRepaginateAfterFlip) {
+    pendingRepaginateAfterFlip = false
+    scheduleRepaginate(0)
+  }
 }
 
 const finishExternalFlip = () => {
@@ -429,6 +459,9 @@ const finishExternalFlip = () => {
   externalFlipCanceled = null
   animating.value = false
   flipLock = false
+  // 跨章动画结束后父组件 switchBookChapter 会重挂本组件重新分页，
+  // 丢弃挂起的重分页请求，避免重挂后误用旧章上下文。
+  pendingRepaginateAfterFlip = false
   onFinished?.(pos)
 }
 
