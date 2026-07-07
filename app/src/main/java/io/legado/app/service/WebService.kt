@@ -13,6 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
@@ -27,6 +28,7 @@ import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
+import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.safeStartForegroundService
@@ -41,6 +43,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import splitties.init.appCtx
+import splitties.systemservices.notificationManager
 import splitties.systemservices.powerManager
 import splitties.systemservices.wifiManager
 import java.io.IOException
@@ -97,6 +100,10 @@ class WebService : BaseService() {
     private var startTimeMs: Long = 0L
     @Volatile
     private var isRestarting: Boolean = false
+    @Volatile
+    private var foregroundNotificationStarted: Boolean = false
+    @Volatile
+    private var foregroundStartRejected: Boolean = false
     private val restartGuard = Any()
     private var restartCheckerJob: Job? = null
     private val networkChangedListener by lazy {
@@ -114,7 +121,8 @@ class WebService : BaseService() {
         startTimeMs = System.currentTimeMillis()
         upTile(true)
         networkChangedListener.register()
-        networkChangedListener.onNetworkChanged = {
+        networkChangedListener.onNetworkChanged = onNetworkChanged@{
+            if (foregroundStartRejected) return@onNetworkChanged
             val addressList = NetworkUtils.getLocalIPAddress()
             notificationList.clear()
             if (addressList.any()) {
@@ -131,6 +139,7 @@ class WebService : BaseService() {
                 notificationList.add(hostAddress)
             }
             startForegroundNotification()
+            if (foregroundStartRejected) return@onNetworkChanged
             postEvent(EventBus.WEB_SERVICE, hostAddress)
         }
         observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) {
@@ -168,6 +177,7 @@ class WebService : BaseService() {
         super.onDestroy()
         restartCheckerJob?.cancel()
         restartCheckerJob = null
+        foregroundNotificationStarted = false
         if (useWakeLock) {
             wakeLock.release()
             wifiLock?.release()
@@ -184,8 +194,13 @@ class WebService : BaseService() {
         upTile(false)
     }
 
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        stopForForegroundRestriction(null, timeLimit = true)
+        super.onTimeout(startId, fgsType)
+    }
+
     private fun tryRestartOnChapterLoaded() {
-        if (!isRun) return
+        if (!isRun || foregroundStartRejected) return
         val elapsed = System.currentTimeMillis() - startTimeMs
         if (elapsed < RESTART_INTERVAL_MS) return
         LogUtils.d(TAG) {
@@ -227,7 +242,9 @@ class WebService : BaseService() {
                     startTimeMs = System.currentTimeMillis()
                     postEvent(EventBus.WEB_SERVICE, hostAddress)
                     startForegroundNotification()
-                    LogUtils.d(TAG) { "Web服务(重新)启动成功，重新开始计时" }
+                    if (!foregroundStartRejected) {
+                        LogUtils.d(TAG) { "Web服务(重新)启动成功，重新开始计时" }
+                    }
                 } catch (e: IOException) {
                     toastOnUi(e.localizedMessage ?: "")
                     e.printOnDebug()
@@ -254,6 +271,7 @@ class WebService : BaseService() {
      * 更新通知
      */
     override fun startForegroundNotification() {
+        if (foregroundStartRejected) return
         val builder = NotificationCompat.Builder(this, AppConst.channelIdWeb)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setSmallIcon(R.drawable.ic_web_service_noti)
@@ -269,12 +287,51 @@ class WebService : BaseService() {
             servicePendingIntent<WebService>(IntentAction.stop)
         )
         val notification = builder.build()
-        ServiceCompat.startForeground(
-            this,
-            NotificationId.WebService,
-            notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        )
+        try {
+            if (foregroundNotificationStarted) {
+                notificationManager.notify(NotificationId.WebService, notification)
+            } else {
+                ServiceCompat.startForeground(
+                    this,
+                    NotificationId.WebService,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+                foregroundNotificationStarted = true
+            }
+        } catch (e: Exception) {
+            if (e.isForegroundServiceStartNotAllowed()) {
+                stopForForegroundRestriction(e, e.isDataSyncTimeLimit())
+            } else {
+                AppLog.put("创建Web服务通知出错,${e.localizedMessage}", e, true)
+                stopSelf()
+            }
+        }
+    }
+
+    private fun stopForForegroundRestriction(error: Throwable?, timeLimit: Boolean) {
+        if (foregroundStartRejected) return
+        foregroundStartRejected = true
+        foregroundNotificationStarted = false
+        appCtx.putPrefBoolean(PreferKey.webService, false)
+        val message = if (timeLimit) {
+            getString(R.string.web_service_data_sync_time_limit)
+        } else {
+            getString(R.string.web_service_foreground_start_rejected)
+        }
+        AppLog.put(message, error, toast = true)
+        stopSelf()
+    }
+
+    private fun Throwable.isForegroundServiceStartNotAllowed(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                javaClass.name == "android.app.ForegroundServiceStartNotAllowedException"
+    }
+
+    private fun Throwable.isDataSyncTimeLimit(): Boolean {
+        val msg = message ?: return false
+        return msg.contains("Time limit already exhausted", ignoreCase = true) &&
+                msg.contains("dataSync", ignoreCase = true)
     }
 
     @SuppressLint("ObsoleteSdkInt")
