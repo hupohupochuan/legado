@@ -147,7 +147,11 @@ class HttpReadAloudService : BaseReadAloudService(),
     }
 
     private fun updateNextPos() {
-        readAloudNumber += contentList[nowSpeak].length + 1 - paragraphStartPos
+        val speakText = contentList.getOrNull(nowSpeak) ?: run {
+            pauseReadAloud()
+            return
+        }
+        readAloudNumber += speakText.length + 1 - paragraphStartPos
         paragraphStartPos = 0
         if (nowSpeak < contentList.lastIndex) {
             nowSpeak++
@@ -489,13 +493,13 @@ class HttpReadAloudService : BaseReadAloudService(),
             if (exoPlayer.duration <= 0) {
                 return@launch
             }
-            val speakTextLength = contentList[nowSpeak].length
+            val speakTextLength = contentList.getOrNull(nowSpeak)?.length ?: return@launch
             if (speakTextLength <= 0) {
                 return@launch
             }
             val sleep = exoPlayer.duration / speakTextLength
             val start = speakTextLength * exoPlayer.currentPosition / exoPlayer.duration
-            for (i in start..contentList[nowSpeak].length) {
+            for (i in start..speakTextLength) {
                 if (pageIndex + 1 < textChapter.pageSize
                     && readAloudNumber + i > textChapter.getReadLength(pageIndex + 1)
                 ) {
@@ -577,7 +581,7 @@ class HttpReadAloudService : BaseReadAloudService(),
 
     override fun onPlayerError(error: PlaybackException) {
         super.onPlayerError(error)
-        AppLog.put("朗读错误\n${contentList[nowSpeak]}", error)
+        AppLog.put("朗读错误\n${contentList.getOrNull(nowSpeak).orEmpty()}", error)
         deleteCurrentSpeakFile()
         playErrorNo++
         if (playErrorNo >= 5) {
@@ -600,7 +604,7 @@ class HttpReadAloudService : BaseReadAloudService(),
             return
         }
         val mediaItem = exoPlayer.currentMediaItem ?: return
-        val filePath = mediaItem.localConfiguration!!.uri.path!!
+        val filePath = mediaItem.localConfiguration?.uri?.path ?: return
         File(filePath).delete()
     }
 
