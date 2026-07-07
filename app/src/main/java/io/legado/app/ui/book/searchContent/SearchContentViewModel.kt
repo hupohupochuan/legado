@@ -5,6 +5,7 @@ import android.app.Application
 import io.legado.app.base.BaseViewModel
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
@@ -23,15 +24,26 @@ class SearchContentViewModel(application: Application) : BaseViewModel(applicati
     val searchResultList: MutableList<SearchResult> = mutableListOf()
     var replaceEnabled = false
 
-    fun initBook(success: () -> Unit) {
+    /**
+     * 从 [IntentData.book] 取出当前书。
+     *
+     * 进程被系统杀死重建后, [IntentData] 这种静态 Map 会清空, `IntentData.book` 变 null。
+     * 旧写法 `IntentData.book as Book` 会抛 NPE 并被 execute 静默吞掉, Activity 卡在空白界面。
+     * 现在显式走 `as? Book`, 并通过 [error] 回调让上层 finish + toast, 实现"安全失败".
+     */
+    fun initBook(success: () -> Unit, error: (String) -> Unit = {}) {
         execute {
-            book = IntentData.book as Book
-            book?.let {
-                bookUrl = it.bookUrl
-                contentProcessor = ContentProcessor.get(it.name, it.origin)
+            val safeBook = IntentData.book as? Book
+            if (safeBook == null) {
+                throw NoStackTraceException("数据获取失败")
             }
+            book = safeBook
+            bookUrl = safeBook.bookUrl
+            contentProcessor = ContentProcessor.get(safeBook.name, safeBook.origin)
         }.onSuccess {
             success.invoke()
+        }.onError {
+            error.invoke("数据获取失败\n${it.localizedMessage}")
         }
     }
 
@@ -41,6 +53,9 @@ class SearchContentViewModel(application: Application) : BaseViewModel(applicati
     ): List<SearchResult> {
         val searchResultsWithinChapter: MutableList<SearchResult> = mutableListOf()
         val book = book ?: return searchResultsWithinChapter
+        // initBook 走安全失败后, book / contentProcessor 可能同时为 null (Activity 已 finish),
+        // 此时被 searchJob 调用进来, contentProcessor!! 会 NPE, 这里兜底返回空结果。
+        val processor = contentProcessor ?: return searchResultsWithinChapter
         val chapterContent = BookHelp.getContent(book, chapter) ?: return searchResultsWithinChapter
         currentCoroutineContext().ensureActive()
         chapter.title = when (AppConfig.chineseConverterType) {
@@ -49,7 +64,7 @@ class SearchContentViewModel(application: Application) : BaseViewModel(applicati
             else -> chapter.title
         }
         currentCoroutineContext().ensureActive()
-        val mContent = contentProcessor!!.getContent(
+        val mContent = processor.getContent(
             book, chapter, chapterContent, useReplace = replaceEnabled
         ).toString()
         val positions = searchPosition(mContent, query)

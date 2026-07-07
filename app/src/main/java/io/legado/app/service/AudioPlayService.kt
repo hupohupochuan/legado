@@ -363,20 +363,29 @@ class AudioPlayService : BaseService(), Player.Listener {
                 postEvent(EventBus.AUDIO_LOADING, false)
                 AudioPlay.status = if (exoPlayer.playWhenReady) Status.PLAY else Status.PAUSE
                 postEvent(EventBus.AUDIO_STATE, AudioPlay.status)
-                postEvent(EventBus.AUDIO_SIZE, exoPlayer.duration.toInt())
+                // duration 在 STATE_READY 早期可能仍是 C.TIME_UNSET (Long), 直接 toInt 会把低 32 位
+                // 截成 1, 把错误的 1ms 写入 EventBus / SeekBar.max / DB, 行为错乱且 chapter.end
+                // 被持久化成脏数据, 所以在这里统一兜底。
+                val safeDuration = exoPlayer.duration.takeIf { it > 0 } ?: 0L
+                if (safeDuration > 0) {
+                    postEvent(EventBus.AUDIO_SIZE, safeDuration.toInt())
+                    AudioPlay.saveDurChapter(safeDuration)
+                }
                 upMediaMetadata()
                 upMediaSessionPlaybackState(
                     if (pause) PlaybackStateCompat.STATE_PAUSED else PlaybackStateCompat.STATE_PLAYING
                 )
                 upPlayProgress()
                 upPlayProgressForLrc()
-                AudioPlay.saveDurChapter(exoPlayer.duration)
             }
 
             Player.STATE_ENDED -> {
                 upPlayProgressJob?.cancel()
                 upPlayProgressForLrcJob?.cancel()
-                AudioPlay.playPositionChanged(exoPlayer.duration.toInt())
+                // 播放结束时 duration 通常已就绪, 但极端情况下 (例如 MediaItem 报错即结束) 仍是
+                // C.TIME_UNSET, 此时把 durChapterPos 置为 0 而非 1, 避免下次进章节从 1ms 起播。
+                val safeDuration = exoPlayer.duration.takeIf { it > 0 } ?: 0L
+                AudioPlay.playPositionChanged(safeDuration.toInt())
                 AudioPlay.next()
             }
         }
@@ -384,12 +393,15 @@ class AudioPlayService : BaseService(), Player.Listener {
     }
 
     private fun upMediaMetadata() {
+        // C.TIME_UNSET (Long.MIN_VALUE + 1) 透传到 MediaMetadata 会让某些 Bluetooth / 车机
+        // 客户端按超大无符号值渲染进度条甚至崩溃, 这里把未知时长统一归一为 0。
+        val safeDuration = exoPlayer.duration.takeIf { it > 0 } ?: 0L
         val metadata = MediaMetadataCompat.Builder()
             .putBitmap(MediaMetadataCompat.METADATA_KEY_ART, cover)
             .putText(MediaMetadataCompat.METADATA_KEY_TITLE, AudioPlay.durChapter?.title ?: "null")
             .putText(MediaMetadataCompat.METADATA_KEY_ARTIST, AudioPlay.book?.name ?: "null")
             .putText(MediaMetadataCompat.METADATA_KEY_ALBUM, AudioPlay.book?.author ?: "null")
-            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, exoPlayer.duration)
+            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, safeDuration)
             .build()
         mediaSessionCompat?.setMetadata(metadata)
     }

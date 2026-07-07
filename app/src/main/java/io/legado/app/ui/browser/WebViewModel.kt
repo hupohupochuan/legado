@@ -85,7 +85,12 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
         }
         if (refetchAfterSuccess) {
             execute {
-                val url = intent!!.getStringExtra("url")!!
+                // 进程被系统杀后恢复时 intent 可能为 null, 退化到 initData 时记下的 baseUrl,
+                // 仍取不到就明确报错给用户, 让 Activity 处理 finish, 而不是在 execute 内 NPE。
+                val url = intent?.getStringExtra("url") ?: baseUrl.takeIf { it.isNotEmpty() }
+                if (url.isNullOrEmpty()) {
+                    throw NoStackTraceException("url不能为空")
+                }
                 val source = appDb.bookSourceDao.getBookSource(sourceOrigin)
                 html = AnalyzeUrl(
                     url,

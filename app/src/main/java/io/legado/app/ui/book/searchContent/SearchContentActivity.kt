@@ -32,6 +32,7 @@ import io.legado.app.utils.invisible
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.showSoftInput
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
@@ -70,10 +71,15 @@ class SearchContentActivity :
         initSearchView(noSearchResult)
         initRecyclerView()
         initView()
-        viewModel.initBook {
+        viewModel.initBook({
             initSearchResultList(searchResultList, position)
             initBook(noSearchResult)
-        }
+        }, { msg ->
+            // 进程被系统杀后 IntentData 已清空, 这里 toast 后直接 finish,
+            // 避免用户卡在空白搜索页, 可继续按阅读页搜索按钮重新进入。
+            toastOnUi(msg)
+            finish()
+        })
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
