@@ -348,7 +348,9 @@ object ImportOldData {
         var urlList = url.split("|")
         url = urlList[0]
         if (urlList.size > 1) {
-            map["charset"] = urlList[1].split("=")[1]
+            urlList[1].substringAfter("=", "").takeIf { it.isNotBlank() }?.let {
+                map["charset"] = it
+            }
         }
         mather = jsPattern.matcher(url)
         val jsList = arrayListOf<String>()

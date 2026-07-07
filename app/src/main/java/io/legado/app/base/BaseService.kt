@@ -1,12 +1,15 @@
 package io.legado.app.base
 
+import android.app.Notification
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import androidx.annotation.CallSuper
+import androidx.core.app.ServiceCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.permission.Permissions
@@ -82,6 +85,26 @@ abstract class BaseService : LifecycleService() {
      */
     open fun startForegroundNotification() {
 
+    }
+
+    /**
+     * 启动前台通知失败会导致服务启动崩溃, 统一吞掉系统拒绝并停止服务.
+     */
+    protected fun startForegroundCompat(
+        id: Int,
+        notification: Notification,
+        foregroundServiceType: Int,
+        errorMsg: String = "启动前台服务失败",
+        onFailure: ((Throwable) -> Unit)? = null
+    ): Boolean {
+        return try {
+            ServiceCompat.startForeground(this, id, notification, foregroundServiceType)
+            true
+        } catch (e: Exception) {
+            onFailure?.invoke(e) ?: AppLog.put("$errorMsg\n${e.localizedMessage}", e, true)
+            stopSelf()
+            false
+        }
     }
 
     /**

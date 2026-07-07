@@ -144,7 +144,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         } else {
             val tmp = IntentData.chapterList
             when {
-                tmp != null && tmp[0].bookUrl == book.bookUrl -> {
+                tmp?.firstOrNull()?.bookUrl == book.bookUrl -> {
                     curBook = book
                     chapterListData.postValue(tmp)
                 }

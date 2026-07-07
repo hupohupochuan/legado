@@ -37,10 +37,27 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
     fun initData() {
         execute {
             upBook(IntentData.book ?: return@execute)
-            ReadTimeRecorder.setBook(ReadTimeRecorder.Source.VIDEO, curBook!!.name)
-            position = curBook!!.durChapterPos.toLong()
-            val chapterList = withContext(Dispatchers.Main) { chapterListData.value }
-            initChapter(chapterList!![curBook!!.durChapterIndex])
+            val book = curBook ?: return@execute
+            ReadTimeRecorder.setBook(ReadTimeRecorder.Source.VIDEO, book.name)
+            position = book.durChapterPos.toLong()
+            val chapterList = withContext(Dispatchers.Main) { chapterListData.value.orEmpty() }
+            val chapter = getValidChapter(chapterList, book) ?: return@execute
+            initChapter(chapter)
+        }
+    }
+
+    private fun getValidChapter(chapterList: List<BookChapter>, book: Book): BookChapter? {
+        if (chapterList.isEmpty()) {
+            context.toastOnUi("no chapter")
+            return null
+        }
+        val chapterIndex = book.durChapterIndex.coerceIn(chapterList.indices)
+        if (chapterIndex != book.durChapterIndex) {
+            AppLog.put("视频章节进度越界 durChapterIndex=${book.durChapterIndex}, chapterSize=${chapterList.size}, 已修正为 $chapterIndex")
+            book.durChapterIndex = chapterIndex
+        }
+        return chapterList[chapterIndex].also {
+            book.durChapterTitle = it.title
         }
     }
 
@@ -65,8 +82,9 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
     }
 
     fun refreshChapter() {
+        val book = curBook ?: return
         chapterListData.value?.let { chapterList ->
-            val chapter = chapterList[curBook!!.durChapterIndex]
+            val chapter = getValidChapter(chapterList, book) ?: return
             chapter.resourceUrl = null
             execute {
                 initChapter(chapter)
@@ -101,8 +119,8 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
         if (source != null && source.resolutions.isNotEmpty()) {
             videoSource.postValue(source)
             resolutions.postValue(source.resolutions)
-            currentResolutionIndex = source.defaultIndex
-            val resolution = source.getResolution()
+            currentResolutionIndex = source.defaultIndex.coerceIn(source.resolutions.indices)
+            val resolution = source.getResolution(currentResolutionIndex)
             if (resolution != null) {
                 videoUrl.postValue(
                     AnalyzeUrl(
@@ -145,7 +163,7 @@ class VideoViewModel(application: Application) : BaseReadViewModel(application) 
 
     fun saveRead(position: Long) {
         Coroutine.async {
-            curBook!!.apply {
+            curBook?.apply {
                 durChapterPos = position.toInt()
                 saveRead()
             }

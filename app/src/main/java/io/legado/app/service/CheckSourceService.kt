@@ -3,7 +3,6 @@ package io.legado.app.service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
 import androidx.lifecycle.lifecycleScope
 import com.script.ScriptException
 import io.legado.app.R
@@ -264,11 +263,11 @@ class CheckSourceService : BaseService() {
         notificationBuilder.setContentText(notificationMsg)
         notificationBuilder.setProgress(originSize, finishCount, false)
         postEvent(EventBus.CHECK_SOURCE, notificationMsg)
-        ServiceCompat.startForeground(
-            this,
+        startForegroundCompat(
             NotificationId.CheckSourceService,
             notificationBuilder.build(),
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            "创建书源校验通知出错"
         )
     }
 

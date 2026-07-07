@@ -379,8 +379,15 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
                     if (playbackState == Player.STATE_READY) {
                         hasRefreshedOnPlayError = false
                     }
-                    if (playbackState == Player.STATE_ENDED && viewModel.chapterListData.value!!.size != viewModel.curBook!!.durChapterIndex + 1) {
-                        openChapter(viewModel.chapterListData.value!![viewModel.curBook!!.durChapterIndex + 1])
+                    val curBook = viewModel.curBook
+                    val chapterList = viewModel.chapterListData.value
+                    val nextIndex = curBook?.durChapterIndex?.plus(1)
+                    if (playbackState == Player.STATE_ENDED &&
+                        chapterList != null &&
+                        nextIndex != null &&
+                        nextIndex in chapterList.indices
+                    ) {
+                        openChapter(chapterList[nextIndex])
                     }
                 }
 
@@ -634,13 +641,13 @@ class VideoPlayActivity : VMBaseActivity<ActivityVideoPlayBinding, VideoViewMode
     override val isLocalBook = false
     override fun openChapter(bookChapter: BookChapter) {
         lifecycleScope.launch {
-            val tmp = viewModel.curBook!!.durChapterIndex
+            val tmp = viewModel.curBook?.durChapterIndex ?: return@launch
             viewModel.changeChapter(bookChapter)
             adapter.notifyItemChanged(tmp)
             adapter.notifyItemChanged(bookChapter.index)
         }
     }
 
-    override fun durChapterIndex(): Int = viewModel.curBook!!.durChapterIndex
+    override fun durChapterIndex(): Int = viewModel.curBook?.durChapterIndex ?: 0
     override fun onListChanged() {}
 }

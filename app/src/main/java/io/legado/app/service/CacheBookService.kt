@@ -3,7 +3,6 @@ package io.legado.app.service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseService
@@ -181,11 +180,11 @@ class CacheBookService : BaseService() {
     override fun startForegroundNotification() {
         notificationBuilder.setContentText(notificationContent)
         val notification = notificationBuilder.build()
-        ServiceCompat.startForeground(
-            this,
+        startForegroundCompat(
             NotificationId.CacheBookService,
             notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            "创建缓存通知出错"
         )
     }
 

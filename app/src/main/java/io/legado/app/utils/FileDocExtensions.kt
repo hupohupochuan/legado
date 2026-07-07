@@ -88,25 +88,51 @@ data class FileDoc(
         fun fromUri(uri: Uri, isDir: Boolean): FileDoc {
             if (uri.isContentScheme()) {
                 val doc = if (isDir) {
-                    DocumentFile.fromTreeUri(appCtx, uri)!!
+                    DocumentFile.fromTreeUri(appCtx, uri)
                 } else if (uri.host == "downloads") {
-                    val query = DownloadManager.Query()
-                    query.setFilterById(uri.lastPathSegment!!.toLong())
-                    downloadManager.query(query).use {
-                        if (it.moveToFirst()) {
-                            val lUriColum = it.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
-                            val lUri = it.getString(lUriColum)
-                            DocumentFile.fromSingleUri(appCtx, lUri.toUri())!!
-                        } else {
-                            DocumentFile.fromSingleUri(appCtx, uri)!!
+                    val downloadId = uri.lastPathSegment?.toLongOrNull()
+                    if (downloadId != null) {
+                        val query = DownloadManager.Query().setFilterById(downloadId)
+                        downloadManager.query(query).use {
+                            if (it.moveToFirst()) {
+                                val lUriColum = it.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
+                                val lUri = if (lUriColum >= 0) it.getString(lUriColum) else null
+                                lUri?.toUri()?.let { localUri ->
+                                    DocumentFile.fromSingleUri(appCtx, localUri)
+                                } ?: DocumentFile.fromSingleUri(appCtx, uri)
+                            } else {
+                                DocumentFile.fromSingleUri(appCtx, uri)
+                            }
                         }
+                    } else {
+                        DocumentFile.fromSingleUri(appCtx, uri)
                     }
                 } else {
-                    DocumentFile.fromSingleUri(appCtx, uri)!!
+                    DocumentFile.fromSingleUri(appCtx, uri)
                 }
-                return FileDoc(doc.name ?: "", isDir, doc.length(), doc.lastModified(), doc.uri)
+                val safeDoc = doc ?: return FileDoc(
+                    uri.lastPathSegment ?: uri.toString(),
+                    isDir,
+                    0L,
+                    0L,
+                    uri
+                )
+                return FileDoc(
+                    safeDoc.name ?: "",
+                    isDir,
+                    safeDoc.length(),
+                    safeDoc.lastModified(),
+                    safeDoc.uri
+                )
             }
-            val file = File(uri.path!!)
+            val filePath = uri.path ?: return FileDoc(
+                uri.toString(),
+                isDir,
+                0L,
+                0L,
+                uri
+            )
+            val file = File(filePath)
             return FileDoc(file.name, isDir, file.length(), file.lastModified(), uri)
         }
 

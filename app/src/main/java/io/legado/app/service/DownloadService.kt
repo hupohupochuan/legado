@@ -9,7 +9,6 @@ import android.content.IntentFilter
 import android.os.Environment
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import io.legado.app.R
@@ -129,11 +128,11 @@ class DownloadService : BaseService() {
             .setSubText(getString(R.string.action_download))
             .setOngoing(true)
             .build()
-        ServiceCompat.startForeground(
-            this,
+        startForegroundCompat(
             NotificationId.DownloadService,
             notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            "创建下载通知出错"
         )
     }
 

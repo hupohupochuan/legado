@@ -1,6 +1,7 @@
 package io.legado.app.help.http
 
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppLog
 import io.legado.app.help.CacheManager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.progress.ProgressManager
@@ -144,17 +145,27 @@ fun getProxyClient(proxy: String? = null): OkHttpClient {
     proxyClientCache[proxy]?.let {
         return it
     }
-    val r = Regex("(http|https|socks4|socks5)://(.*):(\\d{2,5})(@.*@.*)?")
-    val ms = r.findAll(proxy)
-    val group = ms.first()
+    val group = Regex("(http|https|socks4|socks5)://(.+):(\\d{1,5})(@.*@.*)?")
+        .matchEntire(proxy.trim())
+        ?: run {
+            AppLog.put("代理配置格式错误,已忽略")
+            return okHttpClient
+        }
     var username = ""       //代理服务器验证用户名
     var password = ""       //代理服务器验证密码
     val type = if (group.groupValues[1].startsWith("http")) "http" else "socks"
     val host = group.groupValues[2]
-    val port = group.groupValues[3].toInt()
+    val port = group.groupValues[3].toIntOrNull()?.takeIf { it in 1..65535 }
+        ?: run {
+            AppLog.put("代理端口配置错误,已忽略")
+            return okHttpClient
+        }
     if (group.groupValues[4] != "") {
-        username = group.groupValues[4].split("@")[1]
-        password = group.groupValues[4].split("@")[2]
+        val auth = group.groupValues[4].removePrefix("@").split("@", limit = 2)
+        if (auth.size == 2) {
+            username = auth[0]
+            password = auth[1]
+        }
     }
     if (host != "") {
         val builder = okHttpClient.newBuilder()
