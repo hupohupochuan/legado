@@ -49,6 +49,28 @@ class ReaderProvider : ContentProvider() {
         }
     }
 
+    private fun requestCode(uri: Uri): RequestCode? {
+        return RequestCode.entries.getOrNull(sMatcher.match(uri))
+    }
+
+    private fun queryParameters(uri: Uri): MutableMap<String, ArrayList<String>> {
+        val map: MutableMap<String, ArrayList<String>> = HashMap()
+        uri.getQueryParameter("url")?.let {
+            map["url"] = arrayListOf(it)
+        }
+        uri.getQueryParameter("index")?.let {
+            map["index"] = arrayListOf(it)
+        }
+        uri.getQueryParameter("path")?.let {
+            map["path"] = arrayListOf(it)
+        }
+        return map
+    }
+
+    private fun errorData(error: Throwable): ReturnData {
+        return ReturnData().setErrorMsg(error.localizedMessage ?: "请求处理失败")
+    }
+
     override fun onCreate(): Boolean {
         context?.let { context ->
             ShortCuts.buildShortCuts(context)
@@ -61,42 +83,46 @@ class ReaderProvider : ContentProvider() {
         selection: String?,
         selectionArgs: Array<String>?
     ): Int {
-        if (sMatcher.match(uri) < 0) return -1
-        when (RequestCode.entries[sMatcher.match(uri)]) {
-            RequestCode.DeleteBookSources -> BookSourceController.deleteSources(selection)
-            RequestCode.DeleteRssSources -> BookSourceController.deleteSources(selection)
-            else -> throw IllegalStateException(
-                "Unexpected value: " + RequestCode.entries[sMatcher.match(uri)].name
-            )
+        val requestCode = requestCode(uri) ?: return -1
+        try {
+            when (requestCode) {
+                RequestCode.DeleteBookSources,
+                RequestCode.DeleteRssSources -> BookSourceController.deleteSources(selection)
+                else -> return 0
+            }
+        } catch (_: Exception) {
+            return 0
         }
         return 0
     }
 
-    override fun getType(uri: Uri) = throw UnsupportedOperationException("Not yet implemented")
+    override fun getType(uri: Uri): String? = null
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? {
-        if (sMatcher.match(uri) < 0) return null
+        val requestCode = requestCode(uri) ?: return null
         runBlocking {
-            when (RequestCode.entries[sMatcher.match(uri)]) {
-                RequestCode.SaveBookSource -> values?.let {
-                    BookSourceController.saveSource(values.getAsString(postBodyKey))
-                }
+            try {
+                when (requestCode) {
+                    RequestCode.SaveBookSource -> values?.let {
+                        BookSourceController.saveSource(values.getAsString(postBodyKey))
+                    }
 
-                RequestCode.SaveBookSources -> values?.let {
-                    BookSourceController.saveSources(values.getAsString(postBodyKey))
-                }
+                    RequestCode.SaveBookSources -> values?.let {
+                        BookSourceController.saveSources(values.getAsString(postBodyKey))
+                    }
 
-                RequestCode.SaveBook -> values?.let {
-                    BookController.saveBook(values.getAsString(postBodyKey))
-                }
+                    RequestCode.SaveBook -> values?.let {
+                        BookController.saveBook(values.getAsString(postBodyKey))
+                    }
 
-                RequestCode.SaveBookProgress -> values?.let {
-                    BookController.saveBookProgress(values.getAsString(postBodyKey))
-                }
+                    RequestCode.SaveBookProgress -> values?.let {
+                        BookController.saveBookProgress(values.getAsString(postBodyKey))
+                    }
 
-                else -> throw IllegalStateException(
-                    "Unexpected value: " + RequestCode.entries[sMatcher.match(uri)].name
-                )
+                    else -> Unit
+                }
+            } catch (_: Exception) {
+                Unit
             }
         }
         return null
@@ -106,34 +132,32 @@ class ReaderProvider : ContentProvider() {
         uri: Uri, projection: Array<String>?, selection: String?,
         selectionArgs: Array<String>?, sortOrder: String?
     ): Cursor? {
-        val map: MutableMap<String, ArrayList<String>> = HashMap()
-        uri.getQueryParameter("url")?.let {
-            map["url"] = arrayListOf(it)
+        val requestCode = requestCode(uri) ?: return null
+        val map = try {
+            queryParameters(uri)
+        } catch (e: Exception) {
+            return SimpleCursor(errorData(e))
         }
-        uri.getQueryParameter("index")?.let {
-            map["index"] = arrayListOf(it)
-        }
-        uri.getQueryParameter("path")?.let {
-            map["path"] = arrayListOf(it)
-        }
-        return if (sMatcher.match(uri) < 0) null else when (RequestCode.entries[sMatcher.match(uri)]) {
-            RequestCode.GetBookSource -> SimpleCursor(BookSourceController.getSource(map))
-            RequestCode.GetBookSources -> SimpleCursor(BookSourceController.sources)
-            RequestCode.GetBookshelf -> SimpleCursor(BookController.getBooks(mapOf()))
-            RequestCode.GetBookContent -> SimpleCursor(BookController.getBookContent(map))
-            RequestCode.RefreshToc -> SimpleCursor(BookController.refreshToc(map))
-            RequestCode.GetChapterList -> SimpleCursor(BookController.getChapterList(map))
-            RequestCode.GetBookCover -> SimpleCursor(BookController.getCover(map))
-            else -> throw IllegalStateException(
-                "Unexpected value: " + RequestCode.entries[sMatcher.match(uri)].name
-            )
+        return try {
+            when (requestCode) {
+                RequestCode.GetBookSource -> SimpleCursor(BookSourceController.getSource(map))
+                RequestCode.GetBookSources -> SimpleCursor(BookSourceController.sources)
+                RequestCode.GetBookshelf -> SimpleCursor(BookController.getBooks(mapOf()))
+                RequestCode.GetBookContent -> SimpleCursor(BookController.getBookContent(map))
+                RequestCode.RefreshToc -> SimpleCursor(BookController.refreshToc(map))
+                RequestCode.GetChapterList -> SimpleCursor(BookController.getChapterList(map))
+                RequestCode.GetBookCover -> SimpleCursor(BookController.getCover(map))
+                else -> SimpleCursor(ReturnData().setErrorMsg("不支持的请求"))
+            }
+        } catch (e: Exception) {
+            SimpleCursor(errorData(e))
         }
     }
 
     override fun update(
         uri: Uri, values: ContentValues?, selection: String?,
         selectionArgs: Array<String>?
-    ) = throw UnsupportedOperationException("Not yet implemented")
+    ) = 0
 
 
     /**
