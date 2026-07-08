@@ -105,7 +105,7 @@
 <script setup lang="ts">
 import jump from '@/plugins/jump'
 import settings from '@/config/themeConfig'
-import API from '@api'
+import API, { backendConnectionErrorMessage, isBackendConnectionError } from '@api'
 import { useLoading } from '@/hooks/loading'
 import { useThrottleFn } from '@vueuse/shared'
 import { isNullOrBlank } from '@/utils/utils'
@@ -115,6 +115,11 @@ import { msgbox } from '@/utils/toast'
 const content = ref()
 const { isLoading, loadingWrapper } = useLoading(content, '正在获取信息')
 const store = useBookStore()
+
+const getChapterRequestErrorMessage = (err: unknown, fallback: string) => {
+  if (isBackendConnectionError(err)) return backendConnectionErrorMessage
+  return fallback
+}
 
 const {
   catalog,
@@ -483,7 +488,6 @@ const turnBookChapter = async (direction: 'next' | 'prev') => {
     return
   }
 
-  toast.info(direction === 'next' ? '下一章' : '上一章')
   bookChapterSwitching.value = true
   noPoint.value = true
   const initialPos = direction === 'next' ? 0 : Number.MAX_SAFE_INTEGER
@@ -491,6 +495,7 @@ const turnBookChapter = async (direction: 'next' | 'prev') => {
 
   try {
     const targetChapter = await resolveBookChapterForTurn(targetIndex)
+    toast.info(direction === 'next' ? '下一章' : '上一章')
     const started =
       bookReaderRef.value?.flipToChapter?.(
         targetChapter,
@@ -511,7 +516,10 @@ const turnBookChapter = async (direction: 'next' | 'prev') => {
       }
       finishBookChapterSwitching()
     }
-  } catch {
+  } catch (err) {
+    if (isBackendConnectionError(err)) {
+      toast.error(backendConnectionErrorMessage)
+    }
     finishBookChapterSwitching()
   }
 }
@@ -544,19 +552,24 @@ const onBookFallbackToScroll = () => {
 const getContent = (
   index: number,
   reloadChapter = true,
-  chapterPos = 0,
+  targetChapterPos = 0,
   // 书本翻页模式专用：传给 BookPageReader 的初始页定位参数。
   // 默认与持久化 chapterPos 一致；上一章"落到最后一页"场景传哨兵
   // (Number.MAX_SAFE_INTEGER)，仅在组件内部用于定位，不会进入 readingBook。
   initialPos?: number,
 ) => {
+  const previousChapterData = chapterData.value.slice()
+  const previousIndex = chapterIndex.value
+  const previousPos = chapterPos.value
+  const previousBookInitialPos = bookInitialPos.value
+  const previousShowContent = showContent.value
   if (reloadChapter) {
     clearPrefetchedChapters()
     store.setShowContent(false)
     jump(top.value, { duration: 0 })
-    saveReadingBookProgressToBrowser(index, chapterPos)
+    saveReadingBookProgressToBrowser(index, targetChapterPos)
     // 书本翻页模式：整章重载时把初始页定位参数对齐
-    if (activeBookMode.value) bookInitialPos.value = initialPos ?? chapterPos
+    if (activeBookMode.value) bookInitialPos.value = initialPos ?? targetChapterPos
     chapterData.value = []
   }
 
@@ -564,7 +577,7 @@ const getContent = (
     ({ chapter, isSuccess, errorMsg }) => {
       chapterData.value.push(chapter)
       if (reloadChapter) {
-        toChapterPos(chapterPos)
+        toChapterPos(targetChapterPos)
         if (infiniteLoading.value) prefetchChapter(index + 1)
         // 书本模式跨章后预取相邻章节，供下次跨章即时切换，避免再次弹 loading mask
         if (activeBookMode.value) prefetchBookAdjacent(index)
@@ -580,17 +593,30 @@ const getContent = (
       }
     },
     err => {
+      const errorMsg = getChapterRequestErrorMessage(
+        err,
+        reloadChapter ? '获取章节内容失败！' : '获取下一章内容失败！',
+      )
       if (reloadChapter) {
-        const content = ['获取章节内容失败！']
-        chapterData.value.push({
-          index,
-          content,
-          title: catalog.value[index]?.title || '',
-        })
+        if (previousChapterData.length > 0) {
+          chapterData.value = previousChapterData
+          saveReadingBookProgressToBrowser(previousIndex, previousPos)
+          if (activeBookMode.value) bookInitialPos.value = previousBookInitialPos
+          store.setShowContent(previousShowContent)
+        } else {
+          chapterData.value.push({
+            index,
+            content: [errorMsg],
+            title: catalog.value[index]?.title || '',
+          })
+          store.setShowContent(true)
+        }
       } else {
-        toast.error('获取下一章内容失败！')
+        toast.error(errorMsg)
       }
-      store.setShowContent(true)
+      noPoint.value = false
+      store.setContentLoading(true)
+      if (reloadChapter) toast.error(errorMsg)
       throw err
     },
   )
@@ -654,23 +680,29 @@ const onVisibilityChange = () => {
 }
 
 const toNextChapter = () => {
-  store.setContentLoading(true)
   const index = chapterIndex.value + 1
   if (typeof catalog.value[index] !== 'undefined') {
-    toast.info('下一章')
+    store.setContentLoading(true)
     getContent(index)
-    store.saveBookProgress()
+      ?.then(() => {
+        toast.info('下一章')
+        store.saveBookProgress()
+      })
+      .catch(() => undefined)
   } else {
     toast.error('本章是最后一章')
   }
 }
 const toPreChapter = () => {
-  store.setContentLoading(true)
   const index = chapterIndex.value - 1
   if (typeof catalog.value[index] !== 'undefined') {
-    toast.info('上一章')
+    store.setContentLoading(true)
     getContent(index)
-    store.saveBookProgress()
+      ?.then(() => {
+        toast.info('上一章')
+        store.saveBookProgress()
+      })
+      .catch(() => undefined)
   } else {
     toast.error('本章是第一章')
   }

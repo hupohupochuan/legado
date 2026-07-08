@@ -58,14 +58,30 @@ class FetchWrapper {
       }
     }
 
-    const response = await fetch(req.url, {
-      ...req.options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...((req.options as any)?.headers || {}),
-      },
-    })
-    const data = await response.json()
+    let response: Response
+    let data: unknown
+    try {
+      response = await fetch(req.url, {
+        ...req.options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...((req.options as any)?.headers || {}),
+        },
+      })
+      data = await response.json()
+    } catch (error) {
+      let rejection = error
+      for (const interceptor of this._resInterceptors) {
+        if (interceptor.onRejected) {
+          try {
+            return await interceptor.onRejected(rejection)
+          } catch (err) {
+            rejection = err
+          }
+        }
+      }
+      throw rejection
+    }
     let result = { data, status: response.status, headers: response.headers, config: req }
 
     for (const interceptor of this._resInterceptors) {

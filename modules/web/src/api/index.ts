@@ -17,6 +17,25 @@ createApp(App).use(store)
 const connectionStore = useConnectionStore()
 
 const LeagdoApiResponseKeys: string[] = Array.of('isSuccess', 'errorMsg')
+export const backendConnectionErrorMessage = '网络异常，与手机断开联系'
+const backendConnectionErrorKey = '__legadoBackendConnectionError'
+
+export const isBackendConnectionError = (err: unknown) => {
+  return typeof err === 'object' && err !== null && (err as Record<string, unknown>)[backendConnectionErrorKey] === true
+}
+
+const markBackendConnectionError = (err: unknown) => {
+  if (typeof err === 'object' && err !== null) {
+    try {
+      Object.defineProperty(err, backendConnectionErrorKey, {
+        value: true,
+        configurable: true,
+      })
+    } catch {
+      ;(err as Record<string, unknown>)[backendConnectionErrorKey] = true
+    }
+  }
+}
 
 /** Interceptor: check if resp is LeagdoApiResponse*/
 const responseCheckInterceptor = (resp: any) => {
@@ -48,8 +67,9 @@ const responseCheckInterceptor = (resp: any) => {
 }
 
 const fetchErrorInterceptor = (err: unknown) => {
+  markBackendConnectionError(err)
   toast.error({
-    message: '后端连接失败，请检查阅读WEB服务或者设置其它可用链接',
+    message: backendConnectionErrorMessage,
     grouping: true,
   })
   connectionStore.setConnectType('danger')
