@@ -11,6 +11,7 @@ import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJson
+import io.legado.app.utils.printOnDebug
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.MainScope
@@ -54,8 +55,8 @@ class BookSearchWebSocket(handshakeRequest: NanoHTTPD.IHTTPSession) :
         launch(IO) {
             kotlin.runCatching {
                 if (!message.textPayload.isJson()) {
-                    send("数据必须为Json格式")
-                    close(normalClosure, SEARCH_FINISH, false)
+                    safeSend("数据必须为Json格式")
+                    safeClose(normalClosure, SEARCH_FINISH, false)
                     return@launch
                 }
                 val searchMap =
@@ -63,8 +64,8 @@ class BookSearchWebSocket(handshakeRequest: NanoHTTPD.IHTTPSession) :
                 if (searchMap != null) {
                     val key = searchMap["key"]
                     if (key.isNullOrBlank()) {
-                        send(appCtx.getString(R.string.cannot_empty))
-                        close(normalClosure, SEARCH_FINISH, false)
+                        safeSend(appCtx.getString(R.string.cannot_empty))
+                        safeClose(normalClosure, SEARCH_FINISH, false)
                         return@launch
                     }
                     searchModel.search(System.currentTimeMillis(), key)
@@ -88,14 +89,38 @@ class BookSearchWebSocket(handshakeRequest: NanoHTTPD.IHTTPSession) :
     }
 
     override fun onSearchSuccess(searchBooks: List<SearchBook>) {
-        send(GSON.toJson(searchBooks))
+        safeSend(GSON.toJson(searchBooks))
     }
 
-    override fun onSearchFinish(isEmpty: Boolean, hasMore: Boolean) = close(normalClosure, SEARCH_FINISH, false)
+    override fun onSearchFinish(isEmpty: Boolean, hasMore: Boolean) {
+        safeClose(normalClosure, SEARCH_FINISH, false)
+    }
 
-    override fun onSearchCancel(exception: Throwable?) = close(normalClosure, exception?.toString() ?: SEARCH_FINISH, false)
+    override fun onSearchCancel(exception: Throwable?) {
+        safeClose(normalClosure, exception?.toString() ?: SEARCH_FINISH, false)
+    }
 
     override fun onSearchOptionsResolved(options: List<ExploreOption>) {
+    }
+
+    private fun safeSend(msg: String) {
+        kotlin.runCatching {
+            send(msg)
+        }.onFailure {
+            it.printOnDebug()
+        }
+    }
+
+    private fun safeClose(
+        code: NanoWSD.WebSocketFrame.CloseCode,
+        reason: String,
+        initiatedByRemote: Boolean
+    ) {
+        kotlin.runCatching {
+            close(code, reason, initiatedByRemote)
+        }.onFailure {
+            it.printOnDebug()
+        }
     }
 
     override fun getSearchOptions(): List<ExploreOption> {

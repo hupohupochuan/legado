@@ -357,7 +357,8 @@ class HttpReadAloudService : BaseReadAloudService(),
                 currentCoroutineContext().ensureActive()
                 val checkJs = httpTts.loginCheckJs
                 if (checkJs?.isNotBlank() == true) {
-                    response = analyzeUrl.evalJS(checkJs, response) as Response
+                    response = analyzeUrl.evalJS(checkJs, response) as? Response
+                        ?: throw NoStackTraceException("TTS校验JS返回类型错误")
                 }
                 response.headers["Content-Type"]?.let { contentType ->
                     val contentType = contentType.substringBefore(";")

@@ -102,24 +102,29 @@ class DownloadService : BaseService() {
     @Synchronized
     private fun queryComplete() {
         if (downloads.isEmpty()) return
-        val ids = downloads.keys.toLongArray()
-        val query = DownloadManager.Query().setFilterById(*ids)
-        downloadManager.query(query).use { cursor ->
-            val idIndex = cursor.getColumnIndex(DownloadManager.COLUMN_ID)
-            val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
-            if (idIndex < 0 || statusIndex < 0) return
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idIndex)
-                val status = cursor.getInt(statusIndex)
-                if (status == DownloadManager.STATUS_SUCCESSFUL) {
-                    val fileName = downloads.remove(id)
-                    downloadManager.getUriForDownloadedFile(id)?.let { uri ->
-                        openFileUri(uri, IntentType.from(fileName))
+        kotlin.runCatching {
+            val ids = downloads.keys.toLongArray()
+            val query = DownloadManager.Query().setFilterById(*ids)
+            downloadManager.query(query)?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(DownloadManager.COLUMN_ID)
+                val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                if (idIndex < 0 || statusIndex < 0) return@use
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idIndex)
+                    val status = cursor.getInt(statusIndex)
+                    if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                        val fileName = downloads.remove(id)
+                        downloadManager.getUriForDownloadedFile(id)?.let { uri ->
+                            openFileUri(uri, IntentType.from(fileName))
+                        }
                     }
                 }
             }
+            if (downloads.isEmpty()) stopSelf()
+        }.onFailure {
+            AppLog.put("查询下载完成状态出错", it)
+            it.printStackTrace()
         }
-        if (downloads.isEmpty()) stopSelf()
     }
 
     override fun startForegroundNotification() {
