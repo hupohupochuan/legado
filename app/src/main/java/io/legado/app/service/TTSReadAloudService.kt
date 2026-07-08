@@ -88,7 +88,7 @@ class TTSReadAloudService : BaseReadAloudService() {
                 ensureActive()
                 var text = list[i]
                 if (paragraphStartPos > 0 && i == nowSpeak) {
-                    text = text.substring(paragraphStartPos)
+                    text = text.substring(safeParagraphStart(text, i))
                 }
                 if (text.matches(AppPattern.notReadAloudRegex)) continue
                 val utteranceId = AppConst.APP_TAG + i
@@ -210,7 +210,7 @@ class TTSReadAloudService : BaseReadAloudService() {
         private fun nextParagraph() {
             while (true) {
                 val speakText = contentList.getOrNull(nowSpeak) ?: return
-                readAloudNumber += speakText.length + 1 - paragraphStartPos
+                readAloudNumber += speakText.length + 1 - safeParagraphStart(speakText)
                 paragraphStartPos = 0
                 nowSpeak++
                 if (nowSpeak >= contentList.size) {

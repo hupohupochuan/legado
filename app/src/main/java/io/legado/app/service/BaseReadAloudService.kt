@@ -313,6 +313,13 @@ abstract class BaseReadAloudService : BaseService() {
         postEvent(EventBus.TTS_PROGRESS, progress)
     }
 
+    protected fun safeParagraphStart(text: String, index: Int = nowSpeak): Int {
+        if (index != nowSpeak || paragraphStartPos <= 0) {
+            return 0
+        }
+        return paragraphStartPos.coerceIn(0, text.length)
+    }
+
     private fun prevP() {
         if (waitNewReadAloud) return
         if (contentList.isEmpty() || nowSpeak !in contentList.indices) {
@@ -323,8 +330,10 @@ abstract class BaseReadAloudService : BaseService() {
         if (nowSpeak > 0) {
             playStop()
             do {
+                val currentText = contentList[nowSpeak]
                 nowSpeak--
-                readAloudNumber -= contentList[nowSpeak].length + 1 + paragraphStartPos
+                readAloudNumber -= contentList[nowSpeak].length + 1 +
+                    safeParagraphStart(currentText, nowSpeak + 1)
                 paragraphStartPos = 0
             } while (nowSpeak > 0 && contentList[nowSpeak].matches(AppPattern.notReadAloudRegex))
             textChapter?.let {
@@ -357,7 +366,7 @@ abstract class BaseReadAloudService : BaseService() {
         }
         if (nowSpeak < contentList.size - 1) {
             playStop()
-            readAloudNumber += contentList[nowSpeak].length.plus(1) - paragraphStartPos
+            readAloudNumber += contentList[nowSpeak].length.plus(1) - safeParagraphStart(contentList[nowSpeak])
             paragraphStartPos = 0
             nowSpeak++
             while (nowSpeak < contentList.lastIndex && contentList[nowSpeak].matches(AppPattern.notReadAloudRegex)) {
