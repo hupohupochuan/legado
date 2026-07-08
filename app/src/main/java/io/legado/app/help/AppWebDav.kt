@@ -1,6 +1,7 @@
 package io.legado.app.help
 
 import android.net.Uri
+import android.os.SystemClock
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
@@ -14,6 +15,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.Restore
 import io.legado.app.lib.webdav.Authorization
+import io.legado.app.lib.webdav.ObjectNotFoundException
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.lib.webdav.WebDavFile
@@ -34,6 +36,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import splitties.init.appCtx
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -45,6 +48,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 object AppWebDav : BookProgressSync {
     private const val defaultWebDavUrl = "https://dav.jianguoyun.com/dav/"
+    private const val missingBookProgressCacheMillis = 10 * 60 * 1000L
     private val bookProgressUrl get() = "${rootWebDavUrl}bookProgress/"
     private val exportsWebDavUrl get() = "${rootWebDavUrl}books/"
     private val bgWebDavUrl get() = "${rootWebDavUrl}background/"
@@ -59,6 +63,7 @@ object AppWebDav : BookProgressSync {
     val isJianGuoYun get() = rootWebDavUrl.startsWith(defaultWebDavUrl, true)
 
     private val configVersion = AtomicInteger()
+    private val missingBookProgressFiles = ConcurrentHashMap<String, Long>()
 
     private enum class BookProgressCheckResult {
         CanApply,
@@ -93,6 +98,7 @@ object AppWebDav : BookProgressSync {
         if (account.isNullOrEmpty() || password.isNullOrEmpty()) {
             authorization = null
             defaultBookWebDav = null
+            missingBookProgressFiles.clear()
             AppLog.put("WebDav upConfig: 账号或密码为空，已清空运行时配置")
             return
         }
@@ -120,6 +126,7 @@ object AppWebDav : BookProgressSync {
             val rootBooksUrl = "${rootWebDavUrl}books/"
             defaultBookWebDav = RemoteBookWebDav(rootBooksUrl, mAuthorization)
             authorization = mAuthorization
+            missingBookProgressFiles.clear()
             AppLog.put("WebDav配置更新成功 url=${WebDav.safeLogUrl(rootWebDavUrl)}")
         }.onFailure {
             AppLog.put(
@@ -346,6 +353,7 @@ object AppWebDav : BookProgressSync {
             val json = GSON.toJson(progress)
             val url = bookProgressUrl + fileName
             WebDav(url, authorization).upload(json.toByteArray(), "application/json")
+            missingBookProgressFiles.remove(fileName)
             onProgressUpdate?.invoke()
             AppLog.putDebug(
                 "WebDav uploadBookProgress success file=${fileName} " +
@@ -383,11 +391,28 @@ object AppWebDav : BookProgressSync {
             return Result.success(null)
         }
         return kotlin.runCatching {
+            if (isMissingBookProgressCached(progressFileName)) {
+                AppLog.putDebug(
+                    "WebDav getBookProgress skip reason=remoteMissingCached file=${progressFileName}"
+                )
+                return@runCatching null
+            }
             downloadBookProgress(progressFileName, authorization)?.also {
+                missingBookProgressFiles.remove(progressFileName)
                 AppLog.putDebug(
                     "WebDav getBookProgress success file=${progressFileName} " +
                             "chapter=${it.durChapterIndex} pos=${it.durChapterPos}"
                 )
+            }
+        }.recoverCatching {
+            if (it.isBookProgressNotFound()) {
+                markMissingBookProgress(progressFileName)
+                AppLog.putDebug(
+                    "WebDav getBookProgress skip reason=remoteMissing file=${progressFileName}"
+                )
+                null
+            } else {
+                throw it
             }
         }
     }
@@ -399,6 +424,29 @@ object AppWebDav : BookProgressSync {
         mode: ProgressCheckMode
     ): Boolean {
         return checkBookProgress(book, bookProgress, logPrefix, mode) == BookProgressCheckResult.CanApply
+    }
+
+    private fun isMissingBookProgressCached(progressFileName: String): Boolean {
+        val expireAt = missingBookProgressFiles[progressFileName] ?: return false
+        if (expireAt > SystemClock.uptimeMillis()) {
+            return true
+        }
+        missingBookProgressFiles.remove(progressFileName, expireAt)
+        return false
+    }
+
+    private fun markMissingBookProgress(progressFileName: String) {
+        missingBookProgressFiles[progressFileName] =
+            SystemClock.uptimeMillis() + missingBookProgressCacheMillis
+    }
+
+    private fun Throwable.isBookProgressNotFound(): Boolean {
+        if (this is ObjectNotFoundException) {
+            return true
+        }
+        val detail = localizedMessage ?: message ?: return false
+        return this is WebDavException &&
+                (detail.contains("\n404:") || detail.contains("404:Not Found", ignoreCase = true))
     }
 
     private fun checkBookProgress(
