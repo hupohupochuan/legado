@@ -153,8 +153,10 @@ class TTSReadAloudService : BaseReadAloudService() {
         override fun onStart(s: String) {
             LogUtils.d(TAG, "onStart nowSpeak:$nowSpeak pageIndex:$pageIndex utteranceId:$s")
             val chapter = textChapter ?: return
-            if (contentList[nowSpeak].matches(AppPattern.notReadAloudRegex)) {
+            val speakText = contentList.getOrNull(nowSpeak) ?: return
+            if (speakText.matches(AppPattern.notReadAloudRegex)) {
                 nextParagraph()
+                return
             }
             if (pageIndex + 1 < chapter.pageSize
                 && readAloudNumber + 1 > chapter.getReadLength(pageIndex + 1)
@@ -206,15 +208,20 @@ class TTSReadAloudService : BaseReadAloudService() {
          * 跳过全标点段落,推进到下一段;若已到末尾则切下一章。
          */
         private fun nextParagraph() {
-            do {
-                readAloudNumber += contentList[nowSpeak].length + 1 - paragraphStartPos
+            while (true) {
+                val speakText = contentList.getOrNull(nowSpeak) ?: return
+                readAloudNumber += speakText.length + 1 - paragraphStartPos
                 paragraphStartPos = 0
                 nowSpeak++
                 if (nowSpeak >= contentList.size) {
                     nextChapter()
                     return
                 }
-            } while (contentList[nowSpeak].matches(AppPattern.notReadAloudRegex))
+                val nextText = contentList.getOrNull(nowSpeak) ?: return
+                if (!nextText.matches(AppPattern.notReadAloudRegex)) {
+                    return
+                }
+            }
         }
     }
 
