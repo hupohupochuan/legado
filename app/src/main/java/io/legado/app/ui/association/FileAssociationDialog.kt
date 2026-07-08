@@ -2,6 +2,7 @@ package io.legado.app.ui.association
 
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.view.View
 import androidx.core.net.toUri
 import androidx.core.os.BundleCompat
@@ -12,6 +13,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.InvalidBooksDirException
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.noButton
@@ -23,6 +25,7 @@ import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.canRead
 import io.legado.app.utils.checkWrite
@@ -214,14 +217,14 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                             throw InvalidBooksDirException("请重新设置书籍保存位置")
                         }
                         this@FileAssociationDialog.readUri(uri) { fileDoc, inputStream ->
-                            val name = fileDoc.name
+                            val name = getImportFileName(fileDoc, uri)
                             var doc = treeDoc.findFile(name)
-                            if (doc == null || fileDoc.lastModified > doc.lastModified()) {
-                                if (doc == null) {
-                                    doc = treeDoc.createFile(FileUtils.getMimeType(name), name)
-                                        ?: throw InvalidBooksDirException("请重新设置书籍保存位置")
-                                }
-                                requireContext().contentResolver.openOutputStream(doc.uri)!!
+                            if (doc == null) {
+                                doc = treeDoc.createFile(FileUtils.getMimeType(name), name)
+                                    ?: throw InvalidBooksDirException("请重新设置书籍保存位置")
+                            }
+                            if (!isSameDocument(uri, doc.uri)) {
+                                requireContext().contentResolver.openOutputStream(doc.uri, "wt")!!
                                     .use { oStream ->
                                         inputStream.copyTo(oStream)
                                     }
@@ -234,11 +237,14 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                             throw InvalidBooksDirException("请重新设置书籍保存位置")
                         }
                         this@FileAssociationDialog.readUri(uri) { fileDoc, inputStream ->
-                            val name = fileDoc.name
+                            val name = getImportFileName(fileDoc, uri)
                             val file = treeFile.getFile(name)
-                            if (!file.exists() || fileDoc.lastModified > file.lastModified()) {
+                            if (fileDoc.asFile()?.canonicalPath != file.canonicalPath) {
                                 FileOutputStream(file).use { oStream ->
                                     inputStream.copyTo(oStream)
+                                }
+                                if (fileDoc.lastModified > 0) {
+                                    file.setLastModified(fileDoc.lastModified)
                                 }
                             }
                             viewModel.importBook(Uri.fromFile(file))
@@ -259,5 +265,25 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                 }
             }
         }
+    }
+
+    private fun getImportFileName(fileDoc: FileDoc, uri: Uri): String {
+        return fileDoc.name.ifBlank {
+            uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':').orEmpty()
+        }.ifBlank {
+            throw NoStackTraceException("未获取到文件名")
+        }
+    }
+
+    private fun isSameDocument(left: Uri, right: Uri): Boolean {
+        if (left == right) {
+            return true
+        }
+        if (!left.isContentScheme() || !right.isContentScheme() || left.authority != right.authority) {
+            return false
+        }
+        return runCatching {
+            DocumentsContract.getDocumentId(left) == DocumentsContract.getDocumentId(right)
+        }.getOrDefault(false)
     }
 }
