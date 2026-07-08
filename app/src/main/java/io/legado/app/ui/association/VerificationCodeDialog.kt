@@ -57,7 +57,7 @@ object VerificationCodeDialog {
             customView { binding.root }
 
             onDismiss {
-                SourceVerificationHelp.checkResult(sourceOrigin!!)
+                sourceOrigin?.let { SourceVerificationHelp.checkResult(it) }
             }
         }
 
@@ -66,7 +66,7 @@ object VerificationCodeDialog {
             when (item.itemId) {
                 R.id.menu_ok -> {
                     val verificationCode = binding.verificationCode.text.toString()
-                    SourceVerificationHelp.setResult(sourceOrigin!!, verificationCode)
+                    sourceOrigin?.let { SourceVerificationHelp.setResult(it, verificationCode) }
                     dialog.dismiss()
                 }
 
@@ -128,7 +128,7 @@ object VerificationCodeDialog {
                     dataSource: DataSource,
                     isFirstResource: Boolean
                 ): Boolean {
-                    val bitmap = resource.copy(resource.config!!, true)
+                    val bitmap = resource.copy(resource.config ?: Bitmap.Config.ARGB_8888, true)
                     ImageProvider.put(url, bitmap)
                     return false
                 }

@@ -131,9 +131,10 @@ class ImportHttpTtsDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
             payloads: MutableList<Any>
         ) {
             binding.apply {
-                cbSourceName.isChecked = viewModel.selectStatus[holder.layoutPosition]
+                val position = holder.safeLayoutPosition(viewModel.allSources.size) ?: return
+                cbSourceName.isChecked = viewModel.selectStatus.getOrNull(position) == true
                 cbSourceName.text = item.name
-                val localSource = viewModel.checkSources[holder.layoutPosition]
+                val localSource = viewModel.checkSources.getOrNull(position)
                 tvSourceState.text = when {
                     localSource == null -> "新增"
                     item.lastUpdateTime > localSource.lastUpdateTime -> "更新"
@@ -145,21 +146,27 @@ class ImportHttpTtsDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         override fun registerListener(holder: ItemViewHolder, binding: ItemSourceImportBinding) {
             binding.apply {
                 cbSourceName.setOnUserCheckedChangeListener { isChecked ->
-                    viewModel.selectStatus[holder.layoutPosition] = isChecked
+                    val position = holder.safeBindingAdapterPosition(viewModel.selectStatus.size)
+                        ?: return@setOnUserCheckedChangeListener
+                    viewModel.selectStatus[position] = isChecked
                     upSelectText()
                 }
                 root.onClick {
+                    val position = holder.safeBindingAdapterPosition(viewModel.selectStatus.size)
+                        ?: return@onClick
                     cbSourceName.isChecked = !cbSourceName.isChecked
-                    viewModel.selectStatus[holder.layoutPosition] = cbSourceName.isChecked
+                    viewModel.selectStatus[position] = cbSourceName.isChecked
                     upSelectText()
                 }
                 tvOpen.setOnClickListener {
-                    val source = viewModel.allSources[holder.layoutPosition]
+                    val position = holder.safeBindingAdapterPosition(viewModel.allSources.size)
+                        ?: return@setOnClickListener
+                    val source = viewModel.allSources[position]
                     showDialogFragment(
                         CodeDialog(
                             GSON.toJson(source),
                             disableEdit = false,
-                            requestId = holder.layoutPosition.toString()
+                            requestId = position.toString()
                         )
                     )
                 }
@@ -169,7 +176,7 @@ class ImportHttpTtsDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     }
 
     override fun onCodeSave(code: String, requestId: String?) {
-        requestId?.toInt()?.let {
+        requestId?.toIntOrNull()?.takeIf { it in viewModel.allSources.indices }?.let {
             HttpTTS.fromJson(code).getOrNull()?.let { source ->
                 viewModel.allSources[it] = source
                 adapter.setItem(it, source)

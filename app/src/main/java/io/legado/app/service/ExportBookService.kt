@@ -390,9 +390,9 @@ class ExportBookService : BaseService() {
 
     private fun setAssetsExternal(doc: FileDoc, book: Book, epubBook: EpubBook): String {
         var contentModel = ""
-        doc.list()!!.forEach { folder ->
+        doc.list().orEmpty().forEach { folder ->
             if (folder.isDir && folder.name == "Text") {
-                folder.list()!!.sortedWith { o1, o2 ->
+                folder.list().orEmpty().sortedWith { o1, o2 ->
                     o1.name.cnCompare(o2.name)
                 }.forEach loop@{ file ->
                     if (file.isDir) {
@@ -432,7 +432,7 @@ class ExportBookService : BaseService() {
                 }
             } else if (folder.isDir) {
                 //资源文件
-                folder.list()!!.forEach loop2@{
+                folder.list().orEmpty().forEach loop2@{
                     if (it.isDir) {
                         return@loop2
                     }
@@ -645,6 +645,12 @@ class ExportBookService : BaseService() {
 
         private var scope = parseScope(scopeStr)
 
+        init {
+            if (size <= 0) {
+                throw NoStackTraceException("每个EPUB文件包含章节数必须大于0")
+            }
+        }
+
         /**
          * 导出Epub
          * @param path 导出的路径
@@ -660,6 +666,9 @@ class ExportBookService : BaseService() {
             val currentTimeMillis = System.currentTimeMillis()
             val count = appDb.bookChapterDao.getChapterCount(book.bookUrl)
             scope = scope.filter { it < count }.toHashSet()
+            if (scope.isEmpty()) {
+                throw NoStackTraceException("导出范围未匹配到章节")
+            }
 
             val fileDoc = FileDoc.fromDir(path)
 
@@ -857,14 +866,23 @@ class ExportBookService : BaseService() {
             val split = scope.split(",")
 
             val result = linkedSetOf<Int>()
-            for (s in split) {
+            for (s in split.map { it.trim() }.filter { it.isNotEmpty() }) {
                 val v = s.split("-")
                 if (v.size != 2) {
-                    result.add(s.toInt() - 1)
+                    val index = s.toIntOrNull()
+                    if (index == null || index <= 0) {
+                        AppLog.put("Error expression : $s")
+                        continue
+                    }
+                    result.add(index - 1)
                     continue
                 }
-                val left = v[0].toInt()
-                val right = v[1].toInt()
+                val left = v[0].trim().toIntOrNull()
+                val right = v[1].trim().toIntOrNull()
+                if (left == null || right == null || left <= 0 || right <= 0) {
+                    AppLog.put("Error expression : $s")
+                    continue
+                }
                 if (left > right) {
                     AppLog.put("Error expression : $s; left > right")
                     continue

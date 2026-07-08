@@ -177,7 +177,7 @@ class ImportReplaceRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_vi
     }
 
     override fun onCodeSave(code: String, requestId: String?) {
-        requestId?.toInt()?.let {
+        requestId?.toIntOrNull()?.takeIf { it in viewModel.allRules.indices }?.let {
             GSON.fromJsonObject<ReplaceRule>(code).getOrNull()?.let { rule ->
                 viewModel.allRules[it] = rule
                 adapter.setItem(it, rule)
@@ -200,13 +200,14 @@ class ImportReplaceRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_vi
             payloads: MutableList<Any>
         ) {
             binding.run {
-                cbSourceName.isChecked = viewModel.selectStatus[holder.layoutPosition]
+                val position = holder.safeLayoutPosition(viewModel.allRules.size) ?: return
+                cbSourceName.isChecked = viewModel.selectStatus.getOrNull(position) == true
                 cbSourceName.text = if (item.group.isNullOrBlank()) {
                     item.name
                 } else {
                     "${item.name}(${item.group})"
                 }
-                val localRule = viewModel.checkRules[holder.layoutPosition]
+                val localRule = viewModel.checkRules.getOrNull(position)
                 tvSourceState.text = when {
                     localRule == null -> "新增"
                     item.pattern != localRule.pattern
@@ -222,21 +223,27 @@ class ImportReplaceRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_vi
         override fun registerListener(holder: ItemViewHolder, binding: ItemSourceImportBinding) {
             binding.run {
                 cbSourceName.setOnUserCheckedChangeListener { isChecked ->
-                    viewModel.selectStatus[holder.layoutPosition] = isChecked
+                    val position = holder.safeBindingAdapterPosition(viewModel.selectStatus.size)
+                        ?: return@setOnUserCheckedChangeListener
+                    viewModel.selectStatus[position] = isChecked
                     upSelectText()
                 }
                 root.onClick {
+                    val position = holder.safeBindingAdapterPosition(viewModel.selectStatus.size)
+                        ?: return@onClick
                     cbSourceName.isChecked = !cbSourceName.isChecked
-                    viewModel.selectStatus[holder.layoutPosition] = cbSourceName.isChecked
+                    viewModel.selectStatus[position] = cbSourceName.isChecked
                     upSelectText()
                 }
                 tvOpen.setOnClickListener {
-                    val source = viewModel.allRules[holder.layoutPosition]
+                    val position = holder.safeBindingAdapterPosition(viewModel.allRules.size)
+                        ?: return@setOnClickListener
+                    val source = viewModel.allRules[position]
                     showDialogFragment(
                         CodeDialog(
                             GSON.toJson(source),
                             disableEdit = false,
-                            requestId = holder.layoutPosition.toString()
+                            requestId = position.toString()
                         )
                     )
                 }

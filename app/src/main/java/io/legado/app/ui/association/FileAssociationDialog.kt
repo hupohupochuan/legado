@@ -224,7 +224,10 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                                     ?: throw InvalidBooksDirException("请重新设置书籍保存位置")
                             }
                             if (!isSameDocument(uri, doc.uri)) {
-                                requireContext().contentResolver.openOutputStream(doc.uri, "wt")!!
+                                val outputStream = requireContext().contentResolver
+                                    .openOutputStream(doc.uri, "wt")
+                                    ?: throw InvalidBooksDirException("请重新设置书籍保存位置")
+                                outputStream
                                     .use { oStream ->
                                         inputStream.copyTo(oStream)
                                     }
