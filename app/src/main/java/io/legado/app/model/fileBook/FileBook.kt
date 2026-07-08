@@ -142,6 +142,10 @@ object FileBook : BaseFileBook {
                 this.author = book.author
                 this.originName = book.originName
                 this.origin = book.origin
+                if (book.originName.endsWith(".txt", true)) {
+                    this.charset = null
+                    this.tocUrl = ""
+                }
                 // 文本书籍更新重置时间以触发重新解析，图片书直接使用文件时间
                 this.latestChapterTime = 0
                 upBookInfo(this)
