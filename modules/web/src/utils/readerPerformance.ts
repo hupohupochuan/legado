@@ -7,14 +7,20 @@ type ReaderPerfMark = {
 }
 
 let perfId = 0
+const readerPerfStorageKey = 'legadoReaderPerf'
+const remoteUrlStorageKey = 'remoteUrl'
+
+const isReaderPerformanceExplicitlyEnabled = () => {
+  if (typeof window === 'undefined') return false
+  return (
+    window.localStorage.getItem(readerPerfStorageKey) === '1' ||
+    new URLSearchParams(window.location.search).has('readerPerf')
+  )
+}
 
 export const isReaderPerformanceEnabled = () => {
   if (import.meta.env.DEV) return true
-  if (typeof window === 'undefined') return false
-  return (
-    window.localStorage.getItem('legadoReaderPerf') === '1' ||
-    new URLSearchParams(window.location.search).has('readerPerf')
-  )
+  return isReaderPerformanceExplicitlyEnabled()
 }
 
 export const startReaderPerf = (name: string): ReaderPerfMark | null => {
@@ -48,7 +54,21 @@ export const finishReaderPerf = (
   performance.clearMarks(mark.endMark)
   if (duration < thresholdMs) return
   const suffix = extra ? ` (${extra})` : ''
-  console.debug(
-    `[ReaderPerformance] ${mark.name} ${duration.toFixed(1)}ms${suffix}`,
-  )
+  const message = `${mark.name} ${duration.toFixed(1)}ms${suffix}`
+  console.debug(`[ReaderPerformance] ${message}`)
+  uploadReaderPerf(message)
+}
+
+const uploadReaderPerf = (message: string) => {
+  if (!isReaderPerformanceExplicitlyEnabled()) return
+  const baseUrl = window.localStorage.getItem(remoteUrlStorageKey) || location.origin
+  const url = new URL('saveReaderLog', baseUrl).toString()
+  void fetch(url, {
+    method: 'POST',
+    keepalive: true,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ message }),
+  }).catch(() => undefined)
 }

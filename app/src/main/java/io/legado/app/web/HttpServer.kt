@@ -5,6 +5,7 @@ import fi.iki.elonen.NanoHTTPD
 import io.legado.app.api.ReturnData
 import io.legado.app.api.controller.BookController
 import io.legado.app.api.controller.BookSourceController
+import io.legado.app.api.controller.ReaderLogController
 import io.legado.app.api.controller.ReplaceRuleController
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.service.WebService
@@ -92,6 +93,7 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
                 "/saveBookProgress"  -> BookController.saveBookProgress(postData)
                 "/addLocalBook"      -> BookController.addLocalBook(session.parameters, files)
                 "/saveReadConfig"    -> BookController.saveWebReadConfig(postData)
+                "/saveReaderLog"     -> ReaderLogController.saveReaderLog(postData)
                 "/saveReplaceRule"   -> ReplaceRuleController.saveRule(postData)
                 "/deleteReplaceRule" -> ReplaceRuleController.delete(postData)
                 "/testReplaceRule"   -> ReplaceRuleController.testRule(postData)
