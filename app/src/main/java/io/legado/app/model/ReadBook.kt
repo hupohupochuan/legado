@@ -31,6 +31,7 @@ import io.legado.app.service.CacheBookService
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.book.read.page.provider.LayoutProgressListener
+import io.legado.app.utils.ReaderPerformance
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
@@ -90,6 +91,7 @@ object ReadBook : CoroutineScope by MainScope() {
     private val chapterLoadState = ChapterLoadState()
     // 每个章节独立的加载 Job，用于取消正在加载的章节
     private val chapterLoadingJobs = ConcurrentHashMap<Int, Coroutine<*>>()
+    private val contentLoadStarts = ConcurrentHashMap<Int, Long>()
     // 三章节预加载互斥锁，避免同一章节重复加载
     private val prevChapterLoadingLock = Mutex()
     private val curChapterLoadingLock = Mutex()
@@ -164,6 +166,7 @@ object ReadBook : CoroutineScope by MainScope() {
         upWebBook(book)
         synchronized(this) {
             chapterLoadState.clear()
+            contentLoadStarts.clear()
             downloadState.clear()
         }
     }
@@ -575,7 +578,14 @@ object ReadBook : CoroutineScope by MainScope() {
             val book = book ?: return@async
             val chapter = getChapter(book, index) ?: return@async
             if (addLoading(index)) {
-                BookHelp.getContent(book, chapter)?.let {
+                contentLoadStarts[index] = ReaderPerformance.now()
+                ReaderPerformance.trace(
+                    "android.read.contentCache",
+                    20,
+                    "index=$index"
+                ) {
+                    BookHelp.getContent(book, chapter)
+                }?.let {
                     contentLoadFinish(
                         book,
                         chapter,
@@ -591,6 +601,7 @@ object ReadBook : CoroutineScope by MainScope() {
                 )
             }
         }.onError {
+            contentLoadStarts.remove(index)
             if (it !is CancellationException) {
                 markLoadingFailed(index)
             }
@@ -607,12 +618,20 @@ object ReadBook : CoroutineScope by MainScope() {
         val book = book ?: return@withContext
         val chapter = getChapter(book, index) ?: return@withContext
         if (addLoading(index)) {
+            contentLoadStarts[index] = ReaderPerformance.now()
             var failed = false
             try {
-                val content = BookHelp.getContent(book, chapter) ?: downloadAwait(chapter)
+                val content = ReaderPerformance.trace(
+                    "android.read.contentCache",
+                    20,
+                    "index=$index"
+                ) {
+                    BookHelp.getContent(book, chapter)
+                } ?: downloadAwait(chapter)
                 contentLoadFinishAwait(book, chapter, content, upContent, resetPageOffset)
                 success?.invoke()
             } catch (e: Exception) {
+                contentLoadStarts.remove(index)
                 if (e !is CancellationException) {
                     failed = true
                     markLoadingFailed(index)
@@ -639,6 +658,7 @@ object ReadBook : CoroutineScope by MainScope() {
         } else {
             delay(1000)
             if (addLoading(index)) {
+                contentLoadStarts[index] = ReaderPerformance.now()
                 download(downloadScope, chapter, false, preDownloadSemaphore)
             }
         }
@@ -674,7 +694,13 @@ object ReadBook : CoroutineScope by MainScope() {
         val book = book ?: return "加载正文失败\n书籍未加载"
         val bookSource = bookSource
         if (bookSource != null) {
-            return CacheBook.getOrCreate(bookSource, book).downloadAwait(chapter)
+            return ReaderPerformance.trace(
+                "android.read.downloadAwait",
+                50,
+                "index=${chapter.index}"
+            ) {
+                CacheBook.getOrCreate(bookSource, book).downloadAwait(chapter)
+            }
         } else {
             val msg = if (book.isLocal) "无内容" else "没有书源"
             return "加载正文失败\n$msg"
@@ -697,6 +723,7 @@ object ReadBook : CoroutineScope by MainScope() {
 
     @Synchronized
     private fun markLoadingFailed(index: Int) {
+        contentLoadStarts.remove(index)
         chapterLoadState.fail(index)
     }
 
@@ -714,61 +741,79 @@ object ReadBook : CoroutineScope by MainScope() {
         success: (() -> Unit)? = null
     ) {
         removeLoading(chapter.index)
+        contentLoadStarts.remove(chapter.index)?.let {
+            ReaderPerformance.logElapsed(
+                "android.read.contentReady",
+                it,
+                50,
+                "index=${chapter.index}, current=${chapter.index == durChapterIndex}"
+            )
+        }
         if (canceled || chapter.index !in durChapterIndex - 1..durChapterIndex + 1) {
             return
         }
         chapterLoadingJobs[chapter.index]?.cancel()
         val job = Coroutine.async(this, start = CoroutineStart.LAZY) {
-            val textChapter = processContent(book, chapter, content)
-            when (val offset = chapter.index - durChapterIndex) {
-                0 -> curChapterLoadingLock.withLock {
-                    withContext(Main) {
-                        ensureActive()
-                        curTextChapter = textChapter
-                    }
-                    callBack?.upMenuView()
-                    var available = false
-                    for (page in textChapter.layoutChannel) {
-                        val index = page.index
-                        if (!available && page.containPos(durChapterPos)) {
-                            if (upContent) {
-                                callBack?.upContent(offset, resetPageOffset)
+            val layoutStart = ReaderPerformance.now()
+            try {
+                val textChapter = processContent(book, chapter, content)
+                when (val offset = chapter.index - durChapterIndex) {
+                    0 -> curChapterLoadingLock.withLock {
+                        withContext(Main) {
+                            ensureActive()
+                            curTextChapter = textChapter
+                        }
+                        callBack?.upMenuView()
+                        var available = false
+                        for (page in textChapter.layoutChannel) {
+                            val index = page.index
+                            if (!available && page.containPos(durChapterPos)) {
+                                if (upContent) {
+                                    callBack?.upContent(offset, resetPageOffset)
+                                }
+                                available = true
                             }
-                            available = true
-                        }
-                        if (upContent && isScroll) {
-                            if (max(index - 3, 0) < durPageIndex) {
-                                callBack?.upContent(offset, false)
+                            if (upContent && isScroll) {
+                                if (max(index - 3, 0) < durPageIndex) {
+                                    callBack?.upContent(offset, false)
+                                }
                             }
+                            callBack?.onLayoutPageCompleted(index, page)
                         }
-                        callBack?.onLayoutPageCompleted(index, page)
+                        if (upContent) callBack?.upContent(offset, !available && resetPageOffset)
+                        curPageChanged()
+                        callBack?.contentLoadFinish()
                     }
-                    if (upContent) callBack?.upContent(offset, !available && resetPageOffset)
-                    curPageChanged()
-                    callBack?.contentLoadFinish()
-                }
 
-                -1 -> prevChapterLoadingLock.withLock {
-                    withContext(Main) {
-                        ensureActive()
-                        prevTextChapter = textChapter
-                    }
-                    textChapter.layoutChannel.receiveAsFlow().collect()
-                    if (upContent) callBack?.upContent(offset, resetPageOffset)
-                }
-
-                1 -> nextChapterLoadingLock.withLock {
-                    withContext(Main) {
-                        ensureActive()
-                        nextTextChapter = textChapter
-                    }
-                    for (page in textChapter.layoutChannel) {
-                        if (page.index > 1) {
-                            continue
+                    -1 -> prevChapterLoadingLock.withLock {
+                        withContext(Main) {
+                            ensureActive()
+                            prevTextChapter = textChapter
                         }
+                        textChapter.layoutChannel.receiveAsFlow().collect()
                         if (upContent) callBack?.upContent(offset, resetPageOffset)
                     }
+
+                    1 -> nextChapterLoadingLock.withLock {
+                        withContext(Main) {
+                            ensureActive()
+                            nextTextChapter = textChapter
+                        }
+                        for (page in textChapter.layoutChannel) {
+                            if (page.index > 1) {
+                                continue
+                            }
+                            if (upContent) callBack?.upContent(offset, resetPageOffset)
+                        }
+                    }
                 }
+            } finally {
+                ReaderPerformance.logElapsed(
+                    "android.read.layoutReady",
+                    layoutStart,
+                    20,
+                    "index=${chapter.index}, offset=${chapter.index - durChapterIndex}"
+                )
             }
 
             return@async
@@ -793,60 +838,78 @@ object ReadBook : CoroutineScope by MainScope() {
         resetPageOffset: Boolean
     ) {
         removeLoading(chapter.index)
+        contentLoadStarts.remove(chapter.index)?.let {
+            ReaderPerformance.logElapsed(
+                "android.read.contentReady",
+                it,
+                50,
+                "index=${chapter.index}, current=${chapter.index == durChapterIndex}"
+            )
+        }
         if (chapter.index !in durChapterIndex - 1..durChapterIndex + 1) {
             return
         }
         kotlin.runCatching {
-            val textChapter = processContent(book, chapter, content)
-            when (val offset = chapter.index - durChapterIndex) {
-                0 -> {
-                    curTextChapter?.cancelLayout()
-                    withContext(Main) {
-                        curTextChapter = textChapter
-                    }
-                    callBack?.upMenuView()
-                    var available = false
-                    for (page in textChapter.layoutChannel) {
-                        val index = page.index
-                        if (!available && page.containPos(durChapterPos)) {
-                            if (upContent) {
-                                callBack?.upContent(offset, resetPageOffset)
+            val layoutStart = ReaderPerformance.now()
+            try {
+                val textChapter = processContent(book, chapter, content)
+                when (val offset = chapter.index - durChapterIndex) {
+                    0 -> {
+                        curTextChapter?.cancelLayout()
+                        withContext(Main) {
+                            curTextChapter = textChapter
+                        }
+                        callBack?.upMenuView()
+                        var available = false
+                        for (page in textChapter.layoutChannel) {
+                            val index = page.index
+                            if (!available && page.containPos(durChapterPos)) {
+                                if (upContent) {
+                                    callBack?.upContent(offset, resetPageOffset)
+                                }
+                                available = true
                             }
-                            available = true
-                        }
-                        if (upContent && isScroll) {
-                            if (max(index - 3, 0) < durPageIndex) {
-                                callBack?.upContent(offset, false)
+                            if (upContent && isScroll) {
+                                if (max(index - 3, 0) < durPageIndex) {
+                                    callBack?.upContent(offset, false)
+                                }
                             }
+                            callBack?.onLayoutPageCompleted(index, page)
                         }
-                        callBack?.onLayoutPageCompleted(index, page)
+                        if (upContent) callBack?.upContent(offset, !available && resetPageOffset)
+                        curPageChanged()
+                        callBack?.contentLoadFinish()
                     }
-                    if (upContent) callBack?.upContent(offset, !available && resetPageOffset)
-                    curPageChanged()
-                    callBack?.contentLoadFinish()
-                }
 
-                -1 -> {
-                    prevTextChapter?.cancelLayout()
-                    withContext(Main) {
-                        prevTextChapter = textChapter
-                    }
-                    textChapter.layoutChannel.receiveAsFlow().collect()
-                    if (upContent) callBack?.upContent(offset, resetPageOffset)
-                }
-
-                1 -> {
-                    nextTextChapter?.cancelLayout()
-                    withContext(Main) {
-                        nextTextChapter = textChapter
-                    }
-                    for (page in textChapter.layoutChannel) {
-                        if (page.index > 1) {
-                            continue
+                    -1 -> {
+                        prevTextChapter?.cancelLayout()
+                        withContext(Main) {
+                            prevTextChapter = textChapter
                         }
+                        textChapter.layoutChannel.receiveAsFlow().collect()
                         if (upContent) callBack?.upContent(offset, resetPageOffset)
                     }
+
+                    1 -> {
+                        nextTextChapter?.cancelLayout()
+                        withContext(Main) {
+                            nextTextChapter = textChapter
+                        }
+                        for (page in textChapter.layoutChannel) {
+                            if (page.index > 1) {
+                                continue
+                            }
+                            if (upContent) callBack?.upContent(offset, resetPageOffset)
+                        }
+                    }
                 }
+            } finally {
+                ReaderPerformance.logElapsed(
+                    "android.read.layoutReady",
+                    layoutStart,
+                    20,
+                    "index=${chapter.index}, offset=${chapter.index - durChapterIndex}"
+                )
             }
         }.onFailure {
             if (it is CancellationException) {
@@ -1031,6 +1094,7 @@ object ReadBook : CoroutineScope by MainScope() {
         coroutineContext.cancelChildren()
         ImageProvider.clear()
         clearExpiredChapterLoadingJob(true)
+        contentLoadStarts.clear()
         if (!CacheBookService.isRun) {
             CacheBook.close()
         }

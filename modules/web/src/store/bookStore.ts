@@ -11,6 +11,10 @@ import type {
 import type { webReadConfig } from '@/web'
 import { toast } from '@/utils/toast'
 import { toRaw } from 'vue'
+import {
+  finishReaderPerf,
+  startReaderPerf,
+} from '@/utils/readerPerformance'
 
 const default_config: webReadConfig = {
   theme: 0,
@@ -254,6 +258,9 @@ export const useBookStore = defineStore('book', {
      */
     async saveBookProgress(useBeacon = false) {
       if (!this.bookProgress) return Promise.resolve()
+      const perf = startReaderPerf(
+        useBeacon ? 'web.progress.saveBeacon' : 'web.progress.save',
+      )
       const { bookUrl } = this.readingBook
       const shelfRaw = toRaw(this.shelf)
       const findIndex = shelfRaw.findIndex(book => book.bookUrl === bookUrl)
@@ -268,9 +275,12 @@ export const useBookStore = defineStore('book', {
         // Beacon is only for page hide/unload; normal reads need a real request
         // so the browser can observe failures and keep progress in sync.
         API.saveBookProgressWithBeacon(this.bookProgress)
+        finishReaderPerf(perf, 0)
         return
       }
-      return API.saveBookProgress(this.bookProgress)
+      return API.saveBookProgress(this.bookProgress).finally(() => {
+        finishReaderPerf(perf, 50)
+      })
     },
   },
 })

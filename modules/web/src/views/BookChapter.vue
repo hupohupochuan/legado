@@ -109,6 +109,10 @@ import API, { backendConnectionErrorMessage, isBackendConnectionError } from '@a
 import { useLoading } from '@/hooks/loading'
 import { useThrottleFn } from '@vueuse/shared'
 import { isNullOrBlank } from '@/utils/utils'
+import {
+  finishReaderPerf,
+  startReaderPerf,
+} from '@/utils/readerPerformance'
 import { toast } from '@/utils/toast'
 import { msgbox } from '@/utils/toast'
 
@@ -198,30 +202,37 @@ const trimPrefetchedChapters = () => {
   }
 }
 const fetchChapterData = async (index: number) => {
-  const bookUrl = store.readingBook.bookUrl
-  const chapter = catalog.value[index]
-  if (!bookUrl || !chapter) throw new Error('章节信息为空')
-  const { title, index: chapterIndex } = chapter
-  const res = await API.getBookContent(bookUrl, chapterIndex)
-  if (res.data.isSuccess) {
+  const perf = startReaderPerf('web.chapter.fetch')
+  let success = false
+  try {
+    const bookUrl = store.readingBook.bookUrl
+    const chapter = catalog.value[index]
+    if (!bookUrl || !chapter) throw new Error('章节信息为空')
+    const { title, index: chapterIndex } = chapter
+    const res = await API.getBookContent(bookUrl, chapterIndex)
+    success = res.data.isSuccess
+    if (res.data.isSuccess) {
+      return {
+        chapter: {
+          index,
+          content: res.data.data.split(/\n+/),
+          title,
+        } as ChapterData,
+        isSuccess: true,
+        errorMsg: '',
+      }
+    }
     return {
       chapter: {
         index,
-        content: res.data.data.split(/\n+/),
+        content: [res.data.errorMsg],
         title,
       } as ChapterData,
-      isSuccess: true,
-      errorMsg: '',
+      isSuccess: false,
+      errorMsg: res.data.errorMsg,
     }
-  }
-  return {
-    chapter: {
-      index,
-      content: [res.data.errorMsg],
-      title,
-    } as ChapterData,
-    isSuccess: false,
-    errorMsg: res.data.errorMsg,
+  } finally {
+    finishReaderPerf(perf, 50, `index=${index}, success=${success}`)
   }
 }
 const prefetchChapter = (index: number) => {
@@ -461,6 +472,7 @@ const switchBookChapter = (
     prefetchedChapters.get(targetIndex) ??
     chapterData.value.find(d => d.index === targetIndex)
   if (!cached) return false
+  const perf = startReaderPerf('web.book.switchCached')
   rememberBookChapter(cached)
   prefetchedChapters.delete(targetIndex)
   bookInitialPos.value = initialPos
@@ -469,6 +481,7 @@ const switchBookChapter = (
   bookReaderSeed.value++
   store.saveBookProgress()
   prefetchBookAdjacent(targetIndex)
+  finishReaderPerf(perf, 0, `index=${targetIndex}`)
   return true
 }
 
@@ -558,6 +571,9 @@ const getContent = (
   // (Number.MAX_SAFE_INTEGER)，仅在组件内部用于定位，不会进入 readingBook。
   initialPos?: number,
 ) => {
+  const perf = startReaderPerf(
+    reloadChapter ? 'web.chapter.switch' : 'web.chapter.append',
+  )
   const previousChapterData = chapterData.value.slice()
   const previousIndex = chapterIndex.value
   const previousPos = chapterPos.value
@@ -620,10 +636,13 @@ const getContent = (
       throw err
     },
   )
-  if (reloadChapter) return loadingWrapper(request)
+  const measuredRequest = request.finally(() => {
+    finishReaderPerf(perf, 50, `index=${index}, reload=${reloadChapter}`)
+  })
+  if (reloadChapter) return loadingWrapper(measuredRequest)
   // Keep infinite-scroll fetches invisible and only use this flag for de-duping.
   isAppendingChapter.value = true
-  return request.finally(() => {
+  return measuredRequest.finally(() => {
     isAppendingChapter.value = false
   })
 }

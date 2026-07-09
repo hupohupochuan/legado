@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.ui.book.read.page.ReadView
 import io.legado.app.ui.book.read.page.entities.PageDirection
+import io.legado.app.utils.ReaderPerformance
 import io.legado.app.utils.screenshot
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -141,18 +142,20 @@ class SimulationPageDelegate(readView: ReadView) : HorizontalPageDelegate(readVi
     }
 
     override fun setBitmap() {
-        when (mDirection) {
-            PageDirection.PREV -> {
-                prevBitmap = prevPage.screenshot(prevBitmap, canvas)
-                curBitmap = curPage.screenshot(curBitmap, canvas)
-            }
+        ReaderPerformance.trace("android.read.captureSimulation", 8, "direction=$mDirection") {
+            when (mDirection) {
+                PageDirection.PREV -> {
+                    prevBitmap = prevPage.screenshot(prevBitmap, canvas)
+                    curBitmap = curPage.screenshot(curBitmap, canvas)
+                }
 
-            PageDirection.NEXT -> {
-                nextBitmap = nextPage.screenshot(nextBitmap, canvas)
-                curBitmap = curPage.screenshot(curBitmap, canvas)
-            }
+                PageDirection.NEXT -> {
+                    nextBitmap = nextPage.screenshot(nextBitmap, canvas)
+                    curBitmap = curPage.screenshot(curBitmap, canvas)
+                }
 
-            else -> Unit
+                else -> Unit
+            }
         }
     }
 

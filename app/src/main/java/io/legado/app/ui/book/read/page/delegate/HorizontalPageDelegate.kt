@@ -3,6 +3,7 @@ package io.legado.app.ui.book.read.page.delegate
 import android.view.MotionEvent
 import io.legado.app.ui.book.read.page.ReadView
 import io.legado.app.ui.book.read.page.entities.PageDirection
+import io.legado.app.utils.ReaderPerformance
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.screenshot
 
@@ -23,18 +24,20 @@ abstract class HorizontalPageDelegate(readView: ReadView) : PageDelegate(readVie
     }
 
     open fun setBitmap() {
-        when (mDirection) {
-            PageDirection.PREV -> {
-                prevPage.screenshot(prevRecorder)
-                curPage.screenshot(curRecorder)
-            }
+        ReaderPerformance.trace("android.read.capturePage", 8, "direction=$mDirection") {
+            when (mDirection) {
+                PageDirection.PREV -> {
+                    prevPage.screenshot(prevRecorder)
+                    curPage.screenshot(curRecorder)
+                }
 
-            PageDirection.NEXT -> {
-                nextPage.screenshot(nextRecorder)
-                curPage.screenshot(curRecorder)
-            }
+                PageDirection.NEXT -> {
+                    nextPage.screenshot(nextRecorder)
+                    curPage.screenshot(curRecorder)
+                }
 
-            else -> Unit
+                else -> Unit
+            }
         }
     }
 

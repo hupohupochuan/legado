@@ -11,6 +11,7 @@ import io.legado.app.R
 import io.legado.app.ui.book.read.page.PageView
 import io.legado.app.ui.book.read.page.ReadView
 import io.legado.app.ui.book.read.page.entities.PageDirection
+import io.legado.app.utils.ReaderPerformance
 import kotlin.math.abs
 
 abstract class PageDelegate(protected val readView: ReadView) {
@@ -95,12 +96,14 @@ abstract class PageDelegate(protected val readView: ReadView) {
     }
 
     open fun computeScroll() {
-        if (scroller.computeScrollOffset()) {
-            readView.setTouchPoint(scroller.currX.toFloat(), scroller.currY.toFloat(), false)
-            invalidateOnAnim()
-        } else if (isStarted) {
-            onAnimStop()
-            stopScroll()
+        ReaderPerformance.trace("android.read.animCompute", 4) {
+            if (scroller.computeScrollOffset()) {
+                readView.setTouchPoint(scroller.currX.toFloat(), scroller.currY.toFloat(), false)
+                invalidateOnAnim()
+            } else if (isStarted) {
+                onAnimStop()
+                stopScroll()
+            }
         }
     }
 

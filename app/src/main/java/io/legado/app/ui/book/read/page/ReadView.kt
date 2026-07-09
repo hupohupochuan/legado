@@ -39,6 +39,7 @@ import io.legado.app.ui.book.read.page.provider.TextPageFactory
 import io.legado.app.utils.activity
 import io.legado.app.utils.invisible
 import io.legado.app.utils.longToastOnUi
+import io.legado.app.utils.ReaderPerformance
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.throttle
 import java.text.BreakIterator
@@ -136,9 +137,11 @@ class ReadView(context: Context, attrs: AttributeSet) :
     }
 
     override fun dispatchDraw(canvas: Canvas) {
-        super.dispatchDraw(canvas)
-        pageDelegate?.onDraw(canvas)
-        autoPager.onDraw(canvas)
+        ReaderPerformance.trace("android.read.drawFrame", 16) {
+            super.dispatchDraw(canvas)
+            pageDelegate?.onDraw(canvas)
+            autoPager.onDraw(canvas)
+        }
     }
 
     override fun computeScroll() {

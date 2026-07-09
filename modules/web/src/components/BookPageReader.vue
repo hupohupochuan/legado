@@ -51,6 +51,10 @@
 import API from '@api'
 import settings from '@/config/themeConfig'
 import { isLegadoUrl } from '@/utils/utils'
+import {
+  finishReaderPerf,
+  startReaderPerf,
+} from '@/utils/readerPerformance'
 import { toast } from '@/utils/toast'
 import {
   buildBlocks,
@@ -338,6 +342,7 @@ const paginateChapter = (contents: string[], title: string): BookPage[] => {
 
 const doPaginate = () => {
   paginating.value = true
+  const perf = startReaderPerf('web.book.paginate')
   try {
     pages.value = paginateChapter(props.contents, props.title)
     // 测量容器没有拿到真实尺寸时，递归 place/splitParagraph 会无限切分
@@ -355,6 +360,11 @@ const doPaginate = () => {
     }
     return
   } finally {
+    finishReaderPerf(
+      perf,
+      20,
+      `chapter=${props.chapterIndex}, pages=${pages.value.length}`,
+    )
     paginating.value = false
   }
 }
@@ -409,6 +419,7 @@ const updateHeight = () => {
 // ---------- 翻页 ----------
 let flipLock = false
 let flipTimer: ReturnType<typeof setTimeout> | null = null
+let flipPerfMark: ReturnType<typeof startReaderPerf> = null
 let externalFlipFinished: ((pos: number) => void) | null = null
 let externalFlipCanceled: (() => void) | null = null
 
@@ -420,6 +431,8 @@ const flipDuration = () => {
 const cancelFlipAnimation = () => {
   if (flipTimer) clearTimeout(flipTimer)
   const onCancel = externalFlipCanceled
+  finishReaderPerf(flipPerfMark, 0, 'canceled')
+  flipPerfMark = null
   flipTimer = null
   targetPageIndex.value = null
   targetExternalPage.value = null
@@ -434,6 +447,12 @@ const cancelFlipAnimation = () => {
 }
 
 const finishFlip = (nextIndex: number) => {
+  finishReaderPerf(
+    flipPerfMark,
+    0,
+    `type=inner, from=${currentPageIndex.value}, to=${nextIndex}`,
+  )
+  flipPerfMark = null
   currentPageIndex.value = nextIndex
   targetPageIndex.value = null
   animating.value = false
@@ -451,6 +470,12 @@ const finishFlip = (nextIndex: number) => {
 const finishExternalFlip = () => {
   const pos = targetExternalPage.value?.startPos ?? 0
   const onFinished = externalFlipFinished
+  finishReaderPerf(
+    flipPerfMark,
+    0,
+    `type=external, chapter=${targetExternalChapterIndex.value}, pos=${pos}`,
+  )
+  flipPerfMark = null
   flipTimer = null
   targetPageIndex.value = null
   targetExternalPage.value = null
@@ -473,6 +498,7 @@ const startFlip = (nextIndex: number, direction: 'next' | 'prev') => {
     return
   }
   flipLock = true
+  flipPerfMark = startReaderPerf('web.book.flip')
   targetPageIndex.value = nextIndex
   animating.value = true
   if (flipTimer) clearTimeout(flipTimer)
@@ -497,6 +523,7 @@ const startExternalFlip = (
     return true
   }
   flipLock = true
+  flipPerfMark = startReaderPerf('web.book.flip')
   targetPageIndex.value = null
   targetExternalPage.value = page
   targetExternalChapterIndex.value = chapterIndex
@@ -517,12 +544,19 @@ const flipToChapter = (
   callbacks: ExternalFlipCallbacks = {},
 ): boolean => {
   if (flipLock || paginating.value || pages.value.length === 0) return false
-  let targetPages: BookPage[]
+  let targetPages: BookPage[] = []
+  const perf = startReaderPerf('web.book.targetPaginate')
   try {
     targetPages = paginateChapter(chapter.content, chapter.title)
   } catch (e) {
     console.error('[BookPageReader] target chapter paginate failed', e)
     return false
+  } finally {
+    finishReaderPerf(
+      perf,
+      20,
+      `chapter=${chapter.index}, pages=${targetPages?.length ?? 0}`,
+    )
   }
   if (targetPages.length === 0) return false
   const nextIndex = findPageIndexByPos(targetPages, initialPos)

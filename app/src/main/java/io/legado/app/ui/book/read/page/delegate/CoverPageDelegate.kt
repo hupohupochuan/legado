@@ -6,6 +6,7 @@ import androidx.core.graphics.withClip
 import androidx.core.graphics.withTranslation
 import io.legado.app.ui.book.read.page.ReadView
 import io.legado.app.ui.book.read.page.entities.PageDirection
+import io.legado.app.utils.ReaderPerformance
 import io.legado.app.utils.screenshot
 
 class CoverPageDelegate(readView: ReadView) : HorizontalPageDelegate(readView) {
@@ -53,17 +54,19 @@ class CoverPageDelegate(readView: ReadView) : HorizontalPageDelegate(readView) {
     }
 
     override fun setBitmap() {
-        when (mDirection) {
-            PageDirection.PREV -> {
-                prevPage.screenshot(prevRecorder)
-            }
+        ReaderPerformance.trace("android.read.captureCover", 8, "direction=$mDirection") {
+            when (mDirection) {
+                PageDirection.PREV -> {
+                    prevPage.screenshot(prevRecorder)
+                }
 
-            PageDirection.NEXT -> {
-                nextPage.screenshot(nextRecorder)
-                curPage.screenshot(curRecorder)
-            }
+                PageDirection.NEXT -> {
+                    nextPage.screenshot(nextRecorder)
+                    curPage.screenshot(curRecorder)
+                }
 
-            else -> Unit
+                else -> Unit
+            }
         }
     }
 
