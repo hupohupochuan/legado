@@ -36,6 +36,54 @@ const default_config: webReadConfig = {
 }
 let webReadConfigLoadedDate: Date | undefined
 
+let pendingBookProgress: BookProgress | null = null
+let bookProgressSaveWorker: Promise<void> | null = null
+let activeBookProgressKey: string | null = null
+
+const bookProgressKey = (progress: BookProgress) =>
+  [
+    progress.name,
+    progress.author,
+    progress.durChapterIndex,
+    progress.durChapterPos,
+    progress.durChapterTitle,
+  ].join('\u0000')
+
+const drainBookProgressSaves = async () => {
+  // Cached chapter switches can update progress twice in the same Vue flush.
+  // Yield once so only the newest position is sent to the phone.
+  await new Promise(resolve => setTimeout(resolve, 0))
+  while (pendingBookProgress) {
+    const progress = pendingBookProgress
+    pendingBookProgress = null
+    activeBookProgressKey = bookProgressKey(progress)
+    const perf = startReaderPerf('web.progress.save')
+    try {
+      await API.saveBookProgress(progress)
+    } finally {
+      activeBookProgressKey = null
+      finishReaderPerf(perf, 50)
+    }
+  }
+}
+
+const enqueueBookProgressSave = (progress: BookProgress) => {
+  const progressSnapshot = { ...progress }
+  const progressKey = bookProgressKey(progressSnapshot)
+  if (activeBookProgressKey !== progressKey) {
+    pendingBookProgress = progressSnapshot
+  }
+  if (!bookProgressSaveWorker) {
+    bookProgressSaveWorker = drainBookProgressSaves().finally(() => {
+      bookProgressSaveWorker = null
+      if (pendingBookProgress) {
+        void enqueueBookProgressSave(pendingBookProgress).catch(() => undefined)
+      }
+    })
+  }
+  return bookProgressSaveWorker
+}
+
 export const useBookStore = defineStore('book', {
   state: () => {
     return {
@@ -257,10 +305,8 @@ export const useBookStore = defineStore('book', {
      *                   仅做尽力交付，浏览器不会等待响应）。
      */
     async saveBookProgress(useBeacon = false) {
-      if (!this.bookProgress) return Promise.resolve()
-      const perf = startReaderPerf(
-        useBeacon ? 'web.progress.saveBeacon' : 'web.progress.save',
-      )
+      const progress = this.bookProgress
+      if (!progress) return Promise.resolve()
       const { bookUrl } = this.readingBook
       const shelfRaw = toRaw(this.shelf)
       const findIndex = shelfRaw.findIndex(book => book.bookUrl === bookUrl)
@@ -268,19 +314,18 @@ export const useBookStore = defineStore('book', {
         this.shelf[findIndex] = Object.assign(
           {},
           shelfRaw[findIndex],
-          this.bookProgress,
+          progress,
         )
       }
       if (useBeacon) {
+        const perf = startReaderPerf('web.progress.saveBeacon')
         // Beacon is only for page hide/unload; normal reads need a real request
         // so the browser can observe failures and keep progress in sync.
-        API.saveBookProgressWithBeacon(this.bookProgress)
+        API.saveBookProgressWithBeacon(progress)
         finishReaderPerf(perf, 0)
         return
       }
-      return API.saveBookProgress(this.bookProgress).finally(() => {
-        finishReaderPerf(perf, 50)
-      })
+      return enqueueBookProgressSave(progress)
     },
   },
 })

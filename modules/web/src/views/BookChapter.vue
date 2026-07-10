@@ -186,13 +186,17 @@ let prefetchObserver: IntersectionObserver | null
 const loading = ref()
 type ChapterData = { index: number; content: string[]; title: string }
 const prefetchedChapters = new Map<number, ChapterData>()
-const prefetchingChapters = new Set<number>()
+type PrefetchTask = {
+  generation: number
+  promise: Promise<ChapterData | null>
+}
+const prefetchingChapters = new Map<number, PrefetchTask>()
 const maxPrefetchedChapterCount = 2
 let prefetchGeneration = 0
+let prefetchQueue: Promise<void> = Promise.resolve()
 const clearPrefetchedChapters = () => {
   prefetchGeneration++
   prefetchedChapters.clear()
-  prefetchingChapters.clear()
 }
 const trimPrefetchedChapters = () => {
   while (prefetchedChapters.size > maxPrefetchedChapterCount) {
@@ -236,27 +240,42 @@ const fetchChapterData = async (index: number) => {
   }
 }
 const prefetchChapter = (index: number) => {
+  const activeTask = prefetchingChapters.get(index)
   if (
     index < 0 ||
     index >= catalog.value.length ||
     prefetchedChapters.has(index) ||
-    prefetchingChapters.has(index)
+    activeTask?.generation === prefetchGeneration
   ) {
-    return
+    return activeTask?.promise
   }
   const generation = prefetchGeneration
-  prefetchingChapters.add(index)
-  fetchChapterData(index)
-    .then(({ chapter, isSuccess }) => {
-      if (isSuccess && generation === prefetchGeneration) {
-        prefetchedChapters.set(index, chapter)
-        trimPrefetchedChapters()
+  const promise = prefetchQueue.then(async () => {
+    if (generation !== prefetchGeneration) return null
+    const { chapter, isSuccess } = await fetchChapterData(index)
+    if (isSuccess && generation === prefetchGeneration) {
+      prefetchedChapters.set(index, chapter)
+      trimPrefetchedChapters()
+      return chapter
+    }
+    return null
+  })
+  const task: PrefetchTask = { generation, promise }
+  prefetchingChapters.set(index, task)
+  // Local EPUB resources share one reader. Serial prefetch avoids two adjacent
+  // chapter reads competing on the same archive and also reduces source load.
+  prefetchQueue = promise.then(
+    () => undefined,
+    () => undefined,
+  )
+  void promise
+    .finally(() => {
+      if (prefetchingChapters.get(index) === task) {
+        prefetchingChapters.delete(index)
       }
     })
     .catch(() => undefined)
-    .finally(() => {
-      prefetchingChapters.delete(index)
-    })
+  return promise
 }
 const prefetchNextChapter = () => {
   const lastChapter = chapterData.value.slice(-1)[0]
@@ -434,6 +453,10 @@ const resolveBookChapterForTurn = async (index: number): Promise<ChapterData> =>
     prefetchedChapters.get(index) ??
     chapterData.value.find(d => d.index === index)
   if (cached) return cached
+  const prefetched = await prefetchingChapters
+    .get(index)
+    ?.promise.catch(() => null)
+  if (prefetched) return prefetched
   const { chapter, isSuccess, errorMsg } = await fetchChapterData(index)
   if (!isSuccess) {
     toast.error(errorMsg)
@@ -479,7 +502,6 @@ const switchBookChapter = (
   // 先更新持久化进度（safePos 是安全值，不会是哨兵），再重挂组件。
   saveReadingBookProgressToBrowser(targetIndex, safePos)
   bookReaderSeed.value++
-  store.saveBookProgress()
   prefetchBookAdjacent(targetIndex)
   finishReaderPerf(perf, 0, `index=${targetIndex}`)
   return true

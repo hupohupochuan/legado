@@ -29,6 +29,8 @@ import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import splitties.init.appCtx
 import java.io.File
 import java.util.WeakHashMap
@@ -46,6 +48,7 @@ object BookController {
     private var bookSource: BookSource? = null
     private var bookUrl: String = ""
     private val defaultCoverCache by lazy { WeakHashMap<Drawable, Bitmap>() }
+    private val saveBookProgressMutex = Mutex()
 
     /** 所有分组（id + name） */
     val groups: ReturnData
@@ -271,39 +274,39 @@ object BookController {
      */
     suspend fun saveBookProgress(postData: String?): ReturnData {
         val returnData = ReturnData()
-        GSON.fromJsonObject<BookProgress>(postData)
+        val bookProgress = GSON.fromJsonObject<BookProgress>(postData)
             .onFailure { it.printOnDebug() }
-            .getOrNull()?.let { bookProgress ->
-                if (bookProgress.durChapterIndex < 0) {
-                    return returnData.setErrorMsg("durChapterIndex 不能为负数")
-                }
-                if (bookProgress.durChapterPos == Int.MIN_VALUE) {
-                    return returnData.setErrorMsg("durChapterPos 非法")
-                }
-                appDb.bookDao.getBook(bookProgress.name, bookProgress.author)?.let { book ->
-                    val chapterCount = appDb.bookChapterDao.getChapterCount(book.bookUrl)
-                    if (chapterCount <= 0) {
-                        return returnData.setErrorMsg("未找到章节")
-                    }
-                    book.durChapterIndex = bookProgress.durChapterIndex.coerceIn(0, chapterCount - 1)
-                    book.durChapterPos = kotlin.math.abs(bookProgress.durChapterPos)
-                    book.durChapterTitle = bookProgress.durChapterTitle
-                    book.durChapterTime = bookProgress.durChapterTime
-                    BookProgressSyncProvider.current.uploadBookProgress(book) {
-                        book.syncTime = System.currentTimeMillis()
-                    }
-                    appDb.bookDao.update(book)
-                    ReadBook.book?.let {
-                        if (it.name == bookProgress.name &&
-                            it.author == bookProgress.author
-                        ) {
-                            ReadBook.webBookProgress = bookProgress
-                        }
-                    }
-                    return returnData.setData("")
+            .getOrNull() ?: return returnData.setErrorMsg("格式不对")
+        if (bookProgress.durChapterIndex < 0) {
+            return returnData.setErrorMsg("durChapterIndex 不能为负数")
+        }
+        if (bookProgress.durChapterPos == Int.MIN_VALUE) {
+            return returnData.setErrorMsg("durChapterPos 非法")
+        }
+        return saveBookProgressMutex.withLock {
+            val book = appDb.bookDao.getBook(bookProgress.name, bookProgress.author)
+                ?: return@withLock returnData.setErrorMsg("格式不对")
+            val chapterCount = appDb.bookChapterDao.getChapterCount(book.bookUrl)
+            if (chapterCount <= 0) {
+                return@withLock returnData.setErrorMsg("未找到章节")
+            }
+            book.durChapterIndex = bookProgress.durChapterIndex.coerceIn(0, chapterCount - 1)
+            book.durChapterPos = kotlin.math.abs(bookProgress.durChapterPos)
+            book.durChapterTitle = bookProgress.durChapterTitle
+            book.durChapterTime = bookProgress.durChapterTime
+            BookProgressSyncProvider.current.uploadBookProgress(book) {
+                book.syncTime = System.currentTimeMillis()
+            }
+            appDb.bookDao.update(book)
+            ReadBook.book?.let {
+                if (it.name == bookProgress.name &&
+                    it.author == bookProgress.author
+                ) {
+                    ReadBook.webBookProgress = bookProgress
                 }
             }
-        return returnData.setErrorMsg("格式不对")
+            return@withLock returnData.setData("")
+        }
     }
 
     /**
