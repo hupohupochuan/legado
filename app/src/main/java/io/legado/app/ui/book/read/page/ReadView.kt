@@ -194,6 +194,9 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 pageDelegate?.onTouch(event)
                 pageDelegate?.onDown()
                 setStartPoint(event.x, event.y, false)
+                when (clickArea.getAction(event.x, event.y)) {
+                    1 -> pageDelegate?.preparePage(PageDirection.NEXT)
+                }
             }
 
             MotionEvent.ACTION_MOVE -> {

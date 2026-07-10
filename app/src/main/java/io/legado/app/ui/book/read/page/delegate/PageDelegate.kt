@@ -134,6 +134,12 @@ abstract class PageDelegate(protected val readView: ReadView) {
         }
     }
 
+    /**
+     * 点击翻页在 ACTION_DOWN 时预录制静态页面，避免 ACTION_UP 启动动画时
+     * 把多张整页截图集中到同一帧。默认动画不需要预录制。
+     */
+    open fun preparePage(direction: PageDirection) = Unit
+
     @CallSuper
     open fun setDirection(direction: PageDirection) {
         mDirection = direction
