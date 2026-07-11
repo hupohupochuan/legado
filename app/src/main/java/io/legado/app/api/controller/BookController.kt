@@ -11,6 +11,10 @@ import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.BookProgressSyncProvider
 import io.legado.app.help.CacheManager
+import io.legado.app.help.AppWebDav
+import io.legado.app.help.ProgressCheckMode
+import io.legado.app.help.WebBookProgressSyncCoordinator
+import io.legado.app.help.WebBookProgressUploadScheduler
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
@@ -29,8 +33,6 @@ import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import splitties.init.appCtx
 import java.io.File
 import java.util.WeakHashMap
@@ -48,7 +50,33 @@ object BookController {
     private var bookSource: BookSource? = null
     private var bookUrl: String = ""
     private val defaultCoverCache by lazy { WeakHashMap<Drawable, Bitmap>() }
-    private val saveBookProgressMutex = Mutex()
+
+    private data class WebBookProgressPayload(
+        val bookUrl: String? = null,
+        val name: String,
+        val author: String,
+        val durChapterIndex: Int,
+        val durChapterPos: Int,
+        val durChapterTime: Long,
+        val durChapterTitle: String?
+    ) {
+        fun toBookProgress() = BookProgress(
+            name,
+            author,
+            durChapterIndex,
+            durChapterPos,
+            durChapterTime,
+            durChapterTitle
+        )
+    }
+
+    private data class SyncBookProgressRequest(val bookUrl: String)
+
+    private data class SyncBookProgressResponse(
+        val progress: BookProgress,
+        val remoteApplied: Boolean,
+        val warning: String?
+    )
 
     /** 所有分组（id + name） */
     val groups: ReturnData
@@ -272,41 +300,115 @@ object BookController {
     /**
      * 保存进度
      */
-    suspend fun saveBookProgress(postData: String?): ReturnData {
+    suspend fun syncBookProgress(postData: String?): ReturnData {
         val returnData = ReturnData()
-        val bookProgress = GSON.fromJsonObject<BookProgress>(postData)
+        val request = GSON.fromJsonObject<SyncBookProgressRequest>(postData)
             .onFailure { it.printOnDebug() }
             .getOrNull() ?: return returnData.setErrorMsg("格式不对")
+        val book = appDb.bookDao.getBook(request.bookUrl)
+            ?: return returnData.setErrorMsg("未找到书籍")
+        var finalProgress: BookProgress? = null
+        val syncResult = WebBookProgressSyncCoordinator.withBook(book.name, book.author) {
+            val localBook = appDb.bookDao.getBook(request.bookUrl)
+                ?: return@withBook returnData.setErrorMsg("未找到书籍")
+            if (!AppConfig.syncBookProgress || !AppWebDav.isOk) {
+                val progress = BookProgress(localBook)
+                finalProgress = progress
+                return@withBook returnData.setData(
+                    SyncBookProgressResponse(progress, false, null)
+                )
+            }
+            val remoteResult = BookProgressSyncProvider.current.getBookProgressResult(localBook)
+            val remote = remoteResult.getOrNull()
+            var remoteApplied = false
+            if (remote != null &&
+                BookProgressSyncProvider.current.canApplyBookProgress(
+                    localBook,
+                    remote,
+                    "Web syncBookProgress",
+                    ProgressCheckMode.RangeOnly
+                ) && remote.compareReadPosition(localBook) > 0
+            ) {
+                localBook.durChapterIndex = remote.durChapterIndex
+                localBook.durChapterPos = remote.readChapterPos
+                localBook.durChapterTitle = remote.durChapterTitle
+                localBook.durChapterTime = remote.durChapterTime
+                localBook.syncTime = System.currentTimeMillis()
+                appDb.bookDao.update(localBook)
+                remoteApplied = true
+            }
+            val warning = if (remoteResult.isFailure) {
+                "WebDAV进度同步失败，已使用手机本地进度"
+            } else {
+                null
+            }
+            val progress = BookProgress(localBook)
+            finalProgress = progress
+            return@withBook returnData.setData(
+                SyncBookProgressResponse(progress, remoteApplied, warning)
+            )
+        }
+        if (AppConfig.syncBookProgress && AppWebDav.isOk) {
+            finalProgress?.let { WebBookProgressUploadScheduler.shared.retryOnOpen(it) }
+        }
+        return syncResult
+    }
+
+    /**
+     * 保存 Web 阅读进度到 Room；WebDAV 上传由独立调度器处理。
+     */
+    suspend fun saveBookProgress(postData: String?, flush: Boolean = false): ReturnData {
+        val returnData = ReturnData()
+        val payload = GSON.fromJsonObject<WebBookProgressPayload>(postData)
+            .onFailure { it.printOnDebug() }
+            .getOrNull() ?: return returnData.setErrorMsg("格式不对")
+        val bookProgress = payload.toBookProgress()
         if (bookProgress.durChapterIndex < 0) {
             return returnData.setErrorMsg("durChapterIndex 不能为负数")
         }
         if (bookProgress.durChapterPos == Int.MIN_VALUE) {
             return returnData.setErrorMsg("durChapterPos 非法")
         }
-        return saveBookProgressMutex.withLock {
-            val book = appDb.bookDao.getBook(bookProgress.name, bookProgress.author)
-                ?: return@withLock returnData.setErrorMsg("格式不对")
+        var finalProgress: BookProgress? = null
+        var changed = false
+        val saveResult = WebBookProgressSyncCoordinator.withBook(bookProgress.name, bookProgress.author) {
+            val book = payload.bookUrl?.let(appDb.bookDao::getBook)
+                ?: appDb.bookDao.getBook(bookProgress.name, bookProgress.author)
+                ?: return@withBook returnData.setErrorMsg("格式不对")
             val chapterCount = appDb.bookChapterDao.getChapterCount(book.bookUrl)
             if (chapterCount <= 0) {
-                return@withLock returnData.setErrorMsg("未找到章节")
+                return@withBook returnData.setErrorMsg("未找到章节")
             }
-            book.durChapterIndex = bookProgress.durChapterIndex.coerceIn(0, chapterCount - 1)
-            book.durChapterPos = kotlin.math.abs(bookProgress.durChapterPos)
-            book.durChapterTitle = bookProgress.durChapterTitle
-            book.durChapterTime = bookProgress.durChapterTime
-            BookProgressSyncProvider.current.uploadBookProgress(book) {
-                book.syncTime = System.currentTimeMillis()
+            val finalIndex = bookProgress.durChapterIndex.coerceIn(0, chapterCount - 1)
+            val finalPos = bookProgress.readChapterPos
+            changed = book.durChapterIndex != finalIndex ||
+                    kotlin.math.abs(book.durChapterPos) != finalPos ||
+                    book.durChapterTitle != bookProgress.durChapterTitle
+            if (changed) {
+                book.durChapterIndex = finalIndex
+                book.durChapterPos = finalPos
+                book.durChapterTitle = bookProgress.durChapterTitle
+                book.durChapterTime = bookProgress.durChapterTime
+                appDb.bookDao.update(book)
             }
-            appDb.bookDao.update(book)
             ReadBook.book?.let {
-                if (it.name == bookProgress.name &&
-                    it.author == bookProgress.author
-                ) {
-                    ReadBook.webBookProgress = bookProgress
+                if (it.bookUrl == book.bookUrl) {
+                    ReadBook.webBookProgress = BookProgress(book)
                 }
             }
-            return@withLock returnData.setData("")
+            finalProgress = BookProgress(book)
+            return@withBook returnData.setData("")
         }
+        finalProgress?.takeIf { saveResult.isSuccess && AppConfig.syncBookProgress && AppWebDav.isOk }
+            ?.let { progress ->
+                if (changed) {
+                    WebBookProgressUploadScheduler.shared.enqueue(progress)
+                }
+                if (flush) {
+                    WebBookProgressUploadScheduler.shared.flush(progress)
+                }
+            }
+        return saveResult
     }
 
     /**

@@ -90,6 +90,14 @@ export type BookProgress = Pick<
   | 'durChapterTitle'
 >
 
+export type WebBookProgress = BookProgress & Pick<BaseBook, 'bookUrl'>
+
+export type SyncBookProgressResult = {
+  progress: BookProgress
+  remoteApplied: boolean
+  warning?: string
+}
+
 export type BookChapter = {
   url: string // 章节地址
   title: string // 章节标题

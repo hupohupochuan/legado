@@ -508,31 +508,33 @@ object AppWebDav : BookProgressSync {
             var matchedCount = 0
             var updatedCount = 0
             appDb.bookDao.all.forEach { book ->
-                val progressFileName = getProgressFileName(book.name, book.author)
-                val webDavFile = map[progressFileName] ?: return@forEach
-                matchedCount++
-                if (webDavFile.lastModify <= book.syncTime) {
-                    //本地同步时间大于上传时间不用同步
-                    return@forEach
-                }
-                getBookProgress(book)?.let { bookProgress ->
-                    if (!canApplyBookProgress(
-                            book,
-                            bookProgress,
-                            "WebDav downloadAllBookProgress",
-                            ProgressCheckMode.RangeOnly
-                        )
-                    ) {
-                        return@forEach
+                WebBookProgressSyncCoordinator.withBook(book.name, book.author) bookLock@{
+                    val progressFileName = getProgressFileName(book.name, book.author)
+                    val webDavFile = map[progressFileName] ?: return@bookLock
+                    matchedCount++
+                    if (webDavFile.lastModify <= book.syncTime) {
+                        //本地同步时间大于上传时间不用同步
+                        return@bookLock
                     }
-                    if (bookProgress.compareReadPosition(book) > 0) {
-                        book.durChapterIndex = bookProgress.durChapterIndex
-                        book.durChapterPos = bookProgress.durChapterPos
-                        book.durChapterTitle = bookProgress.durChapterTitle
-                        book.durChapterTime = bookProgress.durChapterTime
-                        book.syncTime = System.currentTimeMillis()
-                        appDb.bookDao.update(book)
-                        updatedCount++
+                    getBookProgress(book)?.let { bookProgress ->
+                        if (!canApplyBookProgress(
+                                book,
+                                bookProgress,
+                                "WebDav downloadAllBookProgress",
+                                ProgressCheckMode.RangeOnly
+                            )
+                        ) {
+                            return@bookLock
+                        }
+                        if (bookProgress.compareReadPosition(book) > 0) {
+                            book.durChapterIndex = bookProgress.durChapterIndex
+                            book.durChapterPos = bookProgress.readChapterPos
+                            book.durChapterTitle = bookProgress.durChapterTitle
+                            book.durChapterTime = bookProgress.durChapterTime
+                            book.syncTime = System.currentTimeMillis()
+                            appDb.bookDao.update(book)
+                            updatedCount++
+                        }
                     }
                 }
             }

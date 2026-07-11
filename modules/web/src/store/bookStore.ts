@@ -5,16 +5,14 @@ import type {
   Book,
   BookChapter,
   BookProgress,
+  WebBookProgress,
   BookGroup,
   SeachBook,
 } from '@/book'
 import type { webReadConfig } from '@/web'
 import { toast } from '@/utils/toast'
 import { toRaw } from 'vue'
-import {
-  finishReaderPerf,
-  startReaderPerf,
-} from '@/utils/readerPerformance'
+import { finishReaderPerf, startReaderPerf } from '@/utils/readerPerformance'
 
 const default_config: webReadConfig = {
   theme: 0,
@@ -36,9 +34,13 @@ const default_config: webReadConfig = {
 }
 let webReadConfigLoadedDate: Date | undefined
 
-let pendingBookProgress: BookProgress | null = null
+let pendingBookProgress: WebBookProgress | null = null
 let bookProgressSaveWorker: Promise<void> | null = null
-let activeBookProgressKey: string | null = null
+let bookProgressSaveTimer: ReturnType<typeof setTimeout> | null = null
+let lastSubmittedBookProgressKey: string | null = null
+let backendBookProgressDirty = false
+let changedWhileSaving = false
+let flushEpoch = 0
 
 const bookProgressKey = (progress: BookProgress) =>
   [
@@ -49,39 +51,75 @@ const bookProgressKey = (progress: BookProgress) =>
     progress.durChapterTitle,
   ].join('\u0000')
 
-const drainBookProgressSaves = async () => {
-  // Cached chapter switches can update progress twice in the same Vue flush.
-  // Yield once so only the newest position is sent to the phone.
-  await new Promise(resolve => setTimeout(resolve, 0))
-  while (pendingBookProgress) {
-    const progress = pendingBookProgress
-    pendingBookProgress = null
-    activeBookProgressKey = bookProgressKey(progress)
-    const perf = startReaderPerf('web.progress.save')
-    try {
-      await API.saveBookProgress(progress)
-    } finally {
-      activeBookProgressKey = null
-      finishReaderPerf(perf, 50)
-    }
-  }
+const clearBookProgressSaveTimer = () => {
+  if (bookProgressSaveTimer === null) return
+  clearTimeout(bookProgressSaveTimer)
+  bookProgressSaveTimer = null
 }
 
-const enqueueBookProgressSave = (progress: BookProgress) => {
-  const progressSnapshot = { ...progress }
-  const progressKey = bookProgressKey(progressSnapshot)
-  if (activeBookProgressKey !== progressKey) {
-    pendingBookProgress = progressSnapshot
+const scheduleBookProgressSave = () => {
+  if (bookProgressSaveTimer !== null || bookProgressSaveWorker) return
+  bookProgressSaveTimer = setTimeout(() => {
+    bookProgressSaveTimer = null
+    void submitBookProgress(false).catch(() => undefined)
+  }, 5000)
+}
+
+const submitBookProgress = async (
+  flush: boolean,
+  fallback?: WebBookProgress,
+): Promise<void> => {
+  if (bookProgressSaveWorker) {
+    await bookProgressSaveWorker.catch(() => undefined)
+    if (flush) return submitBookProgress(true, fallback)
+    return
   }
-  if (!bookProgressSaveWorker) {
-    bookProgressSaveWorker = drainBookProgressSaves().finally(() => {
-      bookProgressSaveWorker = null
-      if (pendingBookProgress) {
-        void enqueueBookProgressSave(pendingBookProgress).catch(() => undefined)
+  const progress =
+    pendingBookProgress ??
+    (flush && backendBookProgressDirty ? fallback : undefined)
+  if (!progress) return
+  pendingBookProgress = null
+  changedWhileSaving = false
+  const progressKey = bookProgressKey(progress)
+  const startedAtFlushEpoch = flushEpoch
+  const perf = startReaderPerf(
+    flush ? 'web.progress.flush' : 'web.progress.save',
+  )
+  const request = API.saveBookProgress(progress, flush)
+    .then(() => {
+      lastSubmittedBookProgressKey = progressKey
+      if (flush) {
+        backendBookProgressDirty = false
+      } else if (flushEpoch === startedAtFlushEpoch) {
+        backendBookProgressDirty = true
       }
     })
+    .catch(error => {
+      if (!pendingBookProgress) pendingBookProgress = progress
+      throw error
+    })
+    .finally(() => {
+      bookProgressSaveWorker = null
+      finishReaderPerf(perf, 50)
+      if (pendingBookProgress && changedWhileSaving) scheduleBookProgressSave()
+    })
+  bookProgressSaveWorker = request
+  return request
+}
+
+const enqueueBookProgressSave = (progress: WebBookProgress) => {
+  const progressSnapshot = { ...progress }
+  const progressKey = bookProgressKey(progressSnapshot)
+  if (
+    progressKey === lastSubmittedBookProgressKey &&
+    pendingBookProgress === null
+  ) {
+    return Promise.resolve()
   }
-  return bookProgressSaveWorker
+  pendingBookProgress = progressSnapshot
+  if (bookProgressSaveWorker) changedWhileSaving = true
+  scheduleBookProgressSave()
+  return Promise.resolve()
 }
 
 export const useBookStore = defineStore('book', {
@@ -249,6 +287,13 @@ export const useBookStore = defineStore('book', {
     },
     setReadingBook(readingBook: typeof this.readingBook) {
       this.readingBook = readingBook
+      const progress = this.bookProgress
+      if (progress) {
+        clearBookProgressSaveTimer()
+        pendingBookProgress = null
+        backendBookProgressDirty = false
+        lastSubmittedBookProgressKey = bookProgressKey(progress)
+      }
     },
     async loadWebConfig() {
       if (webReadConfigLoadedDate === undefined) {
@@ -304,28 +349,40 @@ export const useBookStore = defineStore('book', {
      * @param useBeacon 是否使用 navigator.sendBeacon（页面关闭前调用，
      *                   仅做尽力交付，浏览器不会等待响应）。
      */
-    async saveBookProgress(useBeacon = false) {
+    async saveBookProgress(flush = false, useBeacon = false) {
       const progress = this.bookProgress
       if (!progress) return Promise.resolve()
       const { bookUrl } = this.readingBook
+      const webProgress: WebBookProgress = { ...progress, bookUrl }
       const shelfRaw = toRaw(this.shelf)
       const findIndex = shelfRaw.findIndex(book => book.bookUrl === bookUrl)
       if (findIndex > -1) {
-        this.shelf[findIndex] = Object.assign(
-          {},
-          shelfRaw[findIndex],
-          progress,
-        )
+        this.shelf[findIndex] = Object.assign({}, shelfRaw[findIndex], progress)
       }
       if (useBeacon) {
+        if (
+          pendingBookProgress === null &&
+          !backendBookProgressDirty &&
+          bookProgressKey(webProgress) === lastSubmittedBookProgressKey
+        )
+          return
         const perf = startReaderPerf('web.progress.saveBeacon')
-        // Beacon is only for page hide/unload; normal reads need a real request
-        // so the browser can observe failures and keep progress in sync.
-        API.saveBookProgressWithBeacon(progress)
+        clearBookProgressSaveTimer()
+        pendingBookProgress = null
+        backendBookProgressDirty = false
+        flushEpoch++
+        API.saveBookProgressWithBeacon(webProgress)
         finishReaderPerf(perf, 0)
         return
       }
-      return enqueueBookProgressSave(progress)
+      if (flush) {
+        clearBookProgressSaveTimer()
+        if (bookProgressKey(webProgress) !== lastSubmittedBookProgressKey) {
+          pendingBookProgress = webProgress
+        }
+        return submitBookProgress(true, webProgress)
+      }
+      return enqueueBookProgressSave(webProgress)
     },
   },
 })

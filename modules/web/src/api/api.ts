@@ -8,6 +8,8 @@ import type {
   Book,
   BookChapter,
   BookProgress,
+  WebBookProgress,
+  SyncBookProgressResult,
   BookGroup,
   SeachBook,
 } from '@/book'
@@ -54,21 +56,38 @@ const getReadConfig = async (http_url = legado_http_entry_point) => {
 const saveReadConfig = (config: webReadConfig) =>
   ajax.post('saveReadConfig', config)
 
-const saveBookProgress = (bookProgress: BookProgress) =>
-  ajax.post('saveBookProgress', bookProgress)
+const saveBookProgress = async (
+  bookProgress: WebBookProgress,
+  flush = false,
+) => {
+  const response = await ajax.post(
+    `saveBookProgress${flush ? '?flush=true' : ''}`,
+    bookProgress,
+  )
+  if (!response.data?.isSuccess) {
+    throw new Error(response.data?.errorMsg || '保存阅读进度失败')
+  }
+  return response
+}
 
-const saveBookProgressWithBeacon = (bookProgress: BookProgress) => {
+const saveBookProgressWithBeacon = (bookProgress: WebBookProgress) => {
   if (!bookProgress) return
   navigator.sendBeacon(
-    new URL('saveBookProgress', legado_http_entry_point),
+    new URL('saveBookProgress?flush=true', legado_http_entry_point),
     JSON.stringify(bookProgress),
   )
 }
 
+const syncBookProgress = (bookUrl: string) =>
+  ajax.post('syncBookProgress', {
+    bookUrl,
+  }) as Promise<{ data: LeagdoApiResponse<SyncBookProgressResult> }>
+
 const getGroups = () => ajax.get('getGroups')
 
 const getBookShelf = (groupId?: number | string) => {
-  const url = groupId !== undefined ? `getBookshelf?groupId=${groupId}` : 'getBookshelf'
+  const url =
+    groupId !== undefined ? `getBookshelf?groupId=${groupId}` : 'getBookshelf'
   return ajax.get(url)
 }
 
@@ -76,7 +95,12 @@ const getChapterList = (bookUrl: string) =>
   ajax.get('getChapterList?url=' + encodeURIComponent(bookUrl))
 
 const getBookContent = (bookUrl: string, chapterIndex: number) =>
-  ajax.get('getBookContent?url=' + encodeURIComponent(bookUrl) + '&index=' + chapterIndex)
+  ajax.get(
+    'getBookContent?url=' +
+      encodeURIComponent(bookUrl) +
+      '&index=' +
+      chapterIndex,
+  )
 
 const refreshToc = (bookUrl: string) =>
   ajax.get('refreshToc?url=' + encodeURIComponent(bookUrl))
@@ -150,10 +174,7 @@ const debug = (
   onReceive: (data: string) => void,
   onFinish: () => void,
 ) => {
-  const url = new URL(
-    'bookSourceDebug',
-    legado_webSocket_entry_point,
-  )
+  const url = new URL('bookSourceDebug', legado_webSocket_entry_point)
 
   const socket = new WebSocket(url)
   socket.onerror = wsOnError
@@ -200,6 +221,7 @@ export default {
   saveReadConfig,
   saveBookProgress,
   saveBookProgressWithBeacon,
+  syncBookProgress,
   getGroups,
   getBookShelf,
   getChapterList,

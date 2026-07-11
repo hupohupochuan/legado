@@ -90,7 +90,11 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
                 "/deleteBookSources" -> BookSourceController.deleteSources(postData)
                 "/saveBook"          -> BookController.saveBook(postData)
                 "/deleteBook"        -> BookController.deleteBook(postData)
-                "/saveBookProgress"  -> BookController.saveBookProgress(postData)
+                "/saveBookProgress"  -> BookController.saveBookProgress(
+                    postData,
+                    session.parameters["flush"]?.firstOrNull().toBoolean()
+                )
+                "/syncBookProgress"  -> BookController.syncBookProgress(postData)
                 "/addLocalBook"      -> BookController.addLocalBook(session.parameters, files)
                 "/saveReadConfig"    -> BookController.saveWebReadConfig(postData)
                 "/saveReaderLog"     -> ReaderLogController.saveReaderLog(postData)

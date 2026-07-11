@@ -19,7 +19,14 @@
           <div class="reading-recent">
             <span
               class="web-tag"
-              :class="[readingRecent.name === '尚无阅读记录' ? 'web-tag--warning' : 'web-tag--primary', 'web-tag--large', 'recent-book', { 'no-point': !readingRecent.bookUrl }]"
+              :class="[
+                readingRecent.name === '尚无阅读记录'
+                  ? 'web-tag--warning'
+                  : 'web-tag--primary',
+                'web-tag--large',
+                'recent-book',
+                { 'no-point': !readingRecent.bookUrl },
+              ]"
               @click="
                 toDetail(
                   readingRecent.bookUrl,
@@ -59,7 +66,14 @@
           <div class="setting-item">
             <span
               class="web-tag"
-              :class="[connectType === 'primary' ? 'web-tag--success' : 'web-tag--danger', 'web-tag--large', 'setting-connect', { 'no-point': newConnect }]"
+              :class="[
+                connectType === 'primary'
+                  ? 'web-tag--success'
+                  : 'web-tag--danger',
+                'web-tag--large',
+                'setting-connect',
+                { 'no-point': newConnect },
+              ]"
               @click="setLegadoRetmoteUrl"
             >
               {{ connectStatus }}
@@ -89,10 +103,7 @@
         </div>
       </div>
       <div class="bottom-icons">
-        <a
-          href="https://github.com/hupohupochuan/legado"
-          target="_blank"
-        >
+        <a href="https://github.com/hupohupochuan/legado" target="_blank">
           <div class="bottom-icon">
             <img :src="githubUrl" alt="" />
           </div>
@@ -210,40 +221,44 @@ const connectionStore = useConnectionStore()
 const { connectStatus, connectType, newConnect } = storeToRefs(connectionStore)
 
 const setLegadoRetmoteUrl = () => {
-  msgbox.prompt(
-    '请输入 后端地址 ( 如：http://127.0.0.1:9527 或者通过内网穿透的地址)',
-    '提示',
-    {
-      inputPlaceholder: legado_http_entry_point,
-      inputValidator: value => validatorHttpUrl(value) as boolean,
-      inputErrorMessage: '输入的格式不对',
-    },
-  ).then(async (result) => {
-    if (result.action === 'confirm') {
-      connectionStore.setNewConnect(true)
-      const url = new URL(result.value).toString()
-      try {
-        const config = await API.getReadConfig(url)
-        connectionStore.setNewConnect(false)
-        applyReadConfig(config)
-        store.clearSearchBooks()
-        setApiEntryPoint(...parseLeagdoHttpUrlWithDefault(url))
-        if (url === location.origin) {
-          localStorage.removeItem(baseURL_localStorage_key)
-        } else {
-          localStorage.setItem(baseURL_localStorage_key, url)
+  msgbox
+    .prompt(
+      '请输入 后端地址 ( 如：http://127.0.0.1:9527 或者通过内网穿透的地址)',
+      '提示',
+      {
+        inputPlaceholder: legado_http_entry_point,
+        inputValidator: value => validatorHttpUrl(value) as boolean,
+        inputErrorMessage: '输入的格式不对',
+      },
+    )
+    .then(async result => {
+      if (result.action === 'confirm') {
+        connectionStore.setNewConnect(true)
+        const url = new URL(result.value).toString()
+        try {
+          const config = await API.getReadConfig(url)
+          connectionStore.setNewConnect(false)
+          applyReadConfig(config)
+          store.clearSearchBooks()
+          setApiEntryPoint(...parseLeagdoHttpUrlWithDefault(url))
+          if (url === location.origin) {
+            localStorage.removeItem(baseURL_localStorage_key)
+          } else {
+            localStorage.setItem(baseURL_localStorage_key, url)
+          }
+          store.loadBookShelf()
+        } catch (error) {
+          connectionStore.setNewConnect(false)
+          throw error
         }
-        store.loadBookShelf()
-      } catch (error) {
-        connectionStore.setNewConnect(false)
-        throw error
       }
-    }
-  })
+    })
 }
 
 const router = useRouter()
+const openingBookUrl = ref<string | null>(null)
 const handleBookClick = async (book: SeachBook | Book) => {
+  if (openingBookUrl.value !== null) return
   const isSeachBook = 'respondTime' in book
   if (isSeachBook) {
     await API.saveBook(book)
@@ -256,9 +271,16 @@ const handleBookClick = async (book: SeachBook | Book) => {
     durChapterPos = 0,
   } = book as any
 
-  toDetail(bookUrl, name, author, durChapterIndex, durChapterPos, isSeachBook)
+  await toDetail(
+    bookUrl,
+    name,
+    author,
+    durChapterIndex,
+    durChapterPos,
+    isSeachBook,
+  )
 }
-const toDetail = (
+const toDetail = async (
   bookUrl: string,
   bookName: string,
   bookAuthor: string,
@@ -267,38 +289,65 @@ const toDetail = (
   isSeachBook: boolean | undefined = false,
   fromReadRecentClick = false,
 ) => {
-  if (bookName === '尚无阅读记录') return
-  if (
-    fromReadRecentClick &&
-    shelf.value.every(book => book.bookUrl !== bookUrl)
-  ) {
-    searchWord.value = bookName
-    searchBook()
-    return
+  if (bookName === '尚无阅读记录' || openingBookUrl.value !== null) return
+  openingBookUrl.value = bookUrl
+  try {
+    try {
+      const response = await API.syncBookProgress(bookUrl)
+      if (response.data.isSuccess) {
+        const { progress, warning } = response.data.data
+        chapterIndex = progress.durChapterIndex
+        chapterPos = progress.durChapterPos
+        const shelfIndex = store.shelf.findIndex(
+          book => book.bookUrl === bookUrl,
+        )
+        if (shelfIndex > -1) {
+          store.shelf[shelfIndex] = Object.assign(
+            {},
+            store.shelf[shelfIndex],
+            progress,
+          )
+        }
+        if (warning) toast.warning(warning)
+      } else {
+        if (
+          fromReadRecentClick &&
+          shelf.value.every(book => book.bookUrl !== bookUrl)
+        ) {
+          searchWord.value = bookName
+          searchBook()
+          return
+        }
+        toast.warning('同步阅读进度失败，已使用手机本地进度')
+      }
+    } catch {
+      toast.warning('同步阅读进度失败，已使用手机本地进度')
+    }
+    sessionStorage.setItem('bookUrl', bookUrl)
+    sessionStorage.setItem('bookName', bookName)
+    sessionStorage.setItem('bookAuthor', bookAuthor)
+    sessionStorage.setItem('chapterIndex', String(chapterIndex))
+    sessionStorage.setItem('chapterPos', String(chapterPos))
+    sessionStorage.setItem('isSeachBook', String(isSeachBook))
+    readingRecent.value = {
+      name: bookName,
+      author: bookAuthor,
+      bookUrl,
+      chapterIndex,
+      chapterPos,
+      isSeachBook,
+    }
+    localStorage.setItem('readingRecent', JSON.stringify(readingRecent.value))
+    await router.push({
+      path: '/chapter',
+    })
+  } finally {
+    openingBookUrl.value = null
   }
-  sessionStorage.setItem('bookUrl', bookUrl)
-  sessionStorage.setItem('bookName', bookName)
-  sessionStorage.setItem('bookAuthor', bookAuthor)
-  sessionStorage.setItem('chapterIndex', String(chapterIndex))
-  sessionStorage.setItem('chapterPos', String(chapterPos))
-  sessionStorage.setItem('isSeachBook', String(isSeachBook))
-  readingRecent.value = {
-    name: bookName,
-    author: bookAuthor,
-    bookUrl,
-    chapterIndex,
-    chapterPos,
-    isSeachBook,
-  }
-  localStorage.setItem('readingRecent', JSON.stringify(readingRecent.value))
-  router.push({
-    path: '/chapter',
-  })
 }
 
 const loadShelf = async () => {
   await store.loadWebConfig()
-  await store.saveBookProgress()
   await store.loadGroups()
   if (groups.value.length > 0) {
     currentGroupId.value = groups.value[0].groupId

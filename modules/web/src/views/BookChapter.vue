@@ -11,7 +11,10 @@
           <div class="iconfont">&#58905;</div>
           <div class="icon-text">目录</div>
         </div>
-        <div class="tool-icon" @click.stop="readSettingsVisible = !readSettingsVisible">
+        <div
+          class="tool-icon"
+          @click.stop="readSettingsVisible = !readSettingsVisible"
+        >
           <div class="iconfont">&#58971;</div>
           <div class="icon-text">设置</div>
         </div>
@@ -31,30 +34,61 @@
     </div>
     <div class="read-bar" :style="rightBarTheme">
       <div class="tools">
-        <div class="tool-icon" :class="{ 'no-point': readBarDisabled }" @click="onReadBarPrev">
+        <div
+          class="tool-icon"
+          :class="{ 'no-point': readBarDisabled }"
+          @click="onReadBarPrev"
+        >
           <div class="iconfont">&#58920;</div>
-          <span v-if="miniInterface">{{ activeBookMode ? '上一页' : '上一章' }}</span>
+          <span v-if="miniInterface">{{
+            activeBookMode ? '上一页' : '上一章'
+          }}</span>
         </div>
-        <div class="tool-icon" :class="{ 'no-point': readBarDisabled }" @click="onReadBarNext">
-          <span v-if="miniInterface">{{ activeBookMode ? '下一页' : '下一章' }}</span>
+        <div
+          class="tool-icon"
+          :class="{ 'no-point': readBarDisabled }"
+          @click="onReadBarNext"
+        >
+          <span v-if="miniInterface">{{
+            activeBookMode ? '下一页' : '下一章'
+          }}</span>
           <div class="iconfont">&#58913;</div>
         </div>
       </div>
     </div>
 
-    <div v-if="popCataVisible" class="web-dialog-overlay" @click.self="popCataVisible = false">
-      <div class="web-dialog popup" :style="{ background: popupColor, maxWidth: popupWidth + 'px' }">
+    <div
+      v-if="popCataVisible"
+      class="web-dialog-overlay"
+      @click.self="popCataVisible = false"
+    >
+      <div
+        class="web-dialog popup"
+        :style="{ background: popupColor, maxWidth: popupWidth + 'px' }"
+      >
         <PopCatalog @getContent="getContent" />
       </div>
     </div>
 
-    <div v-if="readSettingsVisible" class="web-dialog-overlay" @click.self="readSettingsVisible = false">
-      <div class="web-dialog popup" :style="{ background: popupColor, maxWidth: popupWidth + 'px' }">
+    <div
+      v-if="readSettingsVisible"
+      class="web-dialog-overlay"
+      @click.self="readSettingsVisible = false"
+    >
+      <div
+        class="web-dialog popup"
+        :style="{ background: popupColor, maxWidth: popupWidth + 'px' }"
+      >
         <read-settings />
       </div>
     </div>
 
-    <div class="chapter" ref="content" :class="{ 'book-mode': activeBookMode }" :style="chapterTheme">
+    <div
+      class="chapter"
+      ref="content"
+      :class="{ 'book-mode': activeBookMode }"
+      :style="chapterTheme"
+    >
       <div class="content" :class="{ 'book-mode': activeBookMode }">
         <div class="top-bar" ref="top"></div>
         <template v-if="showContent && activeBookMode && currentChapterData">
@@ -77,11 +111,7 @@
           />
         </template>
         <template v-else>
-          <div
-            v-for="data in chapterData"
-            :key="data.index"
-            ref="chapter"
-          >
+          <div v-for="data in chapterData" :key="data.index" ref="chapter">
             <chapter-content
               ref="chapterRef"
               :chapterIndex="data.index"
@@ -105,14 +135,13 @@
 <script setup lang="ts">
 import jump from '@/plugins/jump'
 import settings from '@/config/themeConfig'
-import API, { backendConnectionErrorMessage, isBackendConnectionError } from '@api'
+import API, {
+  backendConnectionErrorMessage,
+  isBackendConnectionError,
+} from '@api'
 import { useLoading } from '@/hooks/loading'
-import { useThrottleFn } from '@vueuse/shared'
 import { isNullOrBlank } from '@/utils/utils'
-import {
-  finishReaderPerf,
-  startReaderPerf,
-} from '@/utils/readerPerformance'
+import { finishReaderPerf, startReaderPerf } from '@/utils/readerPerformance'
 import { toast } from '@/utils/toast'
 import { msgbox } from '@/utils/toast'
 
@@ -424,7 +453,9 @@ const toShelf = () => router.push('/shelf')
 const chapterData = ref<ChapterData[]>([])
 const noPoint = ref(true)
 const bookChapterSwitching = ref(false)
-const readBarDisabled = computed(() => noPoint.value || bookChapterSwitching.value)
+const readBarDisabled = computed(
+  () => noPoint.value || bookChapterSwitching.value,
+)
 
 // ---------- 书本翻页模式 (Book page turn mode) ----------
 // 运行时生效的模式以 store.activePageMode 为准；初始化失败时由 BookPageReader
@@ -448,7 +479,9 @@ const prefetchBookAdjacent = (index: number) => {
   prefetchChapter(index - 1)
 }
 
-const resolveBookChapterForTurn = async (index: number): Promise<ChapterData> => {
+const resolveBookChapterForTurn = async (
+  index: number,
+): Promise<ChapterData> => {
   const cached =
     prefetchedChapters.get(index) ??
     chapterData.value.find(d => d.index === index)
@@ -466,7 +499,9 @@ const resolveBookChapterForTurn = async (index: number): Promise<ChapterData> =>
 }
 
 const rememberBookChapter = (chapter: ChapterData) => {
-  const existingIndex = chapterData.value.findIndex(d => d.index === chapter.index)
+  const existingIndex = chapterData.value.findIndex(
+    d => d.index === chapter.index,
+  )
   if (existingIndex >= 0) {
     chapterData.value[existingIndex] = chapter
   } else {
@@ -476,7 +511,10 @@ const rememberBookChapter = (chapter: ChapterData) => {
   if (chapterData.value.length > 3) {
     chapterData.value = chapterData.value
       .slice()
-      .sort((a, b) => Math.abs(a.index - chapter.index) - Math.abs(b.index - chapter.index))
+      .sort(
+        (a, b) =>
+          Math.abs(a.index - chapter.index) - Math.abs(b.index - chapter.index),
+      )
       .slice(0, 3)
       .sort((a, b) => a.index - b.index)
   }
@@ -546,7 +584,14 @@ const turnBookChapter = async (direction: 'next' | 'prev') => {
       ) === true
 
     if (!started) {
-      if (!switchBookChapter(targetIndex, initialPos, fallbackSafePos, targetChapter)) {
+      if (
+        !switchBookChapter(
+          targetIndex,
+          initialPos,
+          fallbackSafePos,
+          targetChapter,
+        )
+      ) {
         getContent(targetIndex, true, fallbackSafePos, initialPos)
       }
       finishBookChapterSwitching()
@@ -607,7 +652,8 @@ const getContent = (
     jump(top.value, { duration: 0 })
     saveReadingBookProgressToBrowser(index, targetChapterPos)
     // 书本翻页模式：整章重载时把初始页定位参数对齐
-    if (activeBookMode.value) bookInitialPos.value = initialPos ?? targetChapterPos
+    if (activeBookMode.value)
+      bookInitialPos.value = initialPos ?? targetChapterPos
     chapterData.value = []
   }
 
@@ -639,7 +685,8 @@ const getContent = (
         if (previousChapterData.length > 0) {
           chapterData.value = previousChapterData
           saveReadingBookProgressToBrowser(previousIndex, previousPos)
-          if (activeBookMode.value) bookInitialPos.value = previousBookInitialPos
+          if (activeBookMode.value)
+            bookInitialPos.value = previousBookInitialPos
           store.setShowContent(previousShowContent)
         } else {
           chapterData.value.push({
@@ -681,13 +728,7 @@ const toChapterPos = (pos: number) => {
   })
 }
 
-const saveBookProgressThrottle = useThrottleFn(
-  () => store.saveBookProgress(),
-  60000,
-)
 let lastReadedProgressKey = ''
-// 跟踪上次保存进度的章节 index；章节切换时立即保存（绕过 60s 节流），
-// 确保书本翻页上一章/下一章落到真实末页/首页位置后能立刻持久化。
 let lastProgressIndex = -1
 
 const onReadedLengthChange = (index: number, pos: number) => {
@@ -695,11 +736,12 @@ const onReadedLengthChange = (index: number, pos: number) => {
   if (lastReadedProgressKey === progressKey) return
   lastReadedProgressKey = progressKey
   saveReadingBookProgressToBrowser(index, pos)
+  persistReadingBookNow()
   if (index !== lastProgressIndex) {
     lastProgressIndex = index
-    store.saveBookProgress()
+    void store.saveBookProgress(true)
   } else {
-    saveBookProgressThrottle()
+    void store.saveBookProgress()
   }
 }
 
@@ -716,8 +758,13 @@ const onVisibilityChange = () => {
   const _bookProgress = bookProgress.value
   if (document.visibilityState == 'hidden' && _bookProgress) {
     flushReadingBookPersist()
-    store.saveBookProgress(true)
+    void store.saveBookProgress(true)
   }
+}
+
+const onPageHide = () => {
+  flushReadingBookPersist()
+  void store.saveBookProgress(true, true)
 }
 
 const toNextChapter = () => {
@@ -727,7 +774,7 @@ const toNextChapter = () => {
     getContent(index)
       ?.then(() => {
         toast.info('下一章')
-        store.saveBookProgress()
+        void store.saveBookProgress(true)
       })
       .catch(() => undefined)
   } else {
@@ -741,7 +788,7 @@ const toPreChapter = () => {
     getContent(index)
       ?.then(() => {
         toast.info('上一章')
-        store.saveBookProgress()
+        void store.saveBookProgress(true)
       })
       .catch(() => undefined)
   } else {
@@ -835,6 +882,7 @@ onMounted(async () => {
       window.addEventListener('keyup', handleKeyPress)
       window.addEventListener('keydown', ignoreKeyPress)
       document.addEventListener('visibilitychange', onVisibilityChange)
+      window.addEventListener('pagehide', onPageHide)
       scrollObserver = new IntersectionObserver(onReachBottom, {
         rootMargin: '-100% 0% 20% 0%',
       })
@@ -842,7 +890,8 @@ onMounted(async () => {
         rootMargin: '0% 0% 150% 0%',
       })
       if (infiniteLoading.value === true) scrollObserver.observe(loading.value)
-      if (infiniteLoading.value === true) prefetchObserver.observe(loading.value)
+      if (infiniteLoading.value === true)
+        prefetchObserver.observe(loading.value)
       document.title = '...'
       document.title = (name as string) + ' | ' + chapters[chapterIndex].title
     }),
@@ -854,6 +903,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', ignoreKeyPress)
   window.removeEventListener('resize', onResize)
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  window.removeEventListener('pagehide', onPageHide)
   readSettingsVisible.value = false
   popCataVisible.value = false
   scrollObserver?.disconnect()
@@ -862,17 +912,16 @@ onUnmounted(() => {
   prefetchObserver = null
   clearPrefetchedChapters()
   flushReadingBookPersist()
+  void store.saveBookProgress(true)
 })
 
 const addToBookShelfConfirm = async () => {
   const book = store.readingBook
   if (book.isSeachBook === true) {
     try {
-      await msgbox.confirm(
-        `是否将《${book.name}》放入书架？`,
-        '放入书架',
-        { closeOnHashChange: false },
-      )
+      await msgbox.confirm(`是否将《${book.name}》放入书架？`, '放入书架', {
+        closeOnHashChange: false,
+      })
       isSeachBook.value = false
     } catch {
       await API.deleteBook(book)
@@ -884,6 +933,7 @@ onBeforeRouteLeave(async (to, from, next) => {
   console.log('onBeforeRouteLeave')
   window.removeEventListener('keyup', handleKeyPress)
   flushReadingBookPersist()
+  await store.saveBookProgress(true).catch(() => undefined)
   await addToBookShelfConfirm()
   next()
 })
@@ -965,7 +1015,8 @@ onBeforeRouteLeave(async (to, from, next) => {
   }
 
   .chapter {
-    font-family: 'Microsoft YaHei', PingFangSC-Regular, HelveticaNeue-Light,
+    font-family:
+      'Microsoft YaHei', PingFangSC-Regular, HelveticaNeue-Light,
       'Helvetica Neue Light', sans-serif;
     text-align: left;
     padding: 0 65px;
@@ -976,7 +1027,8 @@ onBeforeRouteLeave(async (to, from, next) => {
     .content {
       font-size: 18px;
       line-height: 1.8;
-      font-family: 'Microsoft YaHei', PingFangSC-Regular, HelveticaNeue-Light,
+      font-family:
+        'Microsoft YaHei', PingFangSC-Regular, HelveticaNeue-Light,
         'Helvetica Neue Light', sans-serif;
 
       .bottom-bar,
@@ -1003,7 +1055,9 @@ onBeforeRouteLeave(async (to, from, next) => {
 
 .day {
   .popup {
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12), 0 0 6px rgba(0, 0, 0, 0.04);
+    box-shadow:
+      0 2px 4px rgba(0, 0, 0, 0.12),
+      0 0 6px rgba(0, 0, 0, 0.04);
   }
 
   .tool-icon {
@@ -1024,7 +1078,9 @@ onBeforeRouteLeave(async (to, from, next) => {
 
 .night {
   .popup {
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.48), 0 0 6px rgba(0, 0, 0, 0.16);
+    box-shadow:
+      0 2px 4px rgba(0, 0, 0, 0.48),
+      0 0 6px rgba(0, 0, 0, 0.16);
   }
 
   .tool-icon {

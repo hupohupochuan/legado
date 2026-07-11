@@ -115,7 +115,7 @@ const gotoChapter = (chapter: BookChapter) => {
   currentChapterIndex.value = chapterIndex
   store.setPopCataVisible(false)
   store.setContentLoading(true)
-  store.saveBookProgress()
+  void store.saveBookProgress(true)
   emit('getContent', chapterIndex)
 }
 </script>
