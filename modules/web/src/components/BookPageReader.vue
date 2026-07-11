@@ -745,9 +745,8 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
     position: relative;
     width: var(--bp-page-width);
     height: var(--bp-page-height);
-    perspective: 1800px;
-    transform-style: preserve-3d;
     isolation: isolate;
+    contain: layout paint;
   }
 
   .bp-page {
@@ -757,10 +756,6 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
     padding: 0;
     overflow: hidden;
     background: var(--bp-page-bg);
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
-    transform-style: preserve-3d;
-    will-change: transform, opacity;
     z-index: 1;
 
     .bp-page-inner {
@@ -791,6 +786,10 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
 
   // 固定纸质书效果：不跟随手指，底页保持稳定，只让翻动页和页边阴影运动。
   .bp-stage.bp-book-next {
+    .bp-page {
+      will-change: clip-path;
+    }
+
     .bp-page-current {
       z-index: 3;
       animation: bp-book-current-next 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
@@ -803,6 +802,7 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
           linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.28) 55%, rgba(255, 255, 255, 0.2) 74%, transparent),
           linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.1));
         animation: bp-book-edge-next 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
+        will-change: transform, opacity;
       }
     }
 
@@ -818,6 +818,10 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
   }
 
   .bp-stage.bp-book-prev {
+    .bp-page {
+      will-change: clip-path;
+    }
+
     .bp-page-current {
       z-index: 1;
       animation: bp-book-current-prev 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
@@ -840,12 +844,17 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
           linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22) 28%, rgba(0, 0, 0, 0.24) 55%, transparent),
           linear-gradient(90deg, rgba(0, 0, 0, 0.1), transparent);
         animation: bp-book-edge-prev 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
+        will-change: transform, opacity;
       }
     }
   }
 
   // 固定滑动效果：触发后直接左右移入/移出，不做跟手位移。
   .bp-stage.bp-slide-next {
+    .bp-page {
+      will-change: transform;
+    }
+
     .bp-page-current {
       z-index: 2;
       animation: bp-slide-current-next 0.26s ease-out forwards;
@@ -858,6 +867,10 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
   }
 
   .bp-stage.bp-slide-prev {
+    .bp-page {
+      will-change: transform;
+    }
+
     .bp-page-current {
       z-index: 2;
       animation: bp-slide-current-prev 0.26s ease-out forwards;
@@ -957,9 +970,6 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
   0% {
     clip-path: inset(0 0 0 0);
   }
-  48% {
-    clip-path: inset(0 42% 0 0);
-  }
   100% {
     clip-path: inset(0 100% 0 0);
   }
@@ -968,9 +978,6 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
 @keyframes bp-book-target-next {
   0% {
     clip-path: inset(0 0 0 100%);
-  }
-  48% {
-    clip-path: inset(0 0 0 58%);
   }
   100% {
     clip-path: inset(0 0 0 0);
@@ -981,9 +988,6 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
   0% {
     clip-path: inset(0 0 0 0);
   }
-  52% {
-    clip-path: inset(0 0 0 42%);
-  }
   100% {
     clip-path: inset(0 0 0 100%);
   }
@@ -992,9 +996,6 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
 @keyframes bp-book-target-prev {
   0% {
     clip-path: inset(0 100% 0 0);
-  }
-  52% {
-    clip-path: inset(0 42% 0 0);
   }
   100% {
     clip-path: inset(0 0 0 0);
