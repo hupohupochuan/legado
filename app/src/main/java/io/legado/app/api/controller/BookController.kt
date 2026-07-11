@@ -2,6 +2,7 @@ package io.legado.app.api.controller
 
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
+import androidx.annotation.Keep
 import androidx.core.graphics.drawable.toBitmap
 import com.bumptech.glide.Glide
 import io.legado.app.api.ReturnData
@@ -51,6 +52,7 @@ object BookController {
     private var bookUrl: String = ""
     private val defaultCoverCache by lazy { WeakHashMap<Drawable, Bitmap>() }
 
+    @Keep
     private data class WebBookProgressPayload(
         val bookUrl: String? = null,
         val name: String,
@@ -70,8 +72,10 @@ object BookController {
         )
     }
 
+    @Keep
     private data class SyncBookProgressRequest(val bookUrl: String)
 
+    @Keep
     private data class SyncBookProgressResponse(
         val progress: BookProgress,
         val remoteApplied: Boolean,
