@@ -9,18 +9,17 @@
     @touchmove="onTouchMove"
     @touchend="onTouchEnd"
   >
-    <div
-      class="bp-stage"
-      ref="stageRef"
-      :class="stageClass"
-    >
+    <div class="bp-stage" ref="stageRef" :class="stageClass">
       <div
         v-if="currentPage"
         class="bp-page bp-page-current"
         :key="'current-' + currentPageKey"
         :style="pageStyle(currentPage)"
       >
-        <div class="bp-page-inner" v-html="renderBlocks(currentPage.blocks)"></div>
+        <div
+          class="bp-page-inner"
+          v-html="renderBlocks(currentPage.blocks)"
+        ></div>
         <div class="bp-page-shade" aria-hidden="true"></div>
       </div>
       <div
@@ -29,7 +28,10 @@
         :key="'target-' + targetPageKey"
         :style="pageStyle(targetPage)"
       >
-        <div class="bp-page-inner" v-html="renderBlocks(targetPage.blocks)"></div>
+        <div
+          class="bp-page-inner"
+          v-html="renderBlocks(targetPage.blocks)"
+        ></div>
         <div class="bp-page-shade" aria-hidden="true"></div>
       </div>
     </div>
@@ -43,18 +45,14 @@
       :style="measureStyle"
       aria-hidden="true"
     ></div>
-
-    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
 import API from '@api'
 import settings from '@/config/themeConfig'
 import { isLegadoUrl } from '@/utils/utils'
-import {
-  finishReaderPerf,
-  startReaderPerf,
-} from '@/utils/readerPerformance'
+import { finishReaderPerf, startReaderPerf } from '@/utils/readerPerformance'
 import { toast } from '@/utils/toast'
 import {
   buildBlocks,
@@ -120,9 +118,12 @@ let initialized = false
 let fallbackEmitted = false
 
 const currentPage = computed(() => pages.value[currentPageIndex.value])
-const targetPage = computed(() =>
-  targetExternalPage.value ??
-  (targetPageIndex.value === null ? null : pages.value[targetPageIndex.value]),
+const targetPage = computed(
+  () =>
+    targetExternalPage.value ??
+    (targetPageIndex.value === null
+      ? null
+      : pages.value[targetPageIndex.value]),
 )
 const currentPageKey = computed(
   () => `${props.chapterIndex}:${currentPageIndex.value}:${pages.value.length}`,
@@ -136,9 +137,7 @@ const targetPageKey = computed(() => {
 
 // 翻页方向：next/prev 决定 enter/leave 动画朝向，避免前进后退看起来一样
 const flipDirection = ref<'next' | 'prev'>('next')
-const pageTurnEffectComputed = computed(
-  () => props.pageTurnEffect ?? 'book',
-)
+const pageTurnEffectComputed = computed(() => props.pageTurnEffect ?? 'book')
 const pageBackground = computed(
   () => settings.themes[store.config.theme]?.content ?? '#ede7da',
 )
@@ -152,9 +151,9 @@ const stageClass = computed(() => {
 
 // 视口（书页）尺寸：书本翻页每页都是全新内容、不滚动、不重复，所以比滚动
 // 模式给页更大的宽度（几乎吃满 readWidth）和更高的高度（只保留很小的上下留白）。
+// 页宽只跟随 props.readWidth（由父组件统一提供响应式宽度），不要再读
+// window.innerWidth，保证窄屏内拖动 F12 也能响应。
 const pageWidth = computed(() => {
-  if (store.miniInterface) return window.innerWidth - 40
-  // 滚动模式正文宽 = readWidth - 130；书本模式少扣两侧留白，页面更宽
   return Math.max(props.readWidth - 40, 240)
 })
 const pageHeight = ref(0)
@@ -165,12 +164,9 @@ const rootStyle = computed(() => ({
   '--bp-page-height': pageHeight.value + 'px',
   '--bp-font-size': props.fontSize,
   '--bp-font-family': props.fontFamily,
-  '--bp-letter':
-    'calc(' + (props.spacing.letter ?? 0) + ' * 1em)',
-  '--bp-line':
-    'calc(1 + ' + (props.spacing.line ?? 0) + ')',
-  '--bp-paragraph':
-    'calc(' + (props.spacing.paragraph ?? 0) + ' * 1em)',
+  '--bp-letter': 'calc(' + (props.spacing.letter ?? 0) + ' * 1em)',
+  '--bp-line': 'calc(1 + ' + (props.spacing.line ?? 0) + ')',
+  '--bp-paragraph': 'calc(' + (props.spacing.paragraph ?? 0) + ' * 1em)',
   '--bp-page-bg': pageBackground.value,
 }))
 
@@ -218,10 +214,7 @@ const renderBlocks = (blocks: PageBlock[]): string => {
 }
 
 function escapeHtml(s: string) {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 // ---------- 测量与分页 ----------
@@ -268,7 +261,8 @@ const measureApi = {
     // 测量容器还没拿到真实尺寸（首挂载同步分页/样式未 flush）时，单字符
     // 都会判定为溢出，递归对 1 字符 chunk 再次切分会无限递归直至栈溢出。
     // 此时直接放弃切分，让外层 place 把段落到独立页，布局就绪后重分页修正。
-    if (measureEl.clientHeight <= 0 || measureEl.clientWidth <= 0) return [block]
+    if (measureEl.clientHeight <= 0 || measureEl.clientWidth <= 0)
+      return [block]
     // 取纯文本，按字符二分；图片标签会丢失（仅在不正常超长段触发）
     const text = stripHtml(block.html)
     if (!text.length) return [block]
@@ -349,7 +343,9 @@ const doPaginate = () => {
     // 单字符块直至栈溢出；此时不要判定为初始化失败，等布局就绪后由
     // ResizeObserver / resize / fonts.ready 触发的重分页修正即可。
     if (pages.value.length === 0) {
-      console.warn('[BookPageReader] paginate produced 0 pages, layout not ready')
+      console.warn(
+        '[BookPageReader] paginate produced 0 pages, layout not ready',
+      )
     }
   } catch (e) {
     console.error('[BookPageReader] paginate failed', e)
@@ -371,7 +367,10 @@ const doPaginate = () => {
 
 const restoreIndex = () => {
   if (pages.value.length === 0) return
-  currentPageIndex.value = findPageIndexByPos(pages.value, props.initialChapterPos)
+  currentPageIndex.value = findPageIndexByPos(
+    pages.value,
+    props.initialChapterPos,
+  )
   emit('progressChange', props.chapterIndex, currentPage.value?.startPos ?? 0)
 }
 
@@ -407,7 +406,12 @@ const scheduleRepaginate = (delay = 200) => {
     runRepaginate()
   }, delay)
 }
-const onWindowResize = () => scheduleRepaginate()
+const onWindowResize = () => {
+  // 窗口变化时先同步页面高度，再重新分页，避免 F12 占用的底部/右侧
+  // 区域被继续当作有效视口使用、关闭后留下空白。
+  updateHeight()
+  scheduleRepaginate()
+}
 
 // ---------- 高度同步：按视口 + 顶/底工具栏预留 ----------
 const updateHeight = () => {
@@ -419,7 +423,6 @@ const updateHeight = () => {
 // ---------- 翻页 ----------
 let flipLock = false
 let flipTimer: ReturnType<typeof setTimeout> | null = null
-let flipPerfMark: ReturnType<typeof startReaderPerf> = null
 let externalFlipFinished: ((pos: number) => void) | null = null
 let externalFlipCanceled: (() => void) | null = null
 
@@ -428,11 +431,109 @@ const flipDuration = () => {
   return pageTurnEffectComputed.value === 'book' ? 440 : 260
 }
 
+type FlipFrameSample = {
+  perfMark: ReturnType<typeof startReaderPerf>
+  kind: 'inner' | 'external'
+  direction: 'next' | 'prev'
+  effect: 'slide' | 'book'
+  expectedDuration: number
+  lastFrameAt: number
+  actualFrames: number
+  maxFrameGap: number
+  over32Ms: number
+  over50Ms: number
+  frameGaps: number[]
+  requestId: number
+}
+
+let flipFrameSample: FlipFrameSample | null = null
+
+const startFlipFrameSample = (
+  kind: FlipFrameSample['kind'],
+  direction: FlipFrameSample['direction'],
+) => {
+  const perfMark = startReaderPerf('web.book.frames')
+  if (!perfMark) return
+  const sample: FlipFrameSample = {
+    perfMark,
+    kind,
+    direction,
+    effect: pageTurnEffectComputed.value,
+    expectedDuration: flipDuration(),
+    lastFrameAt: performance.now(),
+    actualFrames: 0,
+    maxFrameGap: 0,
+    over32Ms: 0,
+    over50Ms: 0,
+    frameGaps: [],
+    requestId: 0,
+  }
+  const onFrame = (timestamp: number) => {
+    if (flipFrameSample !== sample) return
+    const gap = timestamp - sample.lastFrameAt
+    if (sample.actualFrames > 0) sample.frameGaps.push(gap)
+    sample.maxFrameGap = Math.max(sample.maxFrameGap, gap)
+    if (gap > 32) sample.over32Ms++
+    if (gap > 50) sample.over50Ms++
+    sample.actualFrames++
+    sample.lastFrameAt = timestamp
+    sample.requestId = requestAnimationFrame(onFrame)
+  }
+  flipFrameSample = sample
+  sample.requestId = requestAnimationFrame(onFrame)
+}
+
+const finishFlipFrameSample = (extra = '') => {
+  const sample = flipFrameSample
+  if (!sample) return
+  flipFrameSample = null
+  if (sample.requestId) cancelAnimationFrame(sample.requestId)
+  const tailGap = performance.now() - sample.lastFrameAt
+  if (tailGap > 32) {
+    sample.maxFrameGap = Math.max(sample.maxFrameGap, tailGap)
+    sample.over32Ms++
+    if (tailGap > 50) sample.over50Ms++
+  }
+
+  // 用较快的 25% 帧间隔估算浏览器当前刷新节奏。这样偶发慢帧不会降低
+  // 预计帧数，同时兼容 60/90/120Hz；没有足够样本时回退到 60Hz。
+  const sortedGaps = sample.frameGaps
+    .filter(gap => gap > 0 && gap <= 32)
+    .sort((a, b) => a - b)
+  const estimatedFrameGap =
+    sortedGaps.length > 0
+      ? sortedGaps[Math.floor((sortedGaps.length - 1) * 0.25)]
+      : 1000 / 60
+  const nominalFrameGap = Math.min(
+    1000 / 30,
+    Math.max(1000 / 240, estimatedFrameGap),
+  )
+  const expectedFrames = Math.max(
+    1,
+    Math.round(sample.expectedDuration / nominalFrameGap),
+  )
+  const droppedFrames = Math.max(0, expectedFrames - sample.actualFrames)
+  const suffix = [
+    `type=${sample.kind}`,
+    `direction=${sample.direction}`,
+    `effect=${sample.effect}`,
+    `actualFrames=${sample.actualFrames}`,
+    `expectedFrames=${expectedFrames}`,
+    `droppedFrames=${droppedFrames}`,
+    `maxFrameGap=${sample.maxFrameGap.toFixed(1)}ms`,
+    `over32ms=${sample.over32Ms}`,
+    `over50ms=${sample.over50Ms}`,
+    extra,
+  ]
+    .filter(Boolean)
+    .join(', ')
+  finishReaderPerf(sample.perfMark, 0, suffix)
+}
+
 const cancelFlipAnimation = () => {
   if (flipTimer) clearTimeout(flipTimer)
   const onCancel = externalFlipCanceled
-  finishReaderPerf(flipPerfMark, 0, 'canceled')
-  flipPerfMark = null
+  finishFlipFrameSample('status=canceled')
   flipTimer = null
   targetPageIndex.value = null
   targetExternalPage.value = null
@@ -447,12 +548,7 @@ const cancelFlipAnimation = () => {
 }
 
 const finishFlip = (nextIndex: number) => {
-  finishReaderPerf(
-    flipPerfMark,
-    0,
-    `type=inner, from=${currentPageIndex.value}, to=${nextIndex}`,
-  )
-  flipPerfMark = null
+  finishFlipFrameSample(`from=${currentPageIndex.value}, to=${nextIndex}`)
   currentPageIndex.value = nextIndex
   targetPageIndex.value = null
   animating.value = false
@@ -470,12 +566,9 @@ const finishFlip = (nextIndex: number) => {
 const finishExternalFlip = () => {
   const pos = targetExternalPage.value?.startPos ?? 0
   const onFinished = externalFlipFinished
-  finishReaderPerf(
-    flipPerfMark,
-    0,
-    `type=external, chapter=${targetExternalChapterIndex.value}, pos=${pos}`,
+  finishFlipFrameSample(
+    `chapter=${targetExternalChapterIndex.value}, pos=${pos}`,
   )
-  flipPerfMark = null
   flipTimer = null
   targetPageIndex.value = null
   targetExternalPage.value = null
@@ -498,7 +591,7 @@ const startFlip = (nextIndex: number, direction: 'next' | 'prev') => {
     return
   }
   flipLock = true
-  flipPerfMark = startReaderPerf('web.book.flip')
+  startFlipFrameSample('inner', direction)
   targetPageIndex.value = nextIndex
   animating.value = true
   if (flipTimer) clearTimeout(flipTimer)
@@ -514,7 +607,12 @@ const startExternalFlip = (
   direction: 'next' | 'prev',
   callbacks: ExternalFlipCallbacks = {},
 ): boolean => {
-  if (flipLock || paginating.value || pages.value.length === 0 || !currentPage.value) {
+  if (
+    flipLock ||
+    paginating.value ||
+    pages.value.length === 0 ||
+    !currentPage.value
+  ) {
     return false
   }
   flipDirection.value = direction
@@ -523,7 +621,7 @@ const startExternalFlip = (
     return true
   }
   flipLock = true
-  flipPerfMark = startReaderPerf('web.book.flip')
+  startFlipFrameSample('external', direction)
   targetPageIndex.value = null
   targetExternalPage.value = page
   targetExternalChapterIndex.value = chapterIndex
@@ -682,7 +780,9 @@ onMounted(() => {
     resizeObserver.observe(stageRef.value)
   }
   // 字体加载后重分页一次
-  document.fonts?.ready.then(() => scheduleRepaginate(60)).catch(() => undefined)
+  document.fonts?.ready
+    .then(() => scheduleRepaginate(60))
+    .catch(() => undefined)
   // 图片加载后重分页
   document.addEventListener('load', onAnyLoad, true)
 })
@@ -792,26 +892,39 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
 
     .bp-page-current {
       z-index: 3;
-      animation: bp-book-current-next 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
+      animation: bp-book-current-next 0.44s cubic-bezier(0.32, 0.02, 0.18, 1)
+        forwards;
 
       .bp-page-shade {
         width: 36%;
         left: 0;
         right: auto;
         background:
-          linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.28) 55%, rgba(255, 255, 255, 0.2) 74%, transparent),
+          linear-gradient(
+            90deg,
+            transparent,
+            rgba(0, 0, 0, 0.28) 55%,
+            rgba(255, 255, 255, 0.2) 74%,
+            transparent
+          ),
           linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.1));
-        animation: bp-book-edge-next 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
+        animation: bp-book-edge-next 0.44s cubic-bezier(0.32, 0.02, 0.18, 1)
+          forwards;
         will-change: transform, opacity;
       }
     }
 
     .bp-page-target {
       z-index: 1;
-      animation: bp-book-target-next 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
+      animation: bp-book-target-next 0.44s cubic-bezier(0.32, 0.02, 0.18, 1)
+        forwards;
 
       .bp-page-shade {
-        background: linear-gradient(90deg, rgba(0, 0, 0, 0.18), transparent 42%);
+        background: linear-gradient(
+          90deg,
+          rgba(0, 0, 0, 0.18),
+          transparent 42%
+        );
         animation: bp-book-target-shade 0.44s ease-out forwards;
       }
     }
@@ -824,26 +937,39 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
 
     .bp-page-current {
       z-index: 1;
-      animation: bp-book-current-prev 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
+      animation: bp-book-current-prev 0.44s cubic-bezier(0.32, 0.02, 0.18, 1)
+        forwards;
 
       .bp-page-shade {
-        background: linear-gradient(270deg, rgba(0, 0, 0, 0.16), transparent 46%);
+        background: linear-gradient(
+          270deg,
+          rgba(0, 0, 0, 0.16),
+          transparent 46%
+        );
         animation: bp-book-target-shade 0.44s ease-out forwards;
       }
     }
 
     .bp-page-target {
       z-index: 3;
-      animation: bp-book-target-prev 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
+      animation: bp-book-target-prev 0.44s cubic-bezier(0.32, 0.02, 0.18, 1)
+        forwards;
 
       .bp-page-shade {
         width: 36%;
         left: 0;
         right: auto;
         background:
-          linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22) 28%, rgba(0, 0, 0, 0.24) 55%, transparent),
+          linear-gradient(
+            90deg,
+            transparent,
+            rgba(255, 255, 255, 0.22) 28%,
+            rgba(0, 0, 0, 0.24) 55%,
+            transparent
+          ),
           linear-gradient(90deg, rgba(0, 0, 0, 0.1), transparent);
-        animation: bp-book-edge-prev 0.44s cubic-bezier(0.32, 0.02, 0.18, 1) forwards;
+        animation: bp-book-edge-prev 0.44s cubic-bezier(0.32, 0.02, 0.18, 1)
+          forwards;
         will-change: transform, opacity;
       }
     }
@@ -898,8 +1024,12 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
     pointer-events: none;
   }
   .bp-measure :deep(.bp-title) {
-    font: 24px / 32px PingFangSC-Regular, HelveticaNeue-Light,
-      'Helvetica Neue Light', 'Microsoft YaHei', sans-serif;
+    font:
+      24px / 32px PingFangSC-Regular,
+      HelveticaNeue-Light,
+      'Helvetica Neue Light',
+      'Microsoft YaHei',
+      sans-serif;
     margin-bottom: 57px;
   }
   .bp-measure :deep(p) {
@@ -934,8 +1064,12 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
 
 // 可见页块样式
 .bp-page :deep(.bp-title) {
-  font: 24px / 32px PingFangSC-Regular, HelveticaNeue-Light,
-    'Helvetica Neue Light', 'Microsoft YaHei', sans-serif;
+  font:
+    24px / 32px PingFangSC-Regular,
+    HelveticaNeue-Light,
+    'Helvetica Neue Light',
+    'Microsoft YaHei',
+    sans-serif;
   margin-bottom: 57px;
 }
 .bp-page :deep(p) {

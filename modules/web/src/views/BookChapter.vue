@@ -101,7 +101,7 @@
             :spacing="store.config.spacing"
             :fontSize="fontSize"
             :fontFamily="fontFamily"
-            :readWidth="store.config.readWidth"
+            :readWidth="effectiveReadWidth"
             :pageTurnEffect="store.config.pageTurnEffect"
             :initialChapterPos="bookInitialPos"
             @progressChange="onReadedLengthChange"
@@ -382,18 +382,33 @@ const bodyColor = computed(() => settings.themes[theme.value].body)
 const chapterColor = computed(() => settings.themes[theme.value].content)
 const popupColor = computed(() => settings.themes[theme.value].popup)
 
+// 窗口宽度（响应式）：F12 开关 / 拖拽改变窗口宽度时维护这里，
+// 不污染用户在设置里保存的 store.config.readWidth，关闭 F12 后自动恢复。
+const windowWidth = ref(
+  typeof window === 'undefined' ? 1024 : window.innerWidth,
+)
+// 响应式适配：按当前窗口宽度对 readWidth 做临时夹取，只用于布局显示，
+// 永不写回 store.config.readWidth，避免 F12 缩窗口后被永久缩窄。
+// 窄屏（mini）模式下宽度直接跟随窗口，确保窄屏内继续拖动 F12 也能响应。
+const effectiveReadWidth = computed(() => {
+  if (miniInterface.value) return windowWidth.value
+  const saved = store.config.readWidth
+  const maxByWindow = windowWidth.value - 2 * 68
+  if (maxByWindow >= 640 && saved > maxByWindow) return maxByWindow
+  return saved
+})
 const readWidth = computed(() => {
   if (!miniInterface.value) {
-    return store.config.readWidth - 130 + 'px'
+    return effectiveReadWidth.value - 130 + 'px'
   } else {
-    return window.innerWidth + 'px'
+    return effectiveReadWidth.value + 'px'
   }
 })
 const popupWidth = computed(() => {
   if (!miniInterface.value) {
-    return store.config.readWidth - 33
+    return effectiveReadWidth.value - 33
   } else {
-    return window.innerWidth - 33
+    return effectiveReadWidth.value - 33
   }
 })
 const bodyTheme = computed(() => {
@@ -404,7 +419,7 @@ const chapterTheme = computed(() => {
   // readWidth）配合更小的横向 padding，让单页正文比滚动模式更宽。
   const w =
     activeBookMode.value && !miniInterface.value
-      ? store.config.readWidth + 'px'
+      ? effectiveReadWidth.value + 'px'
       : readWidth.value
   return { background: chapterColor.value, width: w }
 })
@@ -414,7 +429,7 @@ const leftBarTheme = computed(() => {
     background: popupColor.value,
     marginLeft: miniInterface.value
       ? 0
-      : -(store.config.readWidth / 2 + 68) + 'px',
+      : -(effectiveReadWidth.value / 2 + 68) + 'px',
     display: miniInterface.value && !showToolBar.value ? 'none' : 'block',
   }
 })
@@ -423,20 +438,23 @@ const rightBarTheme = computed(() => {
     background: popupColor.value,
     marginRight: miniInterface.value
       ? 0
-      : -(store.config.readWidth / 2 + 52) + 'px',
+      : -(effectiveReadWidth.value / 2 + 52) + 'px',
     display: miniInterface.value && !showToolBar.value ? 'none' : 'block',
   }
 })
 
 const onResize = () => {
   store.setMiniInterface(window.innerWidth < 776)
-  const width = store.config.readWidth
-  checkPageWidth(width)
+  // 只维护响应式窗口宽度，effectiveReadWidth 会据此临时夹取显示宽度，
+  // 关闭 F12 后即可自动恢复；不再直接修改用户保存的 readWidth。
+  windowWidth.value = window.innerWidth
+  checkPageWidth(store.config.readWidth)
 }
 const checkPageWidth = (readWidth: number) => {
+  // 仅校验用户在设置里输入的异常下限；窗口缩放引起的回退由
+  // effectiveReadWidth 负责临时夹取，不写回这里。
   if (store.miniInterface) return
   if (readWidth < 640) store.config.readWidth = 640
-  if (readWidth + 2 * 68 > window.innerWidth) store.config.readWidth -= 160
 }
 watch(
   () => store.config.readWidth,
