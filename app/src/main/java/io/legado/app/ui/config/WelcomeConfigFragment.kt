@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.DisplayMetrics
 import android.view.View
@@ -171,7 +172,15 @@ class WelcomeConfigFragment : PreferenceFragment(),
                     val scaledBitmap = croppedBitmap.resizeAndRecycle(screenWidth, screenHeight)
                     if (originalBitmap != croppedBitmap) originalBitmap.recycle()
                     ByteArrayOutputStream().use { webpData ->
-                        scaledBitmap.compress(Bitmap.CompressFormat.WEBP, 80, webpData)
+                        val webpFormat = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            Bitmap.CompressFormat.WEBP_LOSSY
+                        } else {
+                            @Suppress("DEPRECATION")
+                            Bitmap.CompressFormat.WEBP
+                        }
+                        check(scaledBitmap.compress(webpFormat, 80, webpData)) {
+                            "Failed to encode welcome image"
+                        }
                         val finalBytes = webpData.toByteArray()
                         val fileName = Date().time.toString() + ".webp"
                         val file = FileUtils.createFileIfNotExist(

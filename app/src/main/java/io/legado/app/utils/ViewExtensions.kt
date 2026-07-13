@@ -17,7 +17,6 @@ import android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
 import android.view.View.INVISIBLE
 import android.view.View.VISIBLE
 import android.view.ViewGroup
-import android.view.inputmethod.InputMethodManager
 import android.widget.EdgeEffect
 import android.widget.EditText
 import android.widget.RadioGroup
@@ -32,6 +31,7 @@ import androidx.core.graphics.createBitmap
 import androidx.core.graphics.record
 import androidx.core.graphics.withTranslation
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.get
 import androidx.core.view.isVisible
@@ -67,13 +67,9 @@ fun View.hideSoftInput() = run {
 
 fun EditText.showSoftInput() = run {
     requestFocus()
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        windowInsetsController?.show(android.view.WindowInsets.Type.ime())
-            ?: inputMethodManager.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
-    } else {
-        @Suppress("DEPRECATION")
-        inputMethodManager.showSoftInput(this, InputMethodManager.SHOW_FORCED)
-    }
+    activity?.window?.let { window ->
+        WindowCompat.getInsetsController(window, this).show(WindowInsetsCompat.Type.ime())
+    } ?: inputMethodManager.showSoftInput(this, 0)
 }
 
 fun View.disableAutoFill() = run {
@@ -322,4 +318,3 @@ fun View.setOnApplyWindowInsetsListenerCompat(listener: (View, WindowInsetsCompa
         windowInsets
     }
 }
-

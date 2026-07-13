@@ -18,6 +18,7 @@
 优化系统栏兼容实现及 Android 16 以上大屏阅读方向适配。
 更新 KSP、AndroidX Core/Lifecycle、OkHttp 和 Protobuf 依赖。
 更新 Kotlin 与 Gradle 构建工具并清理旧 Kotlin 插件配置。
+更新 Glide、KSP 和简繁转换依赖，优化 WebP 编码与软键盘兼容实现。
 **2026/07/13**
 修复 Web 阅读页关闭开发者工具后正文区域留白或宽度异常的问题。
 **2026/07/12**

@@ -3,7 +3,7 @@
 cronet = "143.7445.0"
 kotlin = "2.4.0"
 compileSdk = "37"
-ksp = "2.3.8"
+ksp = "2.3.10"
 #agp影响范围太大，暂不升级
 #noinspection AndroidGradlePluginVersion
 agp = "9.2.1"
@@ -17,7 +17,7 @@ fragment = "1.8.9"
 documentfile = "1.1.0"
 
 libarchive = "1.1.6"
-glide = "5.0.7"
+glide = "5.0.9"
 gson = "2.14.0"
 jsonPath = "3.0.0"
 coroutines = "1.11.0"
@@ -29,7 +29,7 @@ media = "1.8.0"
 nanoHttpd = "2.3.1"
 okhttp = "5.4.0"
 preference = "1.2.1"
-quickChineseTransfer = "0.2.16"
+quickChineseTransfer = "0.2.17"
 playServicesCronet = "18.1.1"
 
 splitties = "3.0.0"
