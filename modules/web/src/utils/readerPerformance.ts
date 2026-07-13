@@ -52,6 +52,7 @@ export const finishReaderPerf = (
     entries[entries.length - 1]?.duration ?? performance.now() - mark.start
   performance.clearMarks(mark.startMark)
   performance.clearMarks(mark.endMark)
+  performance.clearMeasures(mark.measureName)
   if (duration < thresholdMs) return
   const suffix = extra ? ` (${extra})` : ''
   const message = `${mark.name} ${duration.toFixed(1)}ms${suffix}`

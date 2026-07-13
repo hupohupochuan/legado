@@ -17,6 +17,9 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.FileDoc
+import io.legado.app.utils.LogExportUtils
+import io.legado.app.utils.LogFileWriter
+import io.legado.app.utils.LogUtils
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.createFolderIfNotExist
@@ -34,6 +37,8 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.delay
 import splitties.init.appCtx
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
 
 class AboutFragment : PreferenceFragmentCompat() {
 
@@ -93,10 +98,11 @@ class AboutFragment : PreferenceFragmentCompat() {
                 delay(3000)
             }
             val doc = FileDoc.fromUri(backupPath.toUri(), true)
-            copyLogs(doc)
+            val result = copyLogs(doc)
             copyHeapDump(doc)
-            appCtx.toastOnUi("已保存至备份目录")
+            appCtx.toastOnUi(result)
         }.onError {
+            appCtx.toastOnUi("保存日志失败: ${it.localizedMessage}")
             AppLog.put("保存日志出错\n${it.localizedMessage}", it, true)
         }
     }
@@ -125,26 +131,108 @@ class AboutFragment : PreferenceFragmentCompat() {
         }
     }
 
-    private fun copyLogs(doc: FileDoc) {
+    private fun copyLogs(doc: FileDoc): String {
         val cacheDir = appCtx.externalCache
-        val logFiles = File(cacheDir, "logs")
-        val crashFiles = File(cacheDir, "crash")
-        val logcatFile = File(cacheDir, "logcat.txt")
+        val logSrcDir = LogUtils.logDir
+        val crashDir = File(cacheDir, "crash")
 
+        val snapshotDir = File(cacheDir, "log-export")
+        cleanupSnapshot(snapshotDir)
+        snapshotDir.mkdirs()
+        val snapshotLogs = File(snapshotDir, "logs")
+        val snapshotCrash = File(snapshotDir, "crash")
+        snapshotCrash.mkdirs()
+
+        if (crashDir.exists()) {
+            crashDir.listFiles()?.forEach { src ->
+                val dst = File(snapshotCrash, src.name)
+                src.copyTo(dst, overwrite = true)
+            }
+        }
+
+        val (appLogCount, flushOk) = createSnapshotInLogThread(snapshotDir, logSrcDir)
+
+        val logcatFile = File(snapshotDir, "logcat.txt")
         dumpLogcat(logcatFile)
 
+        val statusFile = File(snapshotDir, "log-status.txt")
+        statusFile.writeText(buildString {
+            appendLine("App 版本: ${appInfo.versionName} (${appInfo.versionCode})")
+            appendLine("日志开关: ${AppConfig.recordLog}")
+            appendLine("日志模块状态: ${LogUtils.status}")
+            appendLine("日志目录: ${LogUtils.logDir?.absolutePath ?: "未设置"}")
+            appendLine("初始化时间: ${
+                if (LogUtils.initTime > 0)
+                    SimpleDateFormat("yy-MM-dd HH:mm:ss.SSS")
+                        .format(Date(LogUtils.initTime))
+                else "未初始化"
+            }")
+            appendLine("最近初始化错误: ${LogUtils.lastInitError ?: "无"}")
+            appendLine("落盘等待: ${if (flushOk) "成功" else "失败或无应用日志目录"}")
+            appendLine("丢弃日志数量: ${LogFileWriter.droppedLogCount}")
+            appendLine("导出 appLog 文件数量: $appLogCount")
+        })
+
         val zipFile = File(cacheDir, "logs.zip")
-        ZipUtils.zipFiles(arrayListOf(logFiles, crashFiles, logcatFile), zipFile)
+        if (zipFile.exists()) zipFile.delete()
+
+        val sources = mutableListOf<File>()
+        if (snapshotLogs.exists() && snapshotLogs.listFiles()?.isNotEmpty() == true) {
+            sources.add(snapshotLogs)
+        }
+        if (snapshotCrash.exists() && snapshotCrash.listFiles()?.isNotEmpty() == true) {
+            sources.add(snapshotCrash)
+        }
+        sources.add(logcatFile)
+        sources.add(statusFile)
+
+        val zipOk = ZipUtils.zipFiles(sources, zipFile)
+        if (!zipOk || !zipFile.exists() || zipFile.length() == 0L) {
+            cleanupSnapshot(snapshotDir)
+            return "ZIP 创建失败，未保存日志"
+        }
 
         doc.find("logs.zip")?.delete()
 
-        zipFile.inputStream().use { input ->
-            doc.createFileIfNotExist("logs.zip").openOutputStream().getOrNull()
-                ?.use {
-                    input.copyTo(it)
-                }
+        val outputDoc = doc.createFileIfNotExist("logs.zip").openOutputStream().getOrNull()
+        if (outputDoc == null) {
+            zipFile.delete()
+            cleanupSnapshot(snapshotDir)
+            return "备份目录不可写，未保存日志"
+        }
+        outputDoc.use { output ->
+            zipFile.inputStream().use { input ->
+                input.copyTo(output)
+            }
         }
         zipFile.delete()
+        cleanupSnapshot(snapshotDir)
+
+        return if (appLogCount > 0) {
+            "已保存至备份目录（$appLogCount 份应用日志）"
+        } else {
+            "未找到应用日志，仅导出了系统 logcat\n日志模块状态: ${LogUtils.status}"
+        }
+    }
+
+    /**
+     * 在日志线程中 flush 后复制应用日志快照，保证一致性。
+     */
+    private fun createSnapshotInLogThread(
+        snapshotDir: File,
+        logSrcDir: File?
+    ): Pair<Int, Boolean> {
+        val result = LogExportUtils.createAppLogSnapshot(snapshotDir, logSrcDir) { action ->
+            LogUtils.withLogThreadFlush(5000L, action)
+        }
+        return result.appLogCount to result.flushOk
+    }
+
+    private fun cleanupSnapshot(snapshotDir: File) {
+        try {
+            snapshotDir.deleteRecursively()
+        } catch (_: Exception) {
+        }
     }
 
     private fun copyHeapDump(doc: FileDoc): Boolean {

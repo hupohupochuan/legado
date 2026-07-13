@@ -66,10 +66,15 @@ class App : Application() {
         applyDayNightInit(this)
         registerActivityLifecycleCallbacks(LifecycleHelp)
         defaultSharedPreferences.registerOnSharedPreferenceChangeListener(AppConfig)
+        LogUtils.prepare(AppConfig.recordLog)
         Coroutine.async {
-            LogUtils.init(this@App)
+            if (AppConfig.recordLog) {
+                LogUtils.init(this@App)
+            }
             LogUtils.d("App", "onCreate")
-            LogUtils.logDeviceInfo()
+            if (AppConfig.recordLog) {
+                LogUtils.logDeviceInfo()
+            }
             createNotificationChannels()
             DefaultData.upVersion()
             AppFreezeMonitor.init(this@App)

@@ -12,6 +12,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.FragmentMyConfigBinding
 import io.legado.app.help.config.ThemeConfig
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.NameListPreference
 import io.legado.app.lib.prefs.SwitchPreference
@@ -136,7 +137,13 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                     }
                 }
 
-                "recordLog" -> LogUtils.upLevel()
+                "recordLog" -> {
+                    val enabled = requireContext().getPrefBoolean("recordLog")
+                    val generation = LogUtils.prepare(enabled)
+                    Coroutine.async {
+                        LogUtils.applyPreparedState(enabled, generation)
+                    }
+                }
             }
         }
 

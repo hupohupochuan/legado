@@ -17,6 +17,7 @@ import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.DispatchersMonitor
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.customView
@@ -164,9 +165,15 @@ class OtherConfigFragment : PreferenceFragment(),
             }
 
             PreferKey.recordLog -> {
-                AppConfig.recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)
-                LogUtils.upLevel()
-                LogUtils.logDeviceInfo()
+                val enabled = appCtx.getPrefBoolean(PreferKey.recordLog)
+                AppConfig.recordLog = enabled
+                val generation = LogUtils.prepare(enabled)
+                Coroutine.async {
+                    val applied = LogUtils.applyPreparedState(enabled, generation)
+                    if (applied && enabled) {
+                        LogUtils.logDeviceInfo()
+                    }
+                }
                 AppFreezeMonitor.init(appCtx)
                 DispatchersMonitor.init()
             }
