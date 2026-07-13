@@ -82,6 +82,10 @@ class CheckSourceConfig : BaseDialogFragment(R.layout.dialog_check_source_config
                         )
                         return@onClick
                     }
+                    timeoutSec > Long.MAX_VALUE / 1000 -> {
+                        toastOnUi(getString(R.string.error_scope_input))
+                        return@onClick
+                    }
                     else -> timeout = timeoutSec * 1000
                 }
                 checkSearch = binding.checkSearch.isChecked

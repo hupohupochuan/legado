@@ -183,7 +183,7 @@ dependencies {
 
     implementation(libs.core.ktx)
     implementation(libs.appcompat.appcompat)
-    implementation(libs.activity.ktx)
+    implementation(libs.activity)
     implementation(libs.fragment.ktx)
     implementation(libs.preference.ktx)
     implementation(libs.androidx.constraintlayout)

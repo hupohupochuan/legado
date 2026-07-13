@@ -61,7 +61,7 @@ junit = "4.13.2"
 
 [libraries]
 
-activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
+activity = { module = "androidx.activity:activity", version.ref = "activity" }
 cronet-api = { module = "org.chromium.net:cronet-api", version.ref = "cronet" }
 cronet-embedded = { module = "org.chromium.net:cronet-embedded", version.ref = "cronet" }
 fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }

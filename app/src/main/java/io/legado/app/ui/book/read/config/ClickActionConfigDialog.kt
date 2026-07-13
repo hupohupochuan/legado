@@ -4,7 +4,9 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowInsets
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import android.widget.TextView
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
@@ -51,23 +53,21 @@ class ClickActionConfigDialog : BaseDialogFragment(R.layout.dialog_click_action_
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                window.insetsController?.run {
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                WindowCompat.getInsetsController(window, window.decorView).run {
+                    systemBarsBehavior =
+                        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                     if (ReadBookConfig.hideNavigationBar) {
-                        hide(WindowInsets.Type.navigationBars())
+                        hide(WindowInsetsCompat.Type.navigationBars())
+                    } else {
+                        show(WindowInsetsCompat.Type.navigationBars())
                     }
                     if (ReadBookConfig.hideStatusBar) {
-                        hide(WindowInsets.Type.statusBars())
+                        hide(WindowInsetsCompat.Type.statusBars())
+                    } else {
+                        show(WindowInsetsCompat.Type.statusBars())
                     }
                 }
-                @Suppress("DEPRECATION")
-                var flag = (View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    or View.SYSTEM_UI_FLAG_IMMERSIVE
-                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
-                if (ReadBookConfig.hideNavigationBar) {
-                    flag = flag or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                }
-                window.decorView.systemUiVisibility = flag
             } else {
                 @Suppress("DEPRECATION")
                 var flag = (View.SYSTEM_UI_FLAG_LAYOUT_STABLE

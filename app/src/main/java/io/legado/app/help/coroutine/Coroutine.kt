@@ -8,7 +8,8 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -16,11 +17,13 @@ import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import kotlin.coroutines.CoroutineContext
 
 /**
  * 链式协程
- * 注意：如果协程太快完成，回调会不执行
+ *
+ * 非 LAZY 任务会延迟到当前调用栈完成后启动，确保链式注册的回调不会被快速任务越过。
  */
 @Suppress("unused")
 class Coroutine<T>(
@@ -34,10 +37,11 @@ class Coroutine<T>(
 
     companion object {
 
-        private val DEFAULT = MainScope()
+        /** 仅用于明确需要存活到进程结束、且调用方没有生命周期的后台任务。 */
+        private val APPLICATION_SCOPE = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
         fun <T> async(
-            scope: CoroutineScope = DEFAULT,
+            scope: CoroutineScope = APPLICATION_SCOPE,
             context: CoroutineContext = Dispatchers.IO,
             start: CoroutineStart = CoroutineStart.DEFAULT,
             executeContext: CoroutineContext = Dispatchers.Main,
@@ -71,6 +75,13 @@ class Coroutine<T>(
 
     init {
         this.job = executeInternal(context, block)
+        if (startOption != CoroutineStart.LAZY) {
+            scope.launch(executeContext) {
+                // 让 async { ... }.onSuccess { ... } 等同步链式配置先完成。
+                yield()
+                job.start()
+            }
+        }
     }
 
     fun timeout(timeMillis: () -> Long): Coroutine<T> {
@@ -147,7 +158,7 @@ class Coroutine<T>(
             job.cancel(cause)
         }
         cancel?.let {
-            DEFAULT.launch(executeContext) {
+            APPLICATION_SCOPE.launch(executeContext) {
                 if (null == it.context) {
                     it.block.invoke(this)
                 } else {
@@ -171,7 +182,7 @@ class Coroutine<T>(
         context: CoroutineContext,
         block: suspend CoroutineScope.() -> T
     ): Job {
-        return (scope.plus(executeContext)).launch(start = startOption) {
+        return (scope.plus(executeContext)).launch(start = CoroutineStart.LAZY) {
             semaphore?.acquire()
             try {
                 start?.let { dispatchVoidCallback(this, it) }
@@ -179,6 +190,8 @@ class Coroutine<T>(
                 val value = executeBlock(this, context, timeMillis ?: 0L, block)
                 ensureActive()
                 success?.let { dispatchCallback(this, value, it) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 e.printOnDebug()
                 val consume: Boolean = errorReturn?.value?.let { value ->
@@ -190,7 +203,9 @@ class Coroutine<T>(
                 }
             } finally {
                 try {
-                    finally?.let { dispatchVoidCallback(this, it) }
+                    if (currentCoroutineContext().isActive) {
+                        finally?.let { dispatchVoidCallback(this, it) }
+                    }
                 } finally {
                     semaphore?.release()
                 }

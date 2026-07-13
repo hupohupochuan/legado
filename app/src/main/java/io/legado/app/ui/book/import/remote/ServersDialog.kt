@@ -122,13 +122,12 @@ class ServersDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                 }
             }
             binding.ivDelete.setOnClickListener {
+                val server = serverOfPosition() ?: return@setOnClickListener
                 alert {
                     setTitle(R.string.draw)
                     setMessage(R.string.sure_del)
                     yesButton {
-                        serverOfPosition()?.let { server ->
-                            viewModel.delete(server)
-                        }
+                        viewModel.delete(server)
                     }
                     noButton()
                 }

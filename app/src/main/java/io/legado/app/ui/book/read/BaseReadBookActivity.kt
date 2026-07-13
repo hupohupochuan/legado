@@ -5,9 +5,10 @@ import android.app.DatePickerDialog
 import android.os.Build
 import android.os.Bundle
 import android.view.View
-import android.view.WindowInsets
 import androidx.activity.viewModels
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import io.legado.app.R
@@ -149,29 +150,19 @@ abstract class BaseReadBookActivity :
         useBgMeanColor: Boolean = false
     ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.run {
-                if (toolBarHide && ReadBookConfig.hideNavigationBar) {
-                    hide(WindowInsets.Type.navigationBars())
-                } else {
-                    show(WindowInsets.Type.navigationBars())
-                }
-                if (toolBarHide && ReadBookConfig.hideStatusBar) {
-                    hide(WindowInsets.Type.statusBars())
-                } else {
-                    show(WindowInsets.Type.statusBars())
-                }
+            WindowCompat.setDecorFitsSystemWindows(window, isInMultiWindow)
+            WindowCompat.getInsetsController(window, window.decorView).run {
+                systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                setBarVisibility(
+                    WindowInsetsCompat.Type.navigationBars(),
+                    toolBarHide && ReadBookConfig.hideNavigationBar
+                )
+                setBarVisibility(
+                    WindowInsetsCompat.Type.statusBars(),
+                    toolBarHide && ReadBookConfig.hideStatusBar
+                )
             }
-            @Suppress("DEPRECATION")
-            var flag = (View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    or View.SYSTEM_UI_FLAG_IMMERSIVE
-                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
-            if (!isInMultiWindow) {
-                flag = flag or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            }
-            if (ReadBookConfig.hideNavigationBar) {
-                flag = flag or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            }
-            window.decorView.systemUiVisibility = flag
         } else {
             upSystemUiVisibilityO(isInMultiWindow, toolBarHide)
         }
@@ -189,6 +180,10 @@ abstract class BaseReadBookActivity :
                 }
             setLightStatusBar(ColorUtils.isColorLight(statusBarColor))
         }
+    }
+
+    private fun WindowInsetsControllerCompat.setBarVisibility(type: Int, hidden: Boolean) {
+        if (hidden) hide(type) else show(type)
     }
 
     @Suppress("DEPRECATION")

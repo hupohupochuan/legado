@@ -49,6 +49,10 @@ abstract class BaseReadActivity<VB : ViewBinding, VM : BaseReadViewModel>(
      */
     @SuppressLint("SourceLockedOrientationActivity")
     fun setOrientation() {
+        if (Build.VERSION.SDK_INT >= 36 && resources.configuration.smallestScreenWidthDp >= 600) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            return
+        }
         when (AppConfig.screenOrientation) {
             "0" -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             "1" -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
