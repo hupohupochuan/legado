@@ -75,6 +75,9 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
     private val indexedProps: MutableMap<Any, Any?>
     private val implementor: InterfaceImplementor
 
+    /** 显式触发单例初始化，供只依赖全局 ContextFactory 副作用的调用点使用。 */
+    fun ensureInitialized() = Unit
+
     fun eval(js: String, bindingsConfig: ScriptBindings.() -> Unit = {}): Any? {
         val bindings = ScriptBindings()
         Context.enter()

@@ -208,9 +208,8 @@ class App : Application() {
         )
     }
 
-    @Suppress("UnusedExpression")
     private fun initRhino() {
-        RhinoScriptEngine
+        RhinoScriptEngine.ensureInitialized()
         RhinoWrapFactory.register(BookSource::class.java, NativeBaseSource.factory)
         RhinoWrapFactory.register(HttpTTS::class.java, NativeBaseSource.factory)
         RhinoWrapFactory.register(ExploreRule::class.java, ReadOnlyJavaObject.factory)

@@ -12,7 +12,7 @@ val rhinoContextOrNull: RhinoContext?
     get() = Context.getCurrentContext() as? RhinoContext
 
 inline fun <T> runScriptWithContext(context: CoroutineContext, block: () -> T): T {
-    RhinoScriptEngine
+    RhinoScriptEngine.ensureInitialized()
     val rhinoContext = Context.enter() as RhinoContext
     val previousCoroutineContext = rhinoContext.coroutineContext
     rhinoContext.coroutineContext = context.minusKey(ContinuationInterceptor)

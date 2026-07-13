@@ -17,6 +17,7 @@
 修复链式协程快速完成时可能漏掉回调、取消任务进入错误回调的问题。
 优化系统栏兼容实现及 Android 16 以上大屏阅读方向适配。
 更新 KSP、AndroidX Core/Lifecycle、OkHttp 和 Protobuf 依赖。
+更新 Kotlin 与 Gradle 构建工具并清理旧 Kotlin 插件配置。
 **2026/07/13**
 修复 Web 阅读页关闭开发者工具后正文区域留白或宽度异常的问题。
 **2026/07/12**

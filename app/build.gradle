@@ -17,7 +17,7 @@ room {
 }
 
 android {
-    compileSdk = compile_sdk_version
+    compileSdk = libs.versions.compileSdk.get().toInteger()
     namespace = 'io.legado.app'
     kotlin {
         jvmToolchain {
@@ -218,8 +218,8 @@ dependencies {
 
     implementation(libs.jsoup)
     implementation(libs.json.path)
-    implementation(project(path: ':modules:book'))
-    implementation(project(path: ':modules:rhino'))
+    implementation(dependencies.project(':modules:book'))
+    implementation(dependencies.project(':modules:rhino'))
 
     implementation(libs.okhttp)
     implementation(libs.play.services.cronet)

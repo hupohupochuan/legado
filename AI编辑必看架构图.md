@@ -1,10 +1,10 @@
 # AI 编辑必看架构图
 
-> 最新修订: 2026-07-14 02:30 CST
+> 最新修订: 2026-07-14 03:20 CST
 > 最近三次修订:
+> - 2026-07-14 03:20 CST: Kotlin/Gradle 迁移后 compileSdk 改由 Version Catalog 提供，移除未使用的 kotlin-android 插件声明。
 > - 2026-07-14 02:30 CST: 补充链式协程回调/取消语义、系统栏 API 分支及 Android 16+ 大屏方向限制红线。
 > - 2026-07-11 00:00 CST: 补充 Web 单书按需拉取、5 秒 Room 合并保存、60 秒 WebDAV 上传与生命周期补交的数据流入口。
-> - 2026-06-26 00:00 CST: compileSdk/targetSdk 抬到 37 (Android 17) 前置闸门验证通过；AGP 9.2.1 无需升级；主文件 SDK 指标同步更新为 targetSdk/compileSdk=37。
 
 > 主入口文件。AI 每次只需要先读这里；按任务需要再打开子文件。
 
@@ -48,6 +48,7 @@
 - 不要把本地 SAF 路径跨设备自动替换；`content://.../tree/...` 失效时必须提示用户重新授权。
 - 不要只改 `modules/web/src` 而不同步 `app/src/main/assets/web`。
 - 不要恢复 AGP 旧 `applicationVariants`；APK 输出命名走 `androidComponents`。
+- compileSdk 从 `libs.versions.compileSdk` 读取，不要恢复跨项目隐式查找根项目 `ext` 属性；Android 模块使用 AGP 内置 Kotlin，不要重新应用 `kotlin-android`。
 - UI 协程必须优先传入 `lifecycleScope`/`viewModelScope`/现有组件 scope；`Coroutine.async` 默认 scope 只用于明确需要存活到进程结束的任务。取消异常不得进入普通错误回调。
 - API 30+ 系统栏显隐和图标明暗统一走 `WindowInsetsControllerCompat`；API 26-29 才保留旧 `systemUiVisibility` 分支。Android 16+、宽度不小于 600dp 的大屏不再强制阅读页方向。
 - 不要提交 `.sdk/`, `local.properties`, `app/gradle.properties`, `app/signing/`, `AGENTS.md`, `opencode.json`。

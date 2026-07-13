@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    compileSdk = compile_sdk_version
+    compileSdk = libs.versions.compileSdk.get().toInteger()
     namespace = 'com.script'
     kotlin {
         jvmToolchain {
