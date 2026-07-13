@@ -66,12 +66,13 @@ class CheckSourceConfig : BaseDialogFragment(R.layout.dialog_check_source_config
             }
             binding.tvOk.onClick {
                 val text = binding.checkSourceTimeout.text.toString()
+                val timeoutSec = text.toLongOrNull()
                 when {
-                    text.isBlank() -> {
+                    text.isBlank() || timeoutSec == null -> {
                         toastOnUi("${getString(R.string.timeout)}${getString(R.string.cannot_empty)}")
                         return@onClick
                     }
-                    text.toLong() <= minTimeout -> {
+                    timeoutSec <= minTimeout -> {
                         toastOnUi(
                             "${getString(R.string.timeout)}${getString(R.string.less_than)}${minTimeout}${
                                 getString(
@@ -81,7 +82,7 @@ class CheckSourceConfig : BaseDialogFragment(R.layout.dialog_check_source_config
                         )
                         return@onClick
                     }
-                    else -> timeout = text.toLong() * 1000
+                    else -> timeout = timeoutSec * 1000
                 }
                 checkSearch = binding.checkSearch.isChecked
                 checkDiscovery = binding.checkDiscovery.isChecked

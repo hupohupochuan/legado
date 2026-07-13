@@ -245,7 +245,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         override fun registerListener(holder: ItemViewHolder, binding: ItemHttpTtsBinding) {
             binding.run {
                 cbName.setOnClickListener {
-                    getItemByLayoutPosition(holder.layoutPosition)?.let { httpTTS ->
+                    getItemByLayoutPosition(holder.bindingAdapterPosition)?.let { httpTTS ->
                         val id = httpTTS.id.toString()
                         upTts(id)
                         if (httpTTS.hasLogin() && httpTTS.getLoginInfo().isNullOrBlank()
@@ -255,11 +255,12 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                     }
                 }
                 ivEdit.setOnClickListener {
-                    val id = getItemByLayoutPosition(holder.layoutPosition)!!.id
-                    showDialogFragment(HttpTtsEditDialog(id))
+                    getItemByLayoutPosition(holder.bindingAdapterPosition)?.let { httpTTS ->
+                        showDialogFragment(HttpTtsEditDialog(httpTTS.id))
+                    }
                 }
                 ivMenuDelete.setOnClickListener {
-                    getItemByLayoutPosition(holder.layoutPosition)?.let { httpTTS ->
+                    getItemByLayoutPosition(holder.bindingAdapterPosition)?.let { httpTTS ->
                         appDb.httpTTSDao.delete(httpTTS)
                     }
                 }

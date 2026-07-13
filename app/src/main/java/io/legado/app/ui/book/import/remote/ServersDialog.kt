@@ -106,14 +106,18 @@ class ServersDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
         }
 
         override fun registerListener(holder: ItemViewHolder, binding: ItemServerSelectBinding) {
+            fun serverOfPosition(): Server? =
+                getItemByLayoutPosition(holder.bindingAdapterPosition)
             binding.rbServer.setOnUserCheckedChangeListener { isChecked ->
                 if (isChecked) {
-                    selectServerId = getItemByLayoutPosition(holder.layoutPosition)!!.id
-                    adapter.updateItems(0, itemCount - 1, "upSelect")
+                    serverOfPosition()?.let { server ->
+                        selectServerId = server.id
+                        adapter.updateItems(0, itemCount - 1, "upSelect")
+                    }
                 }
             }
             binding.ivEdit.setOnClickListener {
-                getItemByLayoutPosition(holder.layoutPosition)?.let { server ->
+                serverOfPosition()?.let { server ->
                     showDialogFragment(ServerConfigDialog(server.id))
                 }
             }
@@ -122,7 +126,7 @@ class ServersDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                     setTitle(R.string.draw)
                     setMessage(R.string.sure_del)
                     yesButton {
-                        getItemByLayoutPosition(holder.layoutPosition)?.let { server ->
+                        serverOfPosition()?.let { server ->
                             viewModel.delete(server)
                         }
                     }

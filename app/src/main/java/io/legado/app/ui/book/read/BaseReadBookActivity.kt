@@ -56,7 +56,8 @@ abstract class BaseReadBookActivity :
     BaseReadActivity<ActivityBookReadBinding, ReadBookViewModel>(imageBg = false) {
 
     private fun android.widget.EditText.intOr(default: Int): Int {
-        return text?.toString()?.let { if (it.isEmpty()) default else it.toInt() } ?: default
+        return text?.toString()
+            ?.let { if (it.isEmpty()) default else it.toIntOrNull() ?: default } ?: default
     }
 
     override val binding by viewBinding(ActivityBookReadBinding::inflate)
@@ -261,7 +262,10 @@ abstract class BaseReadBookActivity :
             startDate.isCursorVisible = false // 不显示光标
             startDate.setOnClickListener {
                 // 获取当前日期
-                val localStartDate = LocalDate.parse(startDate.text)
+                val localStartDate = startDate.text!!.toString().let {
+                    if (it.isEmpty()) LocalDate.now()
+                    else LocalDate.parse(it, dateFormatter)
+                }
                 // 创建 DatePickerDialog
                 val datePickerDialog = DatePickerDialog(
                     root.context,
