@@ -32,17 +32,18 @@ export default defineConfig(({ mode }) => {
         "@utils": fileURLToPath(new URL("./src/utils/", import.meta.url)),
       },
     },
-    esbuild: {
-      drop: mode === "development" ? undefined : ["console", "debugger"],
-    },
     build: {
+      target: ["es2020", "edge88", "firefox78", "chrome87", "safari14"],
       reportCompressedSize: true,
       emptyOutDir: true,
-    },
-    css: {
-      preprocessorOptions: {
-        scss: {
-          api: 'modern-compiler',
+      rolldownOptions: {
+        output: {
+          minify: {
+            compress: {
+              dropConsole: mode !== "development",
+              dropDebugger: mode !== "development",
+            },
+          },
         },
       },
     },
