@@ -17,8 +17,8 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
-    "@vueuse/core": "^11.1.0",
-    "@vueuse/shared": "^11.1.0",
+    "@vueuse/core": "^14.3.0",
+    "@vueuse/shared": "^14.3.0",
     "hotkeys-js": "^3.13.7",
     "pinia": "^2.2.4",
     "vite-plugin-singlefile": "^2.3.3",
