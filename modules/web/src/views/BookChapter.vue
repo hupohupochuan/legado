@@ -111,6 +111,36 @@
     </div>
 
     <div
+      v-if="searchPreviewOrigin"
+      class="search-preview-bar"
+      role="group"
+      aria-label="搜索结果进度选择"
+      @click.stop
+    >
+      <span class="search-preview-bar__label"
+        >是否恢复到跳转前的阅读进度？</span
+      >
+      <div class="search-preview-bar__actions">
+        <button
+          type="button"
+          class="search-preview-bar__button"
+          :disabled="searchResultJumping"
+          @click="returnToSearchOrigin"
+        >
+          恢复原进度
+        </button>
+        <button
+          type="button"
+          class="search-preview-bar__button search-preview-bar__button--primary"
+          :disabled="searchResultJumping"
+          @click="keepSearchResultProgress"
+        >
+          保留当前位置
+        </button>
+      </div>
+    </div>
+
+    <div
       class="chapter"
       ref="content"
       :class="{ 'book-mode': activeBookMode }"
@@ -173,6 +203,7 @@ import { finishReaderPerf, startReaderPerf } from '@/utils/readerPerformance'
 import { toast } from '@/utils/toast'
 import { msgbox } from '@/utils/toast'
 import BookContentSearch from '@/components/BookContentSearch.vue'
+import type { BookProgress } from '@/book'
 
 const content = ref()
 const { isLoading, loadingWrapper } = useLoading(content, '正在获取信息')
@@ -231,6 +262,12 @@ const chapterIndex = computed({
   get: () => store.readingBook.chapterIndex,
   set: value => (store.readingBook.chapterIndex = value),
 })
+type SearchPreviewOrigin = {
+  chapterIndex: number
+  chapterPos: number
+  progress: BookProgress
+}
+const searchPreviewOrigin = ref<SearchPreviewOrigin | null>(null)
 const isSeachBook = computed({
   get: () => store.readingBook.isSeachBook,
   set: value => (store.readingBook.isSeachBook = value),
@@ -238,7 +275,14 @@ const isSeachBook = computed({
 
 let persistReadingBookTimer: ReturnType<typeof setTimeout> | null = null
 const persistReadingBookNow = () => {
-  const book = store.readingBook
+  const origin = searchPreviewOrigin.value
+  const book = origin
+    ? {
+        ...store.readingBook,
+        chapterIndex: origin.chapterIndex,
+        chapterPos: origin.chapterPos,
+      }
+    : store.readingBook
   localStorage.setItem('readingRecent', JSON.stringify(book))
   sessionStorage.setItem('chapterIndex', book.chapterIndex.toString())
   sessionStorage.setItem('chapterPos', book.chapterPos.toString())
@@ -805,6 +849,24 @@ const goToSearchResult = async (result: WebBookContentSearchResult) => {
     return
   }
   searchResultJumping.value = true
+  const createdPreview = searchPreviewOrigin.value === null
+  if (createdPreview) {
+    const progress = bookProgress.value
+    if (!progress) {
+      searchResultJumping.value = false
+      toast.warning('当前阅读进度尚未准备好，请稍后再试')
+      return
+    }
+    searchPreviewOrigin.value = {
+      chapterIndex: chapterIndex.value,
+      chapterPos: chapterPos.value,
+      progress: { ...progress },
+    }
+    store.setProgressSaveOverride(searchPreviewOrigin.value.progress)
+    // 先把搜索前位置提交给手机。预览期间所有后续位置只保留在页面内，
+    // 直到用户明确选择“恢复原进度”或“保留当前位置”。
+    await store.saveBookProgress(true).catch(() => undefined)
+  }
   try {
     await getContent(
       result.chapterIndex,
@@ -816,9 +878,47 @@ const goToSearchResult = async (result: WebBookContentSearchResult) => {
     closeSearchPanel()
   } catch {
     // getContent has already restored the old chapter/progress and shown an error.
+    if (createdPreview) {
+      store.setProgressSaveOverride(null)
+      searchPreviewOrigin.value = null
+      persistReadingBookNow()
+    }
   } finally {
     searchResultJumping.value = false
   }
+}
+
+const returnToSearchOrigin = async () => {
+  const origin = searchPreviewOrigin.value
+  if (!origin || searchResultJumping.value) return
+  searchResultJumping.value = true
+  try {
+    await getContent(
+      origin.chapterIndex,
+      true,
+      origin.chapterPos,
+      origin.chapterPos,
+      true,
+    )
+    store.setProgressSaveOverride(null)
+    searchPreviewOrigin.value = null
+    persistReadingBookNow()
+    await store.saveBookProgress(true).catch(() => undefined)
+    toast.info('已返回搜索前的阅读进度')
+  } catch {
+    // getContent 已回滚到搜索结果位置并显示错误，保留预览选择条供再次操作。
+  } finally {
+    searchResultJumping.value = false
+  }
+}
+
+const keepSearchResultProgress = async () => {
+  if (!searchPreviewOrigin.value || searchResultJumping.value) return
+  store.setProgressSaveOverride(null)
+  searchPreviewOrigin.value = null
+  persistReadingBookNow()
+  await store.saveBookProgress(true).catch(() => undefined)
+  toast.info('已从当前位置继续阅读')
 }
 
 const chapter = ref()
@@ -842,6 +942,9 @@ const onReadedLengthChange = (index: number, pos: number) => {
   lastReadedProgressKey = progressKey
   saveReadingBookProgressToBrowser(index, pos)
   persistReadingBookNow()
+  // 搜索结果属于临时预览：浏览器仍可翻页，但手机端进度保持在首次跳转前，
+  // 只有用户明确选择保留当前位置后才恢复正常上传。
+  if (searchPreviewOrigin.value) return
   if (index !== lastProgressIndex) {
     lastProgressIndex = index
     void store.saveBookProgress(true)
@@ -1018,7 +1121,9 @@ onUnmounted(() => {
   prefetchObserver = null
   clearPrefetchedChapters()
   flushReadingBookPersist()
-  void store.saveBookProgress(true)
+  const saveProgress = store.saveBookProgress(true)
+  if (searchPreviewOrigin.value) store.setProgressSaveOverride(null)
+  void saveProgress
 })
 
 const addToBookShelfConfirm = async () => {
@@ -1203,6 +1308,55 @@ onBeforeRouteLeave(async (to, from, next) => {
   overflow: hidden;
 }
 
+.search-preview-bar {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: v-bind(popupColor);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+  color: inherit;
+  transform: translateX(-50%);
+}
+
+.search-preview-bar__label {
+  white-space: nowrap;
+}
+
+.search-preview-bar__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.search-preview-bar__button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.search-preview-bar__button--primary {
+  border-color: #409eff;
+  background: #409eff;
+  color: #fff;
+}
+
+.search-preview-bar__button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .day {
   .popup {
     box-shadow:
@@ -1227,6 +1381,11 @@ onBeforeRouteLeave(async (to, from, next) => {
 }
 
 .night {
+  .search-preview-bar {
+    border-color: #555;
+    color: #bbb;
+  }
+
   .popup {
     box-shadow:
       0 2px 4px rgba(0, 0, 0, 0.48),
@@ -1307,6 +1466,21 @@ onBeforeRouteLeave(async (to, from, next) => {
   .search-popup {
     max-width: none !important;
     max-height: calc(100vh - 20px);
+  }
+
+  .search-preview-bar {
+    bottom: 54px;
+    width: calc(100vw - 20px);
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .search-preview-bar__actions {
+    width: 100%;
+  }
+
+  .search-preview-bar__button {
+    flex: 1;
   }
 }
 </style>

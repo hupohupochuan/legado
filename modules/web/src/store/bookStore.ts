@@ -135,6 +135,9 @@ export const useBookStore = defineStore('book', {
         chapterIndex: number
         isSeachBook?: boolean
       },
+      // 搜索结果预览期间固定上传跳转前进度，避免目录、翻章、页面隐藏等
+      // 任一保存入口把临时结果位置同步到手机端。
+      progressSaveOverride: null as BookProgress | null,
       popCataVisible: false,
       contentLoading: true,
       showContent: false,
@@ -287,6 +290,7 @@ export const useBookStore = defineStore('book', {
     },
     setReadingBook(readingBook: typeof this.readingBook) {
       this.readingBook = readingBook
+      this.progressSaveOverride = null
       const progress = this.bookProgress
       if (progress) {
         clearBookProgressSaveTimer()
@@ -317,6 +321,9 @@ export const useBookStore = defineStore('book', {
     setShowContent(visible: boolean) {
       this.showContent = visible
     },
+    setProgressSaveOverride(progress: BookProgress | null) {
+      this.progressSaveOverride = progress ? { ...progress } : null
+    },
     setMiniInterface(mini: boolean) {
       this.miniInterface = mini
     },
@@ -346,11 +353,12 @@ export const useBookStore = defineStore('book', {
     },
     /**
      * 保存阅读进度到后端。
+     * 搜索结果预览设置了 progressSaveOverride 时，所有调用方统一保存跳转前进度。
      * @param useBeacon 是否使用 navigator.sendBeacon（页面关闭前调用，
      *                   仅做尽力交付，浏览器不会等待响应）。
      */
     async saveBookProgress(flush = false, useBeacon = false) {
-      const progress = this.bookProgress
+      const progress = this.progressSaveOverride ?? this.bookProgress
       if (!progress) return Promise.resolve()
       const { bookUrl } = this.readingBook
       const webProgress: WebBookProgress = { ...progress, bookUrl }
