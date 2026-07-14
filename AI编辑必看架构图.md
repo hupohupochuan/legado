@@ -1,10 +1,10 @@
 # AI 编辑必看架构图
 
-> 最新修订: 2026-07-14 03:20 CST
+> 最新修订: 2026-07-15 01:42 CST
 > 最近三次修订:
+> - 2026-07-15 01:42 CST: 固定签名 Release APK 构建、证书校验和用户安装目录同步入口。
 > - 2026-07-14 03:20 CST: Kotlin/Gradle 迁移后 compileSdk 改由 Version Catalog 提供，移除未使用的 kotlin-android 插件声明。
 > - 2026-07-14 02:30 CST: 补充链式协程回调/取消语义、系统栏 API 分支及 Android 16+ 大屏方向限制红线。
-> - 2026-07-11 00:00 CST: 补充 Web 单书按需拉取、5 秒 Room 合并保存、60 秒 WebDAV 上传与生命周期补交的数据流入口。
 
 > 主入口文件。AI 每次只需要先读这里；按任务需要再打开子文件。
 
@@ -67,4 +67,12 @@ scripts/check-debug.sh
 ./gradlew :app:assembleDebug --no-daemon
 ```
 
-*文档版本: 2026-07-14*
+最终交付可直接安装的个人签名 Release APK 时，必须先提交本轮修改并保持工作树干净，再运行:
+
+```bash
+scripts/build-signed-release.sh
+```
+
+脚本会强制使用 `app/gradle.properties` 中的个人签名配置和 `RELEASE_CERT_SHA256`，完成 Release/R8、五个 ABI APK、证书/包名/版本校验，再把同一批 APK、`.idsig`、metadata 原子同步到 `app/app/release/`。`app/gradle.properties` 与 keystore 权限必须为 `600`。Android 64 位真机优先安装 `app/app/release/legado_arm64.apk`；不得直接复制单个 APK，也不得在签名配置缺失时接受 Gradle 的 Debug 签名回退。
+
+*文档版本: 2026-07-15*
