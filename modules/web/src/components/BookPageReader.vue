@@ -1123,11 +1123,9 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
 }
 
 .day .bp-page {
-  border: 1px solid #d8d8d8;
   color: #262626;
 }
 .night .bp-page {
-  border: 1px solid #444;
   color: #666;
 }
 
