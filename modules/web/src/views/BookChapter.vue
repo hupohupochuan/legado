@@ -722,7 +722,6 @@ const getContent = (
   const previousChapterData = chapterData.value.slice()
   const previousIndex = chapterIndex.value
   const previousPos = chapterPos.value
-  const previousBookInitialPos = bookInitialPos.value
   const previousShowContent = showContent.value
   if (reloadChapter) {
     clearPrefetchedChapters()
@@ -761,8 +760,9 @@ const getContent = (
         if (previousChapterData.length > 0) {
           chapterData.value = previousChapterData
           saveReadingBookProgressToBrowser(previousIndex, previousPos)
-          if (activeBookMode.value)
-            bookInitialPos.value = previousBookInitialPos
+          // BookPageReader 会在重挂时根据 initialPos 选页并重新上报进度。
+          // 必须使用请求前的当前页位置，不能恢复只在切章时更新的陈旧初始值。
+          if (activeBookMode.value) bookInitialPos.value = previousPos
           store.setShowContent(previousShowContent)
           if (previousShowContent) toChapterPos(previousPos, previousIndex)
         } else {

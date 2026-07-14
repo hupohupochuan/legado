@@ -422,6 +422,28 @@ object BookHelp {
     }
 
     /**
+     * 只读取已经存在的章节缓存，不回退本地书文件或 WebDAV。
+     *
+     * 用于必须保持离线的调用场景；即使缓存文件在快照后被删除，
+     * 也只会返回 null，不会触发 FileBook 的远端读取路径。
+     */
+    fun getCachedContent(book: Book, bookChapter: BookChapter): String? {
+        val file = downloadDir.getFile(
+            cacheFolderName,
+            book.getFolderName(),
+            bookChapter.getFileName()
+        )
+        return try {
+            if (!file.isFile) return null
+            file.readText().ifEmpty { null }
+        } catch (_: IOException) {
+            null
+        } catch (_: SecurityException) {
+            null
+        }
+    }
+
+    /**
      * 读取章节内容
      */
     fun getContent(book: Book, bookChapter: BookChapter): String? {

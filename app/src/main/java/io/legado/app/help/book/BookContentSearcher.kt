@@ -317,8 +317,11 @@ class BookContentSearchService(
     private val getCachedChapterNames: suspend (Book) -> Set<String> = { book ->
         BookHelp.getChapterFiles(book)
     },
-    private val readChapterContent: suspend (Book, BookChapter) -> String? = { book, chapter ->
+    private val readLocalChapterContent: suspend (Book, BookChapter) -> String? = { book, chapter ->
         BookHelp.getContent(book, chapter)
+    },
+    private val readCachedChapterContent: suspend (Book, BookChapter) -> String? = { book, chapter ->
+        BookHelp.getCachedContent(book, chapter)
     },
     private val processChapterContent: suspend (Book, BookChapter, String) -> String =
         { book, chapter, content ->
@@ -384,7 +387,13 @@ class BookContentSearchService(
 
         for (chapter in searchableChapters) {
             context.ensureActive()
-            val rawContent = readChapterContent(book, chapter)
+            // 非普通本地书只能走“仅缓存”入口。不能在快照后再次调用通用 getContent，
+            // 否则 WebDAV 缓存恰好被清理时会回退 FileBook 并发起网络读取。
+            val rawContent = if (localBook) {
+                readLocalChapterContent(book, chapter)
+            } else {
+                readCachedChapterContent(book, chapter)
+            }
             context.ensureActive()
             if (rawContent != null) {
                 val processedContent = processChapterContent(book, chapter, rawContent)

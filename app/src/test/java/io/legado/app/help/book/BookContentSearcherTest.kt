@@ -175,12 +175,13 @@ class BookContentSearcherTest {
             findBook = { Book(bookUrl = "book", name = "测试书", origin = "test-origin") },
             findChapters = { chapters },
             getCachedChapterNames = { emptySet() },
-            readChapterContent = { _, chapter ->
+            readLocalChapterContent = { _, chapter ->
                 reads.add(chapter.index)
                 firstReadStarted.complete(Unit)
                 keepFirstReadOpen.await()
                 "本章有词"
             },
+            readCachedChapterContent = { _, _ -> error("本地书不应走仅缓存读取") },
             processChapterContent = { _, _, raw -> raw },
             isLocalBook = { true },
             chapterFileName = { chapter -> "chapter-${chapter.index}" }
@@ -238,7 +239,11 @@ class BookContentSearcherTest {
             findBook = { book },
             findChapters = { chapters },
             getCachedChapterNames = { emptySet() },
-            readChapterContent = { _, chapter ->
+            readLocalChapterContent = { _, chapter ->
+                reads.add(chapter.index)
+                "不应读取"
+            },
+            readCachedChapterContent = { _, chapter ->
                 reads.add(chapter.index)
                 "不应读取"
             },
@@ -252,6 +257,44 @@ class BookContentSearcherTest {
         assertEquals(0, listener.start?.searchableChapters)
         assertFalse(listener.start?.isLocalBook ?: true)
         assertEquals(1, listener.complete?.skippedUncachedChapters)
+    }
+
+    @Test
+    fun disappearingWebDavCacheNeverFallsBackToLocalOrRemoteFile() = runBlocking {
+        val chapters = listOf(chapter(0))
+        var localReads = 0
+        var cachedReads = 0
+        val listener = RecordingListener()
+        val book = Book(
+            bookUrl = "webDav::https://example.invalid/book.epub",
+            name = "远程书",
+            originName = "book.epub",
+            origin = "webDav::https://example.invalid/book.epub"
+        )
+        val service = BookContentSearchService(
+            findBook = { book },
+            findChapters = { chapters },
+            // 快照时文件仍存在，真正读取前被外部缓存清理删除。
+            getCachedChapterNames = { setOf("chapter-0") },
+            readLocalChapterContent = { _, _ ->
+                localReads++
+                "不应回退读取"
+            },
+            readCachedChapterContent = { _, _ ->
+                cachedReads++
+                null
+            },
+            processChapterContent = { _, _, raw -> raw },
+            chapterFileName = { chapter -> "chapter-${chapter.index}" }
+        )
+
+        service.search(book.bookUrl, "读取", listener = listener)
+
+        assertEquals(0, localReads)
+        assertEquals(1, cachedReads)
+        assertTrue(listener.items.isEmpty())
+        assertEquals(1, listener.complete?.scannedChapters)
+        assertEquals(0, listener.complete?.matchCount)
     }
 
     @Test
@@ -326,6 +369,10 @@ class BookContentSearcherTest {
         process: (String) -> String = { it }
     ): BookContentSearchService {
         val book = Book(bookUrl = "book", name = "测试书", origin = "test-origin")
+        val readContent: suspend (Book, BookChapter) -> String? = { _, chapter ->
+            onRead(chapter)
+            contents[chapter.index]
+        }
         return BookContentSearchService(
             findBook = { book },
             findChapters = { chapters },
@@ -333,10 +380,8 @@ class BookContentSearcherTest {
                 onCacheSnapshot()
                 cachedNames
             },
-            readChapterContent = { _, chapter ->
-                onRead(chapter)
-                contents[chapter.index]
-            },
+            readLocalChapterContent = readContent,
+            readCachedChapterContent = readContent,
             processChapterContent = { _, _, raw -> process(raw) },
             isLocalBook = { local },
             chapterFileName = { chapter -> "chapter-${chapter.index}" }
