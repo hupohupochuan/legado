@@ -2,6 +2,7 @@ package io.legado.app.web
 
 import fi.iki.elonen.NanoWSD
 import io.legado.app.service.WebService
+import io.legado.app.web.socket.BookContentSearchWebSocket
 import io.legado.app.web.socket.BookSearchWebSocket
 import io.legado.app.web.socket.BookSourceDebugWebSocket
 
@@ -11,6 +12,7 @@ import io.legado.app.web.socket.BookSourceDebugWebSocket
  * 路由:
  * - /bookSourceDebug → 书源调试交互
  * - /searchBook     → 书籍搜索流式推送
+ * - /searchBookContent → 当前书籍正文搜索流式推送
  */
 class WebSocketServer(port: Int) : NanoWSD(port) {
 
@@ -22,6 +24,9 @@ class WebSocketServer(port: Int) : NanoWSD(port) {
             }
             "/searchBook" -> {
                 BookSearchWebSocket(handshake)
+            }
+            "/searchBookContent" -> {
+                BookContentSearchWebSocket(handshake)
             }
             else -> null
         }

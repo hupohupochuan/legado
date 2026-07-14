@@ -11,6 +11,10 @@
           <div class="iconfont">&#58905;</div>
           <div class="icon-text">目录</div>
         </div>
+        <div class="tool-icon" @click.stop="openSearchPanel">
+          <div class="search-icon-glyph" aria-hidden="true"></div>
+          <div class="icon-text">搜索</div>
+        </div>
         <div
           class="tool-icon"
           @click.stop="readSettingsVisible = !readSettingsVisible"
@@ -84,6 +88,29 @@
     </div>
 
     <div
+      v-show="searchVisible"
+      class="web-dialog-overlay search-dialog-overlay"
+      @click.self.stop="closeSearchPanel"
+    >
+      <div
+        class="web-dialog popup search-popup"
+        :style="{ background: popupColor, maxWidth: popupWidth + 'px' }"
+        @click.stop
+        @keydown.stop
+        @keyup.stop
+      >
+        <BookContentSearch
+          v-if="store.readingBook.bookUrl"
+          ref="bookContentSearchRef"
+          :book-url="store.readingBook.bookUrl"
+          :is-online-book="currentBookIsOnline"
+          @close="closeSearchPanel"
+          @select="goToSearchResult"
+        />
+      </div>
+    </div>
+
+    <div
       class="chapter"
       ref="content"
       :class="{ 'book-mode': activeBookMode }"
@@ -138,19 +165,49 @@ import settings from '@/config/themeConfig'
 import API, {
   backendConnectionErrorMessage,
   isBackendConnectionError,
+  type WebBookContentSearchResult,
 } from '@api'
 import { useLoading } from '@/hooks/loading'
 import { isNullOrBlank } from '@/utils/utils'
 import { finishReaderPerf, startReaderPerf } from '@/utils/readerPerformance'
 import { toast } from '@/utils/toast'
 import { msgbox } from '@/utils/toast'
+import BookContentSearch from '@/components/BookContentSearch.vue'
 
 const content = ref()
 const { isLoading, loadingWrapper } = useLoading(content, '正在获取信息')
 const store = useBookStore()
 
+const searchVisible = ref(false)
+const bookContentSearchRef = ref<InstanceType<typeof BookContentSearch>>()
+const isLocalBookMetadata = (book: { origin: string; type: number }) => {
+  const localType = 1 << 8
+  if ((book.type & localType) !== 0) return true
+  if (book.type !== 0) return false
+  return book.origin === 'loc_book' || book.origin.startsWith('webDav::')
+}
+const currentBookIsOnline = computed<boolean | undefined>(() => {
+  const bookUrl = store.readingBook.bookUrl
+  const metadata =
+    store.shelf.find(book => book.bookUrl === bookUrl) ??
+    store.searchBooks.find(book => book.bookUrl === bookUrl)
+  if (metadata) return !isLocalBookMetadata(metadata)
+  if (store.readingBook.isSeachBook === true) return true
+  return undefined
+})
+const openSearchPanel = () => {
+  popCataVisible.value = false
+  readSettingsVisible.value = false
+  searchVisible.value = true
+}
+const closeSearchPanel = () => {
+  bookContentSearchRef.value?.cancelActiveSearch()
+  searchVisible.value = false
+}
+
 const getChapterRequestErrorMessage = (err: unknown, fallback: string) => {
   if (isBackendConnectionError(err)) return backendConnectionErrorMessage
+  if (err instanceof Error && err.message) return err.message
   return fallback
 }
 
@@ -655,6 +712,9 @@ const getContent = (
   // 默认与持久化 chapterPos 一致；上一章"落到最后一页"场景传哨兵
   // (Number.MAX_SAFE_INTEGER)，仅在组件内部用于定位，不会进入 readingBook。
   initialPos?: number,
+  // 搜索结果跳转在正文确认加载成功后才提交目标进度，避免请求期间页面隐藏
+  // 或关闭时把尚未成功显示的位置保存到手机端。
+  deferProgressUntilSuccess = false,
 ) => {
   const perf = startReaderPerf(
     reloadChapter ? 'web.chapter.switch' : 'web.chapter.append',
@@ -668,33 +728,31 @@ const getContent = (
     clearPrefetchedChapters()
     store.setShowContent(false)
     jump(top.value, { duration: 0 })
-    saveReadingBookProgressToBrowser(index, targetChapterPos)
+    if (!deferProgressUntilSuccess)
+      saveReadingBookProgressToBrowser(index, targetChapterPos)
     // 书本翻页模式：整章重载时把初始页定位参数对齐
     if (activeBookMode.value)
       bookInitialPos.value = initialPos ?? targetChapterPos
     chapterData.value = []
   }
 
-  const request = fetchChapterData(index).then(
-    ({ chapter, isSuccess, errorMsg }) => {
+  const request = fetchChapterData(index)
+    .then(({ chapter, isSuccess, errorMsg }) => {
+      if (!isSuccess) throw new Error(errorMsg || '获取章节内容失败！')
       chapterData.value.push(chapter)
       if (reloadChapter) {
+        if (deferProgressUntilSuccess)
+          saveReadingBookProgressToBrowser(index, targetChapterPos)
         toChapterPos(targetChapterPos)
         if (infiniteLoading.value) prefetchChapter(index + 1)
         // 书本模式跨章后预取相邻章节，供下次跨章即时切换，避免再次弹 loading mask
         if (activeBookMode.value) prefetchBookAdjacent(index)
       }
-      if (!isSuccess) {
-        toast.error(errorMsg)
-      }
       store.setContentLoading(true)
       noPoint.value = false
       store.setShowContent(true)
-      if (!isSuccess) {
-        throw new Error(errorMsg)
-      }
-    },
-    err => {
+    })
+    .catch(err => {
       const errorMsg = getChapterRequestErrorMessage(
         err,
         reloadChapter ? '获取章节内容失败！' : '获取下一章内容失败！',
@@ -706,6 +764,7 @@ const getContent = (
           if (activeBookMode.value)
             bookInitialPos.value = previousBookInitialPos
           store.setShowContent(previousShowContent)
+          if (previousShowContent) toChapterPos(previousPos, previousIndex)
         } else {
           chapterData.value.push({
             index,
@@ -721,8 +780,7 @@ const getContent = (
       store.setContentLoading(true)
       if (reloadChapter) toast.error(errorMsg)
       throw err
-    },
-  )
+    })
   const measuredRequest = request.finally(() => {
     finishReaderPerf(perf, 50, `index=${index}, reload=${reloadChapter}`)
   })
@@ -734,15 +792,44 @@ const getContent = (
   })
 }
 
+const searchResultJumping = ref(false)
+const goToSearchResult = async (result: WebBookContentSearchResult) => {
+  if (searchResultJumping.value) return
+  if (
+    isLoading.value ||
+    isAppendingChapter.value ||
+    !showContent.value ||
+    chapterData.value.length === 0
+  ) {
+    toast.warning('当前章节仍在加载，请稍后再试')
+    return
+  }
+  searchResultJumping.value = true
+  try {
+    await getContent(
+      result.chapterIndex,
+      true,
+      result.chapterPos,
+      result.chapterPos,
+      true,
+    )
+    closeSearchPanel()
+  } catch {
+    // getContent has already restored the old chapter/progress and shown an error.
+  } finally {
+    searchResultJumping.value = false
+  }
+}
+
 const chapter = ref()
 const chapterRef = ref()
-const toChapterPos = (pos: number) => {
+const toChapterPos = (pos: number, index = chapterIndex.value) => {
   // 书本翻页模式由 BookPageReader 自行按 chapterPos 定位页，
   // 且此时模板不渲染 chapter-content，chapterRef 为 undefined。
   if (activeBookMode.value) return
   nextTick(() => {
-    if (chapterRef.value && chapterRef.value.length === 1)
-      chapterRef.value[0].scrollToReadedLength(pos)
+    const dataIndex = chapterData.value.findIndex(data => data.index === index)
+    if (dataIndex >= 0) chapterRef.value?.[dataIndex]?.scrollToReadedLength(pos)
   })
 }
 
@@ -917,6 +1004,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  closeSearchPanel()
   window.removeEventListener('keyup', handleKeyPress)
   window.removeEventListener('keydown', ignoreKeyPress)
   window.removeEventListener('resize', onResize)
@@ -949,6 +1037,7 @@ const addToBookShelfConfirm = async () => {
 }
 onBeforeRouteLeave(async (to, from, next) => {
   console.log('onBeforeRouteLeave')
+  closeSearchPanel()
   window.removeEventListener('keyup', handleKeyPress)
   flushReadingBookPersist()
   await store.saveBookProgress(true).catch(() => undefined)
@@ -991,6 +1080,36 @@ onBeforeRouteLeave(async (to, from, next) => {
           height: 16px;
           font-size: 16px;
           margin: 0 auto 6px;
+        }
+
+        .search-icon-glyph {
+          position: relative;
+          width: 16px;
+          height: 16px;
+          margin: 0 auto 6px;
+
+          &::before {
+            position: absolute;
+            top: 1px;
+            left: 1px;
+            width: 8px;
+            height: 8px;
+            border: 1.5px solid currentColor;
+            border-radius: 50%;
+            content: '';
+          }
+
+          &::after {
+            position: absolute;
+            top: 11px;
+            left: 9px;
+            width: 6px;
+            height: 1.5px;
+            background: currentColor;
+            content: '';
+            transform: rotate(45deg);
+            transform-origin: left center;
+          }
         }
 
         .icon-text {
@@ -1071,6 +1190,19 @@ onBeforeRouteLeave(async (to, from, next) => {
   }
 }
 
+.search-dialog-overlay {
+  box-sizing: border-box;
+  padding: 12px;
+}
+
+.search-popup {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-height: 86vh;
+  overflow: hidden;
+}
+
 .day {
   .popup {
     box-shadow:
@@ -1132,6 +1264,9 @@ onBeforeRouteLeave(async (to, from, next) => {
 
         .tool-icon {
           border: none;
+          width: auto;
+          min-width: 0;
+          flex: 1;
         }
       }
     }
@@ -1162,6 +1297,16 @@ onBeforeRouteLeave(async (to, from, next) => {
       padding: 0 20px;
       box-sizing: border-box;
     }
+  }
+
+  .search-dialog-overlay {
+    align-items: stretch;
+    padding: 10px;
+  }
+
+  .search-popup {
+    max-width: none !important;
+    max-height: calc(100vh - 20px);
   }
 }
 </style>

@@ -11,6 +11,8 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    BookContentSearch: typeof import('./components/BookContentSearch.vue')['default']
+    BookContentSearchResult: typeof import('./components/BookContentSearchResult.vue')['default']
     BookItems: typeof import('./components/BookItems.vue')['default']
     BookPageReader: typeof import('./components/BookPageReader.vue')['default']
     CatalogItem: typeof import('./components/CatalogItem.vue')['default']
