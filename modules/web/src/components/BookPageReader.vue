@@ -8,6 +8,8 @@
     @touchstart="onTouchStart"
     @touchmove="onTouchMove"
     @touchend="onTouchEnd"
+    @touchcancel="onTouchCancel"
+    @click="onReaderClick"
   >
     <div class="bp-stage" ref="stageRef" :class="stageClass">
       <div
@@ -689,19 +691,40 @@ const flipPrev = () => {
 // 触摸横向滑动
 let touchStartX = 0
 let touchStartY = 0
+let touchStartTime = 0
 let touchActive = false
+// 长按选词和横向翻页共用同一组触摸事件：超过短按窗口或已有选区时，
+// 把手势交还给浏览器，避免拖动选择手柄被误判成翻页。
+const touchSelectionHoldMs = 350
+
+const hasTextSelection = () => {
+  const selection = window.getSelection()
+  return Boolean(
+    selection && selection.rangeCount > 0 && !selection.isCollapsed,
+  )
+}
+
+const isSelectionGesture = () =>
+  hasTextSelection() ||
+  performance.now() - touchStartTime >= touchSelectionHoldMs
+
 const onTouchStart = (e: TouchEvent) => {
-  if (e.touches.length !== 1) {
+  if (e.touches.length !== 1 || hasTextSelection()) {
     touchActive = false
     return
   }
   const t = e.touches[0]
   touchStartX = t.clientX
   touchStartY = t.clientY
+  touchStartTime = performance.now()
   touchActive = true
 }
 const onTouchMove = (e: TouchEvent) => {
   if (!touchActive) return
+  if (isSelectionGesture()) {
+    touchActive = false
+    return
+  }
   const t = e.touches[0]
   const dx = t.clientX - touchStartX
   const dy = t.clientY - touchStartY
@@ -713,6 +736,7 @@ const onTouchMove = (e: TouchEvent) => {
 const onTouchEnd = (e: TouchEvent) => {
   if (!touchActive) return
   touchActive = false
+  if (isSelectionGesture()) return
   const t = e.changedTouches[0]
   const dx = t.clientX - touchStartX
   const dy = t.clientY - touchStartY
@@ -720,6 +744,12 @@ const onTouchEnd = (e: TouchEvent) => {
     if (dx < 0) flipNext()
     else flipPrev()
   }
+}
+const onTouchCancel = () => {
+  touchActive = false
+}
+const onReaderClick = (e: MouseEvent) => {
+  if (hasTextSelection()) e.stopPropagation()
 }
 
 // 键盘
@@ -839,7 +869,6 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  user-select: none;
 
   .bp-stage {
     position: relative;
@@ -862,6 +891,8 @@ defineExpose({ flipNext, flipPrev, flipToChapter, currentPageIndex, pages })
       font-size: var(--bp-font-size);
       line-height: var(--bp-line);
       font-family: var(--bp-font-family);
+      -webkit-user-select: text;
+      user-select: text;
     }
 
     .bp-page-shade {
