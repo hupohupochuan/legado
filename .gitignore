@@ -16,6 +16,7 @@ node_modules/
 /app/signing/
 package-lock.json
 pnpm-lock.yaml
+!modules/web/pnpm-lock.yaml
 .idea/
 # Kotlin 2.0
 .kotlin/
