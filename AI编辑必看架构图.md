@@ -1,12 +1,12 @@
 # AI 编辑必看架构图
 
-> 最新修订: 2026-07-15 01:42 CST
+> 最新修订: 2026-07-15 CST
 > 最近三次修订:
+> - 2026-07-15 CST: 系统核对文档与当前代码：补齐构建工具和各模块 SDK 边界，修正 Web/API、文件格式、包结构及已被后续实现替代的历史说明。
 > - 2026-07-15 01:42 CST: 固定签名 Release APK 构建、证书校验和用户安装目录同步入口。
 > - 2026-07-14 03:20 CST: Kotlin/Gradle 迁移后 compileSdk 改由 Version Catalog 提供，移除未使用的 kotlin-android 插件声明。
-> - 2026-07-14 02:30 CST: 补充链式协程回调/取消语义、系统栏 API 分支及 Android 16+ 大屏方向限制红线。
 
-> 主入口文件。AI 每次只需要先读这里；按任务需要再打开子文件。
+> 本文件是第一入口；同时按 `AGENTS.md` 要求读完其余三个必读文档，再按具体任务打开 `AI编辑必看/` 子文件。
 
 ---
 
@@ -22,9 +22,10 @@
 ## 项目概览
 
 - 项目: Legado (阅读) Android 电子书阅读器
-- SDK: minSdk 26, targetSdk 37, compileSdk 37
+- 构建: Gradle 9.6.1, AGP 9.3.0, Kotlin 2.4.10, JDK 17
+- SDK: `app` minSdk 26 / targetSdk 37；`modules/book` minSdk 21 / targetSdk 36；`modules/rhino` minSdk 26 / targetSdk 36；三个 Android 模块均 compileSdk 37
 - 技术栈: Kotlin + 少量 Java, MVVM + Room, ViewBinding, Coroutines/Flow
-- 模块: `app`, `modules/book`, `modules/rhino`, `modules/web`
+- 模块: `settings.gradle` 只包含 `app`、`modules/book`、`modules/rhino`；`modules/web/src` 是 Web 服务浏览器端 Vue 源码，不是 Gradle 子模块
 - 资源边界: `modules/web/src/` 是 Web 源码，`app/src/main/assets/web/` 是 APK 实际加载资源
 
 ---
@@ -51,7 +52,7 @@
 - compileSdk 从 `libs.versions.compileSdk` 读取，不要恢复跨项目隐式查找根项目 `ext` 属性；Android 模块使用 AGP 内置 Kotlin，不要重新应用 `kotlin-android`。
 - UI 协程必须优先传入 `lifecycleScope`/`viewModelScope`/现有组件 scope；`Coroutine.async` 默认 scope 只用于明确需要存活到进程结束的任务。取消异常不得进入普通错误回调。
 - API 30+ 系统栏显隐和图标明暗统一走 `WindowInsetsControllerCompat`；API 26-29 才保留旧 `systemUiVisibility` 分支。Android 16+、宽度不小于 600dp 的大屏不再强制阅读页方向。
-- 不要提交 `.sdk/`, `local.properties`, `app/gradle.properties`, `app/signing/`, `AGENTS.md`, `opencode.json`。
+- 本地 SDK、IDE、签名和产物文件不得提交；完整拦截清单以 `scripts/check-staged-local-files.sh` 为准，尤其不要提交 `.sdk/`、`local.properties`、`app/gradle.properties`、`app/signing/`、`app/app/`、`release签名/`、证书/keystore、`AGENTS.md` 和 `opencode.json`。
 
 ---
 
@@ -73,6 +74,6 @@ scripts/check-debug.sh
 scripts/build-signed-release.sh
 ```
 
-脚本会强制使用 `app/gradle.properties` 中的个人签名配置和 `RELEASE_CERT_SHA256`，完成 Release/R8、五个 ABI APK、证书/包名/版本校验，再把同一批 APK、`.idsig`、metadata 原子同步到 `app/app/release/`。`app/gradle.properties` 与 keystore 权限必须为 `600`。Android 64 位真机优先安装 `app/app/release/legado_arm64.apk`；不得直接复制单个 APK，也不得在签名配置缺失时接受 Gradle 的 Debug 签名回退。
+脚本会强制使用 `app/gradle.properties` 中的个人签名配置和 `RELEASE_CERT_SHA256`，完成 Release/R8、五个 ABI APK、证书/包名/版本校验，再把同一批 APK、`.idsig`、metadata 原子同步到 `app/app/release/`。`app/gradle.properties` 与 keystore 必须仅所有者可读写（脚本接受 `400` 或 `600`，通常使用 `600`）。Android 64 位真机优先安装 `app/app/release/legado_arm64.apk`；不得直接复制单个 APK，也不得在签名配置缺失时接受 Gradle 的 Debug 签名回退。
 
 *文档版本: 2026-07-15*

@@ -1,3 +1,5 @@
+> 说明：本项目更新日志已迁移至 [`app/src/main/assets/updateLog.md`](/app/src/main/assets/updateLog.md)，按提交规范在每次提交前人工维护。本文件自 2022/10/02 起不再更新，仅保留历史记录供参考。
+
 **2022/10/02**
 
 * 更新cronet: 106.0.5249.79

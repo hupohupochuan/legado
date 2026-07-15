@@ -1,5 +1,5 @@
 # js变量和函数
-> 阅读使用[Rhino v1.8.0](https://github.com/mozilla/rhino) 作为JavaScript引擎以便于[调用Java类和方法](https://m.jb51.net/article/92138.htm)，查看[ECMAScript兼容性表格](https://mozilla.github.io/rhino/compat/engines.html)
+> 阅读使用 [Rhino v1.9.1](https://github.com/mozilla/rhino) 作为 JavaScript 引擎以便于[调用 Java 类和方法](https://m.jb51.net/article/92138.htm)，查看 [ECMAScript 兼容性表格](https://mozilla.github.io/rhino/compat/engines.html)
 
 > [Rhino运行时](https://github.com/mozilla/rhino/blob/master/rhino/src/main/java/org/mozilla/javascript/ScriptRuntime.java)懒加载导入的Java类和方法
 
@@ -7,7 +7,7 @@
 |------|-----|------|----|------|
 |JavaImporter|importClass importPackage| |[ImporterTopLevel](https://github.com/mozilla/rhino/blob/master/rhino/src/main/java/org/mozilla/javascript/ImporterTopLevel.java)|导入Java类到JavaScript|
 ||getClass|Packages java javax ...|[NativeJavaTopPackage](https://github.com/mozilla/rhino/blob/master/rhino/src/main/java/org/mozilla/javascript/NativeJavaTopPackage.java)|默认导入JavaScript中的Java类|
-|JavaAdapter|||[JavaAdapter](https://github.com/mozilla/rhino/blob/master/rhino/src/main/java//org/mozilla/javascript/JavaAdapter.java)|继承Java类|
+|JavaAdapter|||[JavaAdapter](https://github.com/mozilla/rhino/blob/master/rhino/src/main/java/org/mozilla/javascript/JavaAdapter.java)|继承Java类|
 
 > 注意`java`变量指向已经被阅读修改，如果想要调用`java.*`下的包，请使用`Packages.java.*`
 
@@ -26,7 +26,6 @@
 | baseUrl        | 当前url,String                                                                                                                 |
 | result         | 上一步的结果                                                                                                                       |
 | book           | [书籍类](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/data/entities/Book.kt)            |
-| rssArticle     | [Article类](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/data/entities/RssArticle.kt) |
 | chapter        | [章节类](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/data/entities/BookChapter.kt)     |
 | source         | [基础书源类](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/data/entities/BaseSource.kt)    |
 | cookie         | [cookie操作类](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/help/http/CookieStore.kt)   | 
@@ -37,9 +36,10 @@
 
 ## 当前类对象的可使用的部分方法
 
-### [RssJsExtensions](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/ui/rss/read/RssJsExtensions.kt)
-> 只能在订阅源`shouldOverrideUrlLoading`规则中使用  
-> 订阅添加跳转url拦截, js, 返回true拦截,js变量url,可以通过js打开url  
+### [RssJsExtensions](https://github.com/hupohupochuan/legado/blob/master/app/src/main/java/io/legado/app/ui/book/rss/RssJsExtensions.kt)
+> 只能在 RSS 类型书源的 `ruleContent.shouldOverrideUrlLoading` 规则中使用
+>
+> RSS 内容页跳转 URL 拦截 JS；返回 `true` 表示拦截，JS 变量为 `url`，可通过 JS 打开 URL
 > url跳转拦截规则不能执行耗时操作
 > 例子https://github.com/hupohupochuan/legado/discussions/3259
 

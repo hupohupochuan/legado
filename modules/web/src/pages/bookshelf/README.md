@@ -1,33 +1,7 @@
-# 「阅读3.0」 web 端（已打包进阅读3.0，不能设置IP）
+# 历史书架分入口
 
-本程序为「阅读3.0」的配套 web 端，需要保证手机和电脑在同一局域网内，然后手机端打开 web 服务。
+`src/pages/bookshelf/` 是旧的独立入口，不参与当前 `modules/web/index.html` → `src/main.ts` 生产构建；其中 `main.js` 还保留已不在当前依赖中的 Element Plus 引用，不应作为开发入口运行。
 
-~~在线地址 http://alanskycn.gitee.io/vip/reader/~~
+当前书架和阅读页已并入统一 SPA，路由分别为 `/#/shelf` 和 `/#/chapter?bookUrl=...`。书架页可保存自定义后端 URL；最近阅读信息使用浏览器存储，阅读配置通过 App 的 `/getReadConfig` 与 `/saveReadConfig` 接口读写，不能笼统视为全部只存本地。
 
-## 具体实现
-
-使用 Vue3 开发
-
-## 功能特性
-
-- 本地存储阅读记录与设置
-- 阅读主题切换
-- 夜间模式
-- 字号调节
-- 字体调节
-- 阅读宽度调节
-
-## 使用方法
-
-```shell
-pnpm install
-#安装项目
-pnpm dev
-#开发模式
-pnpm build
-#打包
-pnpm lint:fix
-#格式化代码
-```
-
-- 调试的时候可以修改.env.development里面的地址连接手机端调试
+开发、生产构建及 APK assets 同步以 [`modules/web/README.md`](../../../README.md) 为准。

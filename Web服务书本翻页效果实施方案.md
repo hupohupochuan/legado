@@ -3,6 +3,8 @@
 > 记录日期: 2026-07-01 CST
 > 适用范围: `modules/web` Vue 3 Web 服务阅读页；APK 实际生效文件为 `app/src/main/assets/web/index.html`
 > 目标读者: 后续接手实现的 AI / 开发者
+>
+> **状态复核（2026-07-15）**：这是实施前的历史方案，不是当前实现说明。功能已在 `bookPagination.ts` + `BookPageReader.vue` 中完成并继续演进；建议中的 `PagedChapterContent.vue` 没有成为当前文件，整页左右点击热区已取消，纸质书效果也从 `rotateY` 方案改为同一舞台上的固定 `clip-path` 裁切/边缘/阴影动画。维护当前代码时以 `新功能踩坑记录.md` 的 Web 书本模式后续条目和实际源码为准。
 
 ---
 

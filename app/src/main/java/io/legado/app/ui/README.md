@@ -1,26 +1,21 @@
-# 放置与界面有关的类
+# Android UI 结构
 
-* about 关于界面
-* association 导入书源界面
-* book\audio 音频播放界面
-* book\arrange 书架整理界面
-* book\info 书籍信息查看
-* book\read 书籍阅读界面
-* book\search 搜索书籍界面
-* book\source 书源界面
-* book\changeCover 封面换源界面
-* book\changeSource 换源界面
-* book\toc 目录界面
-* book\download 下载界面
-* book\explore 发现界面
-* book\local 书籍导入界面
-* document 文件选择界面
-* config 配置界面
-* main 主界面
-* qrCode 二维码扫描界面
-* replaceRule 替换净化界面
-* rss\article 订阅条目界面
-* rss\read 订阅阅读界面
-* rss\source 订阅源界面
-* welcome 欢迎界面
-* widget 自定义插件
+- `about/`：关于、更新、许可等页面。
+- `association/`：外部链接/文件关联，以及书源、字典规则、HTTP TTS、替换规则、主题、TXT 目录规则和阅读配置导入。
+- `book/`：书籍相关界面。
+  - `audio/`、`video/`、`manga/`、`rss/`：音频、视频、漫画和 RSS 类型书源阅读。
+  - `bookmark/`、`toc/`、`searchContent/`：书签、目录和全文搜索。
+  - `cache/`、`import/`、`manage/`、`group/`：离线缓存、导入、书架整理和分组。
+  - `changecover/`、`changesource/`、`info/`：封面换源、正文换源和书籍详情。
+  - `explore/`、`search/`、`source/`：发现、搜索和统一书源管理/编辑；RSS 源不再有独立管理目录。
+  - `read/`：文本阅读页、排版和翻页实现。
+- `browser/`：应用内浏览器。
+- `config/`：应用设置。
+- `dict/`：字典及字典规则。
+- `file/`：文件选择。
+- `font/`：字体管理。
+- `login/`：书源登录。
+- `main/`：主界面及书架/发现/我的三个主区域。
+- `replace/`：替换净化规则。
+- `welcome/`：欢迎和权限引导。
+- `widget/`：自定义 View、对话框和 RecyclerView 等 UI 控件。

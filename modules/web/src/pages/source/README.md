@@ -1,34 +1,10 @@
-# legado_web_editor
+# 历史书源编辑分入口
 
-## 🚧开发注意
+`src/pages/source/` 是旧的独立入口，不参与当前 `modules/web/index.html` → `src/main.ts` 生产构建；其中 `main.js` 还保留已不在当前依赖中的 Element Plus 引用，不应作为开发入口运行。
 
-如果你想要调试项目 请修改文件`.env.development`里`VITE_API`为阅读web服务ip
+当前书源和替换规则编辑已并入统一 SPA：
 
-## 路由
+- `/#/bookSource`
+- `/#/replaceRule`
 
-/rssSource 订阅源编辑
-/rssSource 书源编辑
-
-## 🎨Project setup
-
-```
-pnpm i
-```
-
-### Compiles and hot-reloads for development
-
-```
-pnpm dev
-```
-
-### Compiles and minifies for production
-
-```
-pnpm build
-```
-
-### Lints and fixes files
-
-```
-pnpm lint:fix
-```
+开发、`VITE_API` 配置、生产构建及 APK assets 同步以 [`modules/web/README.md`](../../../README.md) 为准。
