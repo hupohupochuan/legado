@@ -80,7 +80,7 @@ https://www.yuque.com/legado/wiki/community
 
 # API [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-)
 
-* Legado 3.0 The API is provided in 2 ways: `Web way` and `Content Provider way`. You can call it yourself as needed in [here](api.md). 
+* Legado 3.0 provides both a Web API and a Content Provider API. The Content Provider is available only to clients that request the matching permission and are signed with the same certificate; see the [API documentation](api.md).
 * One-click import by url recall reading, url format: legado://import/{path}?src={url}
 * Path Type: bookSource,rssSource,replaceRule,textTocRule,httpTTS,theme,readConfig,dictRule,addToBookshelf
 * Path type explanation: book source, compatibility alias for an RSS-type book source (`bookSourceType=5`), replacement rule, local TXT table-of-contents rule, online TTS engine, theme, reading layout, dictionary rule, [add to bookshelf](/app/src/main/java/io/legado/app/ui/association/AddToBookshelfDialog.kt)

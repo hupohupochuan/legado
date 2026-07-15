@@ -2,9 +2,9 @@
 
 > 最新修订: 2026-07-15 CST
 > 最近三次修订:
+> - 2026-07-15 CST: `ReaderProvider` 增加按变体隔离的签名级权限；删除不参与生产构建的 Web 旧分入口并明确单入口边界。
 > - 2026-07-15 CST: 系统核对文档与当前代码：补齐构建工具和各模块 SDK 边界，修正 Web/API、文件格式、包结构及已被后续实现替代的历史说明。
 > - 2026-07-15 01:42 CST: 固定签名 Release APK 构建、证书校验和用户安装目录同步入口。
-> - 2026-07-14 03:20 CST: Kotlin/Gradle 迁移后 compileSdk 改由 Version Catalog 提供，移除未使用的 kotlin-android 插件声明。
 
 > 本文件是第一入口；同时按 `AGENTS.md` 要求读完其余三个必读文档，再按具体任务打开 `AI编辑必看/` 子文件。
 
@@ -27,6 +27,7 @@
 - 技术栈: Kotlin + 少量 Java, MVVM + Room, ViewBinding, Coroutines/Flow
 - 模块: `settings.gradle` 只包含 `app`、`modules/book`、`modules/rhino`；`modules/web/src` 是 Web 服务浏览器端 Vue 源码，不是 Gradle 子模块
 - 资源边界: `modules/web/src/` 是 Web 源码，`app/src/main/assets/web/` 是 APK 实际加载资源
+- 外部接口边界: `ReaderProvider` 保持导出但受 `${applicationId}.permission.READ_WRITE` 签名级权限保护；外部调用方必须声明对应变体权限并使用同一签名证书
 
 ---
 

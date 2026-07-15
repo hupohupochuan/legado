@@ -1,6 +1,5 @@
 import sourceEditor from '../views/SourceEditor.vue'
 import replaceRuleEditor from '../views/ReplaceRuleEditor.vue'
-import { createWebHashHistory, createRouter } from 'vue-router'
 
 export const sourceRoutes = [
   {
@@ -14,10 +13,3 @@ export const sourceRoutes = [
     component: replaceRuleEditor,
   },
 ]
-
-const router = createRouter({
-  history: createWebHashHistory(),
-  routes: sourceRoutes,
-})
-
-export default router

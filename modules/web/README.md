@@ -1,6 +1,6 @@
 # 阅读 Web 端
 
-本目录是 Vue 3 单页应用，统一包含欢迎页、书架、阅读页、书源编辑和替换规则编辑。Android App 实际加载 `app/src/main/assets/web/index.html`，`modules/web/src/pages/*` 下的旧分入口不参与当前生产构建。
+本目录是 Vue 3 单页应用，统一包含欢迎页、书架、阅读页、书源编辑和替换规则编辑。唯一生产入口是 `modules/web/index.html` → `src/main.ts`；旧的 `src/pages/bookshelf`、`src/pages/source` 独立入口已于 2026-07-15 删除。Android App 实际加载 `app/src/main/assets/web/index.html`。
 
 ## Hash 路由
 

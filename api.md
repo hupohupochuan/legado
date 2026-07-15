@@ -142,11 +142,22 @@ Provider authority 为 `${applicationId}.readerProvider`。当前个人版示例
 - Release：`shutiao.reader.release.readerProvider`
 - Debug：`shutiao.reader.debug.readerProvider`
 
-### 当前安全状态
+### 签名权限
 
-`AndroidManifest.xml` 当前把 `ReaderProvider` 设为 `exported=true`，且没有声明读写权限。旧文档要求的 `io.legado.READ_WRITE` 在当前代码和 Manifest 中不存在，调用方也不需要声明它。
+`ReaderProvider` 保持 `exported=true` 以支持外部集成，但所有读写操作均受 `${applicationId}.permission.READ_WRITE` 保护，该自定义权限的 `protectionLevel` 为 `signature`。当前个人版的实际权限名为：
 
-这意味着其他已安装应用目前可以尝试访问 Provider。是否恢复签名级权限属于会改变外部兼容性的安全决策，本轮只同步文档，不修改代码；该问题留待专项处理。
+- Release：`shutiao.reader.release.permission.READ_WRITE`
+- Debug：`shutiao.reader.debug.permission.READ_WRITE`
+
+调用方需要在自己的 Manifest 中声明与目标变体对应的权限，例如调用个人版 Release：
+
+```xml
+<uses-permission android:name="shutiao.reader.release.permission.READ_WRITE" />
+```
+
+调用方还必须与目标 App 使用同一签名证书；仅声明权限但签名不同仍会被系统拒绝，并可能收到 `SecurityException`。权限名随 `applicationId` 变化，因此 Debug 和 Release 不能混用。旧权限名 `io.legado.READ_WRITE` 不再有效。
+
+这是 2026-07-15 起的有意安全收紧：此前依赖无权限访问或使用不同证书的第三方客户端需要改为同签名构建，否则无法继续调用 Provider。
 
 ### 调用约定
 
@@ -154,6 +165,7 @@ Provider authority 为 `${applicationId}.readerProvider`。当前个人版示例
 - `delete`：JSON 数组放在 `ContentProvider.delete(uri, selection, selectionArgs)` 的 `selection` 参数中；返回值当前始终为 `0`。
 - `query`：返回一行一列的 Cursor，用 `cursor.getString(0)` 取得完整 `ReturnData` JSON。
 - 不支持或格式错误的写入可能只返回 `null`/`0`，外部调用方应在操作后查询确认。
+- 签名权限拒绝发生在进入 `ReaderProvider` 业务代码之前，会抛出系统 `SecurityException`；它与 Provider 内部参数错误返回的 `null`/`0` 不是同一种失败。
 
 ### 书源 URI
 
