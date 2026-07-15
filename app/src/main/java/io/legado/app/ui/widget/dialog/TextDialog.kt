@@ -1,6 +1,10 @@
 package io.legado.app.ui.widget.dialog
 
 import android.os.Bundle
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
 import android.view.View
 import android.view.textclassifier.TextClassifier
 import androidx.lifecycle.lifecycleScope
@@ -8,6 +12,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogTextViewBinding
 import io.legado.app.help.IntentData
+import io.legado.app.utils.MarkdownDetailsSection
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -66,15 +71,14 @@ class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
                 Mode.MD.name -> viewLifecycleOwner.lifecycleScope.launch {
                     binding.textView.setTextClassifier(TextClassifier.NO_OP)
                     val markwon: Markwon
-                    val markdown = withContext(IO) {
+                    withContext(IO) {
                         markwon = Markwon.builder(requireContext())
                             .usePlugin(GlideImagesPlugin.create(requireContext()))
                             .usePlugin(HtmlPlugin.create())
                             .usePlugin(TablePlugin.create(requireContext()))
                             .build()
-                        markwon.toMarkdown(content)
                     }
-                    markwon.setParsedMarkdown(binding.textView, markdown)
+                    renderMarkdown(markwon, content)
                 }
 
                 Mode.HTML.name -> binding.textView.setHtml(content)
@@ -110,6 +114,38 @@ class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
                 dialog?.setCancelable(true)
             }
         }
+    }
+
+    private suspend fun renderMarkdown(markwon: Markwon, content: String) {
+        val detailsSection = MarkdownDetailsSection.parse(content)
+        val markdown = withContext(IO) {
+            markwon.toMarkdown(detailsSection?.preview ?: content)
+        }
+        markwon.setParsedMarkdown(binding.textView, markdown)
+        if (detailsSection != null) {
+            appendDetailsLink(markwon, detailsSection)
+        }
+    }
+
+    private fun appendDetailsLink(markwon: Markwon, detailsSection: MarkdownDetailsSection) {
+        val prefix = "\n\n"
+        val linkText = prefix + detailsSection.summary
+        val link = SpannableString(linkText).apply {
+            setSpan(
+                object : ClickableSpan() {
+                    override fun onClick(widget: View) {
+                        viewLifecycleOwner.lifecycleScope.launch {
+                            renderMarkdown(markwon, detailsSection.expandedMarkdown)
+                        }
+                    }
+                },
+                prefix.length,
+                linkText.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+        binding.textView.append(link)
+        binding.textView.movementMethod = LinkMovementMethod.getInstance()
     }
 
 }
