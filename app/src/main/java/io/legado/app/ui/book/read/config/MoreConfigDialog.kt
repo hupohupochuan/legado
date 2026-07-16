@@ -60,12 +60,14 @@ class MoreConfigDialog : BasePrefDialogFragment() {
     class ReadPreferenceFragment : PreferenceFragment(),
         SharedPreferences.OnSharedPreferenceChangeListener {
 
-        private val slopSquare by lazy { ViewConfiguration.get(requireContext()).scaledTouchSlop }
+        private val pagingTouchSlop by lazy {
+            ViewConfiguration.get(requireContext()).scaledPagingTouchSlop
+        }
 
         @SuppressLint("RestrictedApi")
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             addPreferencesFromResource(R.xml.pref_config_read)
-            upPreferenceSummary(PreferKey.pageTouchSlop, slopSquare.toString())
+            upPreferenceSummary(PreferKey.pageTouchSlop, pagingTouchSlop.toString())
             if (!CanvasRecorderFactory.isSupport) {
                 removePref(PreferKey.optimizeRender)
                 preferenceScreen.removePreferenceRecursively(PreferKey.optimizeRender)

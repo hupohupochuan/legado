@@ -26,10 +26,6 @@ class ClickArea {
         brRect.set(width * 0.66f, height * 0.66f, width.toFloat(), height.toFloat())
     }
 
-    fun isCenter(x: Float, y: Float): Boolean {
-        return mcRect.contains(x, y)
-    }
-
     fun getAction(x: Float, y: Float): Int {
         return when {
             mcRect.contains(x, y) -> AppConfig.clickActionMC

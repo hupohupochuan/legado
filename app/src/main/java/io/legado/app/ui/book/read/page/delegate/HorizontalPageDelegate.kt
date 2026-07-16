@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read.page.delegate
 
 import android.view.MotionEvent
 import io.legado.app.ui.book.read.page.ReadView
+import io.legado.app.ui.book.read.page.ReadTouchDecider
 import io.legado.app.ui.book.read.page.entities.PageDirection
 import io.legado.app.utils.ReaderPerformance
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
@@ -12,8 +13,6 @@ abstract class HorizontalPageDelegate(readView: ReadView) : PageDelegate(readVie
     protected var curRecorder = CanvasRecorderFactory.create()
     protected var prevRecorder = CanvasRecorderFactory.create()
     protected var nextRecorder = CanvasRecorderFactory.create()
-    private val slopSquare get() = readView.pageSlopSquare2
-
     override fun invalidateOnAnim() {
         readView.postInvalidateOnAnimation()
     }
@@ -85,10 +84,11 @@ abstract class HorizontalPageDelegate(readView: ReadView) : PageDelegate(readVie
         val focusY = sumY / div
         //判断是否移动了
         if (!isMoved) {
-            val deltaX = (focusX - startX).toInt()
-            val deltaY = (focusY - startY).toInt()
-            val distance = deltaX * deltaX + deltaY * deltaY
-            isMoved = distance > slopSquare
+            isMoved = ReadTouchDecider.exceedsSlop(
+                focusX - startX,
+                focusY - startY,
+                readView.pageTouchSlop
+            )
             if (isMoved) {
                 if (sumX - startX > 0) {
                     //如果上一页不存在

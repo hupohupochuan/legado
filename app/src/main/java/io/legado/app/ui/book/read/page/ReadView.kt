@@ -69,6 +69,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
     val defaultAnimationSpeed = 300
     private var pressDown = false
     private var isMove = false
+    private var isPageMove = false
 
     //起始点
     internal var startX: Float = 0f
@@ -84,6 +85,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
 
     //是否停止动画动作
     internal var isAbortAnim = false
+    //本次按下是否中止了进行中的翻页动画
+    private var animationAbortedOnDown = false
 
     //长按
     private var longPressed = false
@@ -97,9 +100,12 @@ class ReadView(context: Context, attrs: AttributeSet) :
     private var pressOnTextSelected = false
     private val initialTextPos = TextPos(0, 0, 0)
 
-    private val slopSquare by lazy { ViewConfiguration.get(context).scaledTouchSlop }
-    private var pageSlopSquare: Int = slopSquare
-    internal var pageSlopSquare2: Int = pageSlopSquare * pageSlopSquare
+    private val touchSlop by lazy { ViewConfiguration.get(context).scaledTouchSlop }
+    private val systemPagingTouchSlop by lazy {
+        ViewConfiguration.get(context).scaledPagingTouchSlop
+    }
+    internal var pageTouchSlop: Int = systemPagingTouchSlop
+        private set
     private val clickArea = ClickArea()
     private val boundary by lazy { BreakIterator.getWordInstance(Locale.getDefault()) }
     private val upProgressThrottle = throttle(200) { post { upProgress() } }
@@ -191,7 +197,11 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 postDelayed(longPressRunnable, longPressTimeout)
                 pressDown = true
                 isMove = false
+                isPageMove = false
+                animationAbortedOnDown = false
                 pageDelegate?.onTouch(event)
+                animationAbortedOnDown = isAbortAnim
+                isAbortAnim = false
                 pageDelegate?.onDown()
                 setStartPoint(event.x, event.y, false)
                 when (clickArea.getAction(event.x, event.y)) {
@@ -204,14 +214,23 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 val absX = abs(startX - event.x)
                 val absY = abs(startY - event.y)
                 if (!isMove) {
-                    isMove = absX > slopSquare || absY > slopSquare
+                    isMove = ReadTouchDecider.exceedsSlop(absX, absY, touchSlop)
                 }
-                if (isMove) {
+                if (!isPageMove) {
+                    isPageMove = ReadTouchDecider.exceedsSlop(
+                        absX,
+                        absY,
+                        pageTouchSlop
+                    )
+                }
+                if (isMove || isPageMove) {
                     longPressed = false
                     removeCallbacks(longPressRunnable)
                     if (isTextSelected) {
-                        selectText(event.x, event.y)
-                    } else {
+                        if (isMove) {
+                            selectText(event.x, event.y)
+                        }
+                    } else if (isPageMove) {
                         pageDelegate?.onTouch(event)
                     }
                 }
@@ -222,13 +241,18 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 removeCallbacks(longPressRunnable)
                 if (!pressDown) return true
                 pressDown = false
-                if (!pageDelegate!!.isMoved && !isMove) {
-                    if (!longPressed && !pressOnTextSelected) {
-                        if (!curPage.onClick(startX, startY)) {
-                            onSingleTapUp()
-                        }
-                        return true
+                if (ReadTouchDecider.shouldHandleTap(
+                        pageGestureExceeded = isPageMove,
+                        delegateMoved = pageDelegate!!.isMoved,
+                        longPressed = longPressed,
+                        pressOnTextSelected = pressOnTextSelected
+                    )
+                ) {
+                    if (!curPage.onClick(startX, startY)) {
+                        onSingleTapUp()
                     }
+                    animationAbortedOnDown = false
+                    return true
                 }
                 if (isTextSelected && !isImageMenuShowing) {
                     callBack.showTextActionMenu()
@@ -236,6 +260,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     pageDelegate?.onTouch(event)
                 }
                 pressOnTextSelected = false
+                animationAbortedOnDown = false
             }
 
             MotionEvent.ACTION_CANCEL -> {
@@ -248,6 +273,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     pageDelegate?.onTouch(event)
                 }
                 pressOnTextSelected = false
+                animationAbortedOnDown = false
                 autoPager.resume()
             }
         }
@@ -381,8 +407,12 @@ class ReadView(context: Context, attrs: AttributeSet) :
      */
     private fun onSingleTapUp() {
         if (isTextSelected) return
-        if (clickArea.isCenter(startX, startY) && isAbortAnim) return
         val action = clickArea.getAction(startX, startY)
+        if (ReadTouchDecider.shouldConsumeAbortedAction(animationAbortedOnDown, action)) {
+            animationAbortedOnDown = false
+            return
+        }
+        animationAbortedOnDown = false
         click(action)
     }
 
@@ -391,7 +421,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
      */
     private fun click(action: Int) {
         when (action) {
-            0 -> {
+            ReadTouchDecider.MENU_ACTION -> {
                 pageDelegate?.dismissSnackBar()
                 callBack.showActionMenu()
             }
@@ -551,9 +581,10 @@ class ReadView(context: Context, attrs: AttributeSet) :
      * 更新滑动距离
      */
     fun upPageSlopSquare() {
-        val pageTouchSlop = AppConfig.pageTouchSlop
-        this.pageSlopSquare = if (pageTouchSlop == 0) slopSquare else pageTouchSlop
-        pageSlopSquare2 = this.pageSlopSquare * this.pageSlopSquare
+        pageTouchSlop = ReadTouchDecider.resolvePageTouchSlop(
+            AppConfig.pageTouchSlop,
+            systemPagingTouchSlop
+        )
     }
 
     /**

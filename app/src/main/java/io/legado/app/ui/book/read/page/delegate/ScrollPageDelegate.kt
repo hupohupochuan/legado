@@ -7,6 +7,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isImage
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.page.ReadView
+import io.legado.app.ui.book.read.page.ReadTouchDecider
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 
 class ScrollPageDelegate(readView: ReadView) : PageDelegate(readView) {
@@ -16,8 +17,6 @@ class ScrollPageDelegate(readView: ReadView) : PageDelegate(readView) {
 
     //速度追踪器
     private val mVelocity: VelocityTracker = VelocityTracker.obtain()
-    private val slopSquare get() = readView.pageSlopSquare2
-
     var noAnim: Boolean = false
 
     override fun onAnimStart(animationSpeed: Int) {
@@ -82,10 +81,11 @@ class ScrollPageDelegate(readView: ReadView) : PageDelegate(readView) {
             readView.setTouchPoint(pointX, pointY, false)
         }
         if (!isMoved) {
-            val deltaX = (pointX - startX).toInt()
-            val deltaY = (pointY - startY).toInt()
-            val distance = deltaX * deltaX + deltaY * deltaY
-            isMoved = distance > slopSquare
+            isMoved = ReadTouchDecider.exceedsSlop(
+                pointX - startX,
+                pointY - startY,
+                readView.pageTouchSlop
+            )
             if (isMoved) {
                 readView.setStartPoint(event.x, event.y, false)
             }
