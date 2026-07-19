@@ -4,15 +4,15 @@ import {
   emptyBookSource,
   getSourceUniqueKey,
   convertSourcesToMap,
-} from '@utils/souce'
-import type { BookSoure, Source } from '@/source'
+} from '@utils/source'
+import type { BookSource, Source } from '@/source'
 
 const emptySource = emptyBookSource
 
 export const useSourceStore = defineStore('source', {
   state: () => {
     return {
-      bookSources: shallowRef([] as BookSoure[]),
+      bookSources: shallowRef([] as BookSource[]),
       savedSources: [] as Source[],
       currentSource: JSON.parse(JSON.stringify(emptySource)) as Source,
       currentTab: localStorage.getItem('tabName') || 'editTab',
@@ -28,9 +28,9 @@ export const useSourceStore = defineStore('source', {
     savedSourcesMap: (state): Map<string, Source> =>
       convertSourcesToMap(state.savedSources),
     currentSourceUrl: state =>
-      (state.currentSource as BookSoure).bookSourceUrl,
+      (state.currentSource as BookSource).bookSourceUrl,
     searchKey: (state): string =>
-      (state.currentSource as BookSoure)?.ruleSearch?.checkKeyWord || '我的',
+      (state.currentSource as BookSource)?.ruleSearch?.checkKeyWord || '我的',
   },
   actions: {
     startDebug() {
@@ -42,7 +42,7 @@ export const useSourceStore = defineStore('source', {
     },
 
     saveSources(data: Source[]) {
-      this.bookSources = markRaw(data) as BookSoure[]
+      this.bookSources = markRaw(data) as BookSource[]
     },
     setPushReturnSources(returnSoures: Source[]) {
       this.savedSources = returnSoures

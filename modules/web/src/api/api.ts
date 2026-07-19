@@ -7,16 +7,15 @@ import type {
   BaseBook,
   Book,
   BookChapter,
-  BookProgress,
   WebBookProgress,
   SyncBookProgressResult,
   BookGroup,
-  SeachBook,
+  SearchBook,
 } from '@/book'
-import type { Source } from '@/source'
+import type { BookSource, Source } from '@/source'
 import type { ReplaceRule } from '@/replaceRule'
 
-export type LeagdoApiResponse<T> = {
+export type LegadoApiResponse<T> = {
   isSuccess: boolean
   errorMsg: string
   data: T
@@ -106,7 +105,7 @@ export const setApiEntryPoint = (
 
 // 书架API
 const getReadConfig = async (http_url = legado_http_entry_point) => {
-  const { data } = await ajax.get('getReadConfig', {
+  const { data } = await ajax.get<LegadoApiResponse<string>>('getReadConfig', {
     baseURL: http_url.toString(),
   })
   if (data.isSuccess) {
@@ -116,13 +115,13 @@ const getReadConfig = async (http_url = legado_http_entry_point) => {
   }
 }
 const saveReadConfig = (config: webReadConfig) =>
-  ajax.post('saveReadConfig', config)
+  ajax.post<LegadoApiResponse<unknown>>('saveReadConfig', config)
 
 const saveBookProgress = async (
   bookProgress: WebBookProgress,
   flush = false,
 ) => {
-  const response = await ajax.post(
+  const response = await ajax.post<LegadoApiResponse<unknown>>(
     `saveBookProgress${flush ? '?flush=true' : ''}`,
     bookProgress,
   )
@@ -141,23 +140,25 @@ const saveBookProgressWithBeacon = (bookProgress: WebBookProgress) => {
 }
 
 const syncBookProgress = (bookUrl: string) =>
-  ajax.post('syncBookProgress', {
+  ajax.post<LegadoApiResponse<SyncBookProgressResult>>('syncBookProgress', {
     bookUrl,
-  }) as Promise<{ data: LeagdoApiResponse<SyncBookProgressResult> }>
+  })
 
-const getGroups = () => ajax.get('getGroups')
+const getGroups = () => ajax.get<LegadoApiResponse<BookGroup[]>>('getGroups')
 
 const getBookShelf = (groupId?: number | string) => {
   const url =
     groupId !== undefined ? `getBookshelf?groupId=${groupId}` : 'getBookshelf'
-  return ajax.get(url)
+  return ajax.get<LegadoApiResponse<Book[]>>(url)
 }
 
 const getChapterList = (bookUrl: string) =>
-  ajax.get('getChapterList?url=' + encodeURIComponent(bookUrl))
+  ajax.get<LegadoApiResponse<BookChapter[]>>(
+    'getChapterList?url=' + encodeURIComponent(bookUrl),
+  )
 
 const getBookContent = (bookUrl: string, chapterIndex: number) =>
-  ajax.get(
+  ajax.get<LegadoApiResponse<string>>(
     'getBookContent?url=' +
       encodeURIComponent(bookUrl) +
       '&index=' +
@@ -165,11 +166,13 @@ const getBookContent = (bookUrl: string, chapterIndex: number) =>
   )
 
 const refreshToc = (bookUrl: string) =>
-  ajax.get('refreshToc?url=' + encodeURIComponent(bookUrl))
+  ajax.get<LegadoApiResponse<BookChapter[]>>(
+    'refreshToc?url=' + encodeURIComponent(bookUrl),
+  )
 
 const search = (
   searchKey: string,
-  onReceive: (data: SeachBook[]) => void,
+  onReceive: (data: SearchBook[]) => void,
   onFinish: () => void,
 ) => {
   const socket = new WebSocket(
@@ -312,8 +315,10 @@ const searchBookContent = (
   }
 }
 
-const saveBook = (book: BaseBook) => ajax.post('saveBook', book)
-const deleteBook = (book: BaseBook) => ajax.post('deleteBook', book)
+const saveBook = (book: BaseBook) =>
+  ajax.post<LegadoApiResponse<unknown>>('saveBook', book)
+const deleteBook = (book: BaseBook) =>
+  ajax.post<LegadoApiResponse<unknown>>('deleteBook', book)
 
 const addLocalBook = async (file: File) => {
   const formData = new FormData()
@@ -326,27 +331,31 @@ const addLocalBook = async (file: File) => {
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`)
   }
-  return { data: await response.json() }
+  return { data: (await response.json()) as LegadoApiResponse<unknown> }
 }
 
-const getSources = () => ajax.get('getBookSources')
+const getSources = () => ajax.get<LegadoApiResponse<BookSource[]>>('getBookSources')
 
-const saveSource = (data: Source) => ajax.post('saveBookSource', data)
+const saveSource = (data: Source) =>
+  ajax.post<LegadoApiResponse<unknown>>('saveBookSource', data)
 
-const saveSources = (data: Source[]) => ajax.post('saveBookSources', data)
+const saveSources = (data: Source[]) =>
+  ajax.post<LegadoApiResponse<BookSource[]>>('saveBookSources', data)
 
-const deleteSource = (data: Source[]) => ajax.post('deleteBookSources', data)
+const deleteSource = (data: Source[]) =>
+  ajax.post<LegadoApiResponse<unknown>>('deleteBookSources', data)
 
-const getReplaceRules = () => ajax.get('getReplaceRules')
+const getReplaceRules = () =>
+  ajax.get<LegadoApiResponse<ReplaceRule[]>>('getReplaceRules')
 
 const saveReplaceRule = (rule: ReplaceRule) =>
-  ajax.post('saveReplaceRule', rule)
+  ajax.post<LegadoApiResponse<unknown>>('saveReplaceRule', rule)
 
 const deleteReplaceRule = (rule: ReplaceRule) =>
-  ajax.post('deleteReplaceRule', rule)
+  ajax.post<LegadoApiResponse<unknown>>('deleteReplaceRule', rule)
 
 const testReplaceRule = (rule: ReplaceRule, text: string) =>
-  ajax.post('testReplaceRule', { rule, text })
+  ajax.post<LegadoApiResponse<string>>('testReplaceRule', { rule, text })
 
 const debug = (
   sourceUrl: string,

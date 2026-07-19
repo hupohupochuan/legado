@@ -223,7 +223,7 @@ const currentBookIsOnline = computed<boolean | undefined>(() => {
     store.shelf.find(book => book.bookUrl === bookUrl) ??
     store.searchBooks.find(book => book.bookUrl === bookUrl)
   if (metadata) return !isLocalBookMetadata(metadata)
-  if (store.readingBook.isSeachBook === true) return true
+  if (store.readingBook.isSearchBook === true) return true
   return undefined
 })
 const openSearchPanel = () => {
@@ -268,9 +268,9 @@ type SearchPreviewOrigin = {
   progress: BookProgress
 }
 const searchPreviewOrigin = ref<SearchPreviewOrigin | null>(null)
-const isSeachBook = computed({
-  get: () => store.readingBook.isSeachBook,
-  set: value => (store.readingBook.isSeachBook = value),
+const isSearchBook = computed({
+  get: () => store.readingBook.isSearchBook,
+  set: value => (store.readingBook.isSearchBook = value),
 })
 
 let persistReadingBookTimer: ReturnType<typeof setTimeout> | null = null
@@ -283,7 +283,12 @@ const persistReadingBookNow = () => {
         chapterPos: origin.chapterPos,
       }
     : store.readingBook
-  localStorage.setItem('readingRecent', JSON.stringify(book))
+  // localStorage 'readingRecent' 的字段名沿用旧拼写 isSeachBook，兼容已有缓存
+  const { isSearchBook: searchBookFlag, ...persistedBook } = book
+  localStorage.setItem(
+    'readingRecent',
+    JSON.stringify({ ...persistedBook, isSeachBook: searchBookFlag }),
+  )
   sessionStorage.setItem('chapterIndex', book.chapterIndex.toString())
   sessionStorage.setItem('chapterPos', book.chapterPos.toString())
 }
@@ -1068,7 +1073,8 @@ onMounted(async () => {
   const author = sessionStorage.getItem('bookAuthor')
   const chapterIndex = Number(sessionStorage.getItem('chapterIndex') || 0)
   const chapterPos = Number(sessionStorage.getItem('chapterPos') || 0)
-  const isSeachBook = sessionStorage.getItem('isSeachBook') === 'true'
+  // sessionStorage 键名沿用旧拼写 isSeachBook，与 BookShelf 写入端保持一致
+  const isSearchBook = sessionStorage.getItem('isSeachBook') === 'true'
   if (isNullOrBlank(bookUrl) || isNullOrBlank(name) || author === null) {
     toast.warning('书籍信息为空，即将自动返回书架页面...')
     return setTimeout(toShelf, 500)
@@ -1079,7 +1085,7 @@ onMounted(async () => {
     author: author!,
     chapterIndex,
     chapterPos,
-    isSeachBook,
+    isSearchBook,
   }
   onResize()
   window.addEventListener('resize', onResize)
@@ -1128,12 +1134,12 @@ onUnmounted(() => {
 
 const addToBookShelfConfirm = async () => {
   const book = store.readingBook
-  if (book.isSeachBook === true) {
+  if (book.isSearchBook === true) {
     try {
       await msgbox.confirm(`是否将《${book.name}》放入书架？`, '放入书架', {
         closeOnHashChange: false,
       })
-      isSeachBook.value = false
+      isSearchBook.value = false
     } catch {
       await API.deleteBook(book)
       sessionStorage.removeItem('isSeachBook')

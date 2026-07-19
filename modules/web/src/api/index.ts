@@ -1,22 +1,23 @@
-import type { LeagdoApiResponse } from './api'
+import type { LegadoApiResponse } from './api'
 import API, {
   setWebsocketOnError,
   setApiEntryPoint,
   legado_http_entry_point,
   setWebsocketOnMessage,
 } from './api'
-import ajax from './axios'
+import ajax, { type AjaxResponse } from './axios'
 import { validatorHttpUrl } from '@/utils/utils'
 import { toast } from '@/utils/toast'
 
-import { createApp } from 'vue'
-import App from '@/App.vue'
+import { setActivePinia } from 'pinia'
 import store, { useConnectionStore } from '@/store'
 
-createApp(App).use(store)
+// 注册 active pinia 供模块级 useConnectionStore() 使用，
+// 不再为此额外 createApp 一个未挂载的 Vue 应用实例
+setActivePinia(store)
 const connectionStore = useConnectionStore()
 
-const LeagdoApiResponseKeys: string[] = Array.of('isSuccess', 'errorMsg')
+const legadoApiResponseKeys: string[] = Array.of('isSuccess', 'errorMsg')
 export const backendConnectionErrorMessage = '网络异常，与手机断开联系'
 const backendConnectionErrorKey = '__legadoBackendConnectionError'
 
@@ -37,27 +38,26 @@ const markBackendConnectionError = (err: unknown) => {
   }
 }
 
-/** Interceptor: check if resp is LeagdoApiResponse*/
-const responseCheckInterceptor = (resp: any) => {
-  let isLeagdoApiResponse = true
-  try {
-    const data = resp.data
-
-    for (const key of LeagdoApiResponseKeys) {
+/** Interceptor: check if resp is LegadoApiResponse*/
+const responseCheckInterceptor = (resp: AjaxResponse) => {
+  let isLegadoApiResponse = true
+  const data: unknown = resp.data
+  if (typeof data !== 'object' || data === null) {
+    isLegadoApiResponse = false
+  } else {
+    for (const key of legadoApiResponseKeys) {
       if (!(key in data)) {
-        isLeagdoApiResponse = false
-        LeagdoApiResponseKeys.length = 0
+        isLegadoApiResponse = false
+        break
       }
     }
-    if ((data as LeagdoApiResponse<unknown>).isSuccess === true) {
+    if ((data as LegadoApiResponse<unknown>).isSuccess === true) {
       if (!('data' in data)) {
-        isLeagdoApiResponse = false
+        isLegadoApiResponse = false
       }
     }
-  } catch {
-    isLeagdoApiResponse = false
   }
-  if (isLeagdoApiResponse === false) {
+  if (isLegadoApiResponse === false) {
     toast.warning({ message: '后端返回内容格式错误', grouping: true })
     throw new Error()
   }
@@ -87,7 +87,7 @@ setWebsocketOnMessage(() => {
 /**
  * 按照阅读的默认规则 解析阅读HTTP WebSocket API入口地址
  */
-export const parseLeagdoHttpUrlWithDefault = (
+export const parseLegadoHttpUrlWithDefault = (
   http_url: string | URL,
 ): [string, string] => {
   let url = new URL(location.origin)
@@ -120,7 +120,7 @@ export const parseLeagdoHttpUrlWithDefault = (
 }
 
 setApiEntryPoint(
-  ...parseLeagdoHttpUrlWithDefault(ajax.defaults.baseURL as string),
+  ...parseLegadoHttpUrlWithDefault(ajax.defaults.baseURL as string),
 )
 
 export default API

@@ -1,6 +1,11 @@
 <template>
   <div
-    :class="{ 'cata-wrapper': true, visible: popCataVisible }"
+    :class="{
+      'cata-wrapper': true,
+      visible: popCataVisible,
+      night: isNight,
+      day: !isNight,
+    }"
     :style="popupTheme"
   >
     <div class="catalog-header">
@@ -15,7 +20,7 @@
     </div>
     <virtual-list
       style="height: 300px; overflow: auto"
-      :class="{ night: isNight, day: !isNight }"
+      class="catalog-list"
       ref="virtualListRef"
       data-key="index"
       wrap-class="data-wrapper"
@@ -37,14 +42,14 @@ import type { BookChapter } from '@/book'
 
 const store = useBookStore()
 
-const { catalog, popCataVisible, miniInterface } = storeToRefs(store)
+const { catalog, popCataVisible, miniInterface, isNight } = storeToRefs(store)
 
 //主题
-const isNight = computed(() => store.theme)
 const theme = computed(() => store.theme)
 const popupTheme = computed(() => {
   return {
     background: settings.themes[theme.value].popup,
+    color: isNight.value ? '#bbb' : '#262626',
   }
 })
 
@@ -125,7 +130,11 @@ const gotoChapter = (chapter: BookChapter) => {
   margin: -16px;
   padding: 18px 0 24px 25px;
 
-  /* background: #ede7da url('../assets/imgs/themes/popup_1.png') repeat; */
+  .catalog-list,
+  :deep(.data-wrapper) {
+    background: transparent;
+  }
+
   .catalog-header {
     display: flex;
     justify-content: space-between;
@@ -161,13 +170,13 @@ const gotoChapter = (chapter: BookChapter) => {
     }
   }
 
-  .night {
+  &.night {
     :deep(.cata) {
       border-bottom: 1px solid #666;
     }
   }
 
-  .day {
+  &.day {
     :deep(.cata) {
       border-bottom: 1px solid #f2f2f2;
     }

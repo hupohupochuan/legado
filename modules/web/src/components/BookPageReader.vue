@@ -16,7 +16,7 @@
         v-if="currentPage"
         class="bp-page bp-page-current"
         :key="'current-' + currentPageKey"
-        :style="pageStyle(currentPage)"
+        :style="pageStyle()"
       >
         <div
           class="bp-page-inner"
@@ -28,7 +28,7 @@
         v-if="animating && targetPage"
         class="bp-page bp-page-target"
         :key="'target-' + targetPageKey"
-        :style="pageStyle(targetPage)"
+        :style="pageStyle()"
       >
         <div
           class="bp-page-inner"
@@ -174,7 +174,7 @@ const rootStyle = computed(() => ({
 
 const measureStyle = rootStyle
 
-const pageStyle = (_page: BookPage) => ({
+const pageStyle = () => ({
   width: 'var(--bp-page-width)',
   height: 'var(--bp-page-height)',
 })

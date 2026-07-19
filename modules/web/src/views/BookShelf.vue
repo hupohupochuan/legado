@@ -74,7 +74,7 @@
                 'setting-connect',
                 { 'no-point': newConnect },
               ]"
-              @click="setLegadoRetmoteUrl"
+              @click="setLegadoRemoteUrl"
             >
               {{ connectStatus }}
             </span>
@@ -129,13 +129,13 @@ import { useLoading } from '@/hooks/loading'
 import { baseURL_localStorage_key } from '@/api/axios'
 import API, {
   legado_http_entry_point,
-  parseLeagdoHttpUrlWithDefault,
+  parseLegadoHttpUrlWithDefault,
   setApiEntryPoint,
 } from '@api'
 import { validatorHttpUrl } from '@/utils/utils'
 import { toast } from '@/utils/toast'
 import { msgbox } from '@/utils/toast'
-import type { Book, SeachBook } from '@/book'
+import type { Book, SearchBook } from '@/book'
 import type { webReadConfig } from '@/web'
 
 const store = useBookStore()
@@ -149,7 +149,18 @@ const applyReadConfig = (config?: webReadConfig) => {
   }
 }
 
-const readingRecent = ref<typeof store.readingBook>({
+// localStorage 'readingRecent' 的持久化字段沿用旧拼写 isSeachBook，
+// 以兼容改名前已缓存的数据
+type ReadingRecent = {
+  name: string
+  author: string
+  bookUrl: string
+  chapterIndex: number
+  chapterPos: number
+  isSeachBook?: boolean
+}
+
+const readingRecent = ref<ReadingRecent>({
   name: '尚无阅读记录',
   author: '',
   bookUrl: '',
@@ -165,7 +176,7 @@ const { showLoading, closeLoading, loadingWrapper, isLoading } = useLoading(
   '正在获取书籍信息',
 )
 
-const books = shallowRef<Book[] | SeachBook[]>([])
+const books = shallowRef<Book[] | SearchBook[]>([])
 const shelf = computed(() => store.shelf)
 const searchWord = ref('')
 const isSearching = ref(false)
@@ -196,12 +207,12 @@ const searchBook = () => {
   isSearching.value = true
   API.search(
     searchWord.value,
-    searcBooks => {
-      if (isLoading) {
+    searchBooks => {
+      if (isLoading.value) {
         closeLoading()
       }
       try {
-        store.setSearchBooks(searcBooks)
+        store.setSearchBooks(searchBooks)
         books.value = store.searchBooks
       } catch (e) {
         toast.error('后端数据错误')
@@ -220,7 +231,7 @@ const searchBook = () => {
 const connectionStore = useConnectionStore()
 const { connectStatus, connectType, newConnect } = storeToRefs(connectionStore)
 
-const setLegadoRetmoteUrl = () => {
+const setLegadoRemoteUrl = () => {
   msgbox
     .prompt(
       '请输入 后端地址 ( 如：http://127.0.0.1:9527 或者通过内网穿透的地址)',
@@ -240,7 +251,7 @@ const setLegadoRetmoteUrl = () => {
           connectionStore.setNewConnect(false)
           applyReadConfig(config)
           store.clearSearchBooks()
-          setApiEntryPoint(...parseLeagdoHttpUrlWithDefault(url))
+          setApiEntryPoint(...parseLegadoHttpUrlWithDefault(url))
           if (url === location.origin) {
             localStorage.removeItem(baseURL_localStorage_key)
           } else {
@@ -257,19 +268,15 @@ const setLegadoRetmoteUrl = () => {
 
 const router = useRouter()
 const openingBookUrl = ref<string | null>(null)
-const handleBookClick = async (book: SeachBook | Book) => {
+const handleBookClick = async (book: SearchBook | Book) => {
   if (openingBookUrl.value !== null) return
-  const isSeachBook = 'respondTime' in book
-  if (isSeachBook) {
+  const isSearchBook = 'respondTime' in book
+  if (isSearchBook) {
     await API.saveBook(book)
   }
-  const {
-    bookUrl,
-    name,
-    author,
-    durChapterIndex = 0,
-    durChapterPos = 0,
-  } = book as any
+  const { bookUrl, name, author } = book
+  const durChapterIndex = 'durChapterIndex' in book ? book.durChapterIndex : 0
+  const durChapterPos = 'durChapterPos' in book ? book.durChapterPos : 0
 
   await toDetail(
     bookUrl,
@@ -277,7 +284,7 @@ const handleBookClick = async (book: SeachBook | Book) => {
     author,
     durChapterIndex,
     durChapterPos,
-    isSeachBook,
+    isSearchBook,
   )
 }
 const toDetail = async (
@@ -286,7 +293,7 @@ const toDetail = async (
   bookAuthor: string,
   chapterIndex: number,
   chapterPos: number,
-  isSeachBook: boolean | undefined = false,
+  isSearchBook: boolean | undefined = false,
   fromReadRecentClick = false,
 ) => {
   if (bookName === '尚无阅读记录' || openingBookUrl.value !== null) return
@@ -328,14 +335,15 @@ const toDetail = async (
     sessionStorage.setItem('bookAuthor', bookAuthor)
     sessionStorage.setItem('chapterIndex', String(chapterIndex))
     sessionStorage.setItem('chapterPos', String(chapterPos))
-    sessionStorage.setItem('isSeachBook', String(isSeachBook))
+    // sessionStorage 键名沿用旧拼写 isSeachBook，与 BookChapter 读取端保持一致
+    sessionStorage.setItem('isSeachBook', String(isSearchBook))
     readingRecent.value = {
       name: bookName,
       author: bookAuthor,
       bookUrl,
       chapterIndex,
       chapterPos,
-      isSeachBook,
+      isSeachBook: isSearchBook,
     }
     localStorage.setItem('readingRecent', JSON.stringify(readingRecent.value))
     await router.push({
@@ -399,7 +407,7 @@ const toReplaceRule = () => {
 onMounted(() => {
   const readingRecentStr = localStorage.getItem('readingRecent')
   if (readingRecentStr != null) {
-    readingRecent.value = JSON.parse(readingRecentStr)
+    readingRecent.value = JSON.parse(readingRecentStr) as ReadingRecent
     if (typeof readingRecent.value.chapterIndex == 'undefined') {
       readingRecent.value.chapterIndex = 0
     }

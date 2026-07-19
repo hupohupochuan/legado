@@ -7,7 +7,7 @@ import type {
   BookProgress,
   WebBookProgress,
   BookGroup,
-  SeachBook,
+  SearchBook,
 } from '@/book'
 import type { webReadConfig } from '@/web'
 import { toast } from '@/utils/toast'
@@ -41,6 +41,8 @@ let lastSubmittedBookProgressKey: string | null = null
 let backendBookProgressDirty = false
 let changedWhileSaving = false
 let flushEpoch = 0
+/** 单调递增的目录请求序号，用于丢弃被更新请求取代的迟到响应 */
+let catalogRequestSeq = 0
 
 const bookProgressKey = (progress: BookProgress) =>
   [
@@ -125,7 +127,7 @@ const enqueueBookProgressSave = (progress: WebBookProgress) => {
 export const useBookStore = defineStore('book', {
   state: () => {
     return {
-      searchBooks: [] as SeachBook[],
+      searchBooks: [] as SearchBook[],
       shelf: [] as Book[],
       groups: [] as BookGroup[],
       currentGroupId: undefined as number | string | undefined,
@@ -133,7 +135,7 @@ export const useBookStore = defineStore('book', {
       readingBook: { chapterPos: 0, chapterIndex: 0 } as BaseBook & {
         chapterPos: number
         chapterIndex: number
-        isSeachBook?: boolean
+        isSearchBook?: boolean
       },
       // 搜索结果预览期间固定上传跳转前进度，避免目录、翻章、页面隐藏等
       // 任一保存入口把临时结果位置同步到手机端。
@@ -186,50 +188,63 @@ export const useBookStore = defineStore('book', {
     },
     /**
      * 加载书架书籍列表。
-     * 如果已有缓存且分组不变则直接返回缓存，避免重复请求。
+     * stale-while-revalidate：有缓存且分组不变时立即返回缓存，
+     * 同时保留后台请求静默刷新；后台失败被吞没（拦截器已提示），
+     * 分组切换后到达的旧响应会被丢弃，避免覆盖当前状态。
      */
     async loadBookShelf(groupId?: number | string): Promise<Book[]> {
-      const fetchBookshellf_promise = API.getBookShelf(groupId).then(resp => {
-        console.log('API.getBookShelf数据返回')
-        const { isSuccess, data, errorMsg } = resp.data
-        if (isSuccess === true) {
-          if (
-            this.shelf.length !== data.length &&
-            this.shelf.length > 0 &&
-            data.length > 0 &&
-            groupId === this.currentGroupId
-          ) {
-            toast.info('书架数据已更新')
+      const requestGroupId = groupId
+      const fetchBookshelf_promise = API.getBookShelf(requestGroupId).then(
+        resp => {
+          console.log('API.getBookShelf数据返回')
+          // 请求发出后分组已切换，丢弃迟到响应
+          if (requestGroupId !== this.currentGroupId) return this.shelf
+          const { isSuccess, data, errorMsg } = resp.data
+          if (isSuccess === true) {
+            if (
+              this.shelf.length !== data.length &&
+              this.shelf.length > 0 &&
+              data.length > 0
+            ) {
+              toast.info('书架数据已更新')
+            }
+            this.shelf = data.sort((a, b) => {
+              const x = a.durChapterTime || 0
+              const y = b.durChapterTime || 0
+              return y - x
+            })
+          } else {
+            if (errorMsg.includes('还没有添加小说') && this.shelf.length > 0) {
+              toast.info('当前书架上的书籍已经被删除')
+              return (this.shelf = [])
+            }
+            toast.error(errorMsg ?? '后端返回格式错误！')
           }
-          this.shelf = data.sort((a: any, b: any) => {
-            const x = a['durChapterTime'] || 0
-            const y = b['durChapterTime'] || 0
-            return y - x
-          })
-        } else {
-          if (errorMsg.includes('还没有添加小说') && this.shelf.length > 0) {
-            toast.info('当前书架上的书籍已经被删除')
-            return (this.shelf = [])
-          }
-          toast.error(errorMsg ?? '后端返回格式错误！')
-        }
-        console.log('书架数据已更新')
-        return this.shelf
-      })
+          console.log('书架数据已更新')
+          return this.shelf
+        },
+      )
 
       if (this.shelf.length > 0 && groupId === this.currentGroupId) {
-        console.log('返回缓存书架数据')
+        console.log('返回缓存书架数据，后台继续刷新')
+        fetchBookshelf_promise.catch(() => undefined)
         return this.shelf
       } else {
         this.currentGroupId = groupId
         console.log('从阅读后端获取书架数据...')
-        return await fetchBookshellf_promise
+        return await fetchBookshelf_promise
       }
     },
+    /**
+     * 加载书籍章节目录。
+     * 与 loadBookShelf 同为 stale-while-revalidate；目录用请求序号判断
+     * 迟到响应（新书请求发出时 readingBook 尚未切换，不能按 bookUrl 判旧）。
+     */
     async loadWebCatalog(
       book: typeof this.readingBook,
     ): Promise<BookChapter[]> {
       const { bookUrl, name, chapterIndex } = book
+      const requestSeq = ++catalogRequestSeq
       const fetchChapterList_promise = API.getChapterList(
         bookUrl as string,
       ).then(res => {
@@ -238,8 +253,9 @@ export const useBookStore = defineStore('book', {
           toast.error(errorMsg)
           throw new Error()
         }
+        // 已有更新的目录请求，丢弃迟到响应
+        if (requestSeq !== catalogRequestSeq) return this.catalog
         if (
-          bookUrl === this.readingBook.bookUrl &&
           data.length !== this.catalog.length &&
           data.length > 0 &&
           this.catalog.length > 0
@@ -255,7 +271,8 @@ export const useBookStore = defineStore('book', {
         this.catalog.length > 0 &&
         this.catalog.length - 1 >= chapterIndex
       ) {
-        console.log(`返回书籍《${name}》 缓存的章节目录`)
+        console.log(`返回书籍《${name}》 缓存的章节目录，后台继续刷新`)
+        fetchChapterList_promise.catch(() => undefined)
         return this.catalog
       } else {
         console.log(`从阅读后端获取书籍《${name}》 章节目录数据...`)
@@ -338,12 +355,12 @@ export const useBookStore = defineStore('book', {
     setActivePageMode(mode: 'scroll' | 'book') {
       this.activePageMode = mode
     },
-    async setSearchBooks(books: SeachBook[]) {
+    setSearchBooks(books: SearchBook[]) {
       books.forEach(book => {
-        const isSeachBook = this.shelf.every(
+        const isPureSearchBook = this.shelf.every(
           item => item.bookUrl !== book.bookUrl,
         )
-        if (isSeachBook === true) {
+        if (isPureSearchBook === true) {
           this.searchBooks.push(book)
         }
       })

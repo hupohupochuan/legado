@@ -7,7 +7,7 @@
 </template>
 
 <script setup lang="ts">
-import { getSourceUniqueKey, getSourceName } from '@/utils/souce'
+import { getSourceUniqueKey, getSourceName } from '@/utils/source'
 import type { Source } from '@/source'
 
 const props = defineProps<{

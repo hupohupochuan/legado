@@ -201,8 +201,8 @@ const saveRule = async () => {
   try {
     await store.saveRule()
     toast.success('保存成功')
-  } catch (e: any) {
-    toast.error(e.message || '保存失败')
+  } catch (e: unknown) {
+    toast.error((e as Error).message || '保存失败')
   }
 }
 
@@ -235,8 +235,8 @@ const runTest = async () => {
     } else {
       toast.error(data.errorMsg)
     }
-  } catch (e: any) {
-    toast.error(e.message || '测试失败')
+  } catch (e: unknown) {
+    toast.error((e as Error).message || '测试失败')
   } finally {
     testing.value = false
   }
@@ -244,7 +244,7 @@ const runTest = async () => {
 
 onMounted(() => {
   document.title = '替换规则'
-  store.loadRules().catch((e: any) => toast.error(e.message || '加载失败'))
+  store.loadRules().catch((e: unknown) => toast.error((e as Error).message || '加载失败'))
 })
 </script>
 

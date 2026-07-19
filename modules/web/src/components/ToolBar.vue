@@ -42,7 +42,7 @@
 <script setup lang="ts">
 import API from '@api'
 import hotkeys from 'hotkeys-js'
-import { getSourceName, isInvaildSource, normalizeSource } from '../utils/souce'
+import { getSourceName, isValidSource, normalizeSource } from '../utils/source'
 import { toast } from '@/utils/toast'
 
 const store = useSourceStore()
@@ -85,11 +85,11 @@ const push = () => {
   })
 }
 
-const conver2Tab = () => {
+const convert2Tab = () => {
   store.changeTabName('editTab')
   store.changeEditTabSource(store.currentSource)
 }
-const conver2Source = () => {
+const convert2Source = () => {
   store.changeCurrentSource(store.editTabSource)
 }
 
@@ -110,7 +110,7 @@ const redo = () => {
 
 const saveSource = () => {
   const source = store.currentSource
-  if (isInvaildSource(source)) {
+  if (isValidSource(source)) {
     normalizeSource(source)
     API.saveSource(source).then(({ data }) => {
       const sourceName = getSourceName(source)
@@ -134,8 +134,8 @@ const buttons = ref<{ name: string; hotKeys: string[]; action: () => void }[]>(
   Array.of(
     { name: '⇈推送源', hotKeys: [], action: push },
     { name: '⇊拉取源', hotKeys: [], action: pull },
-    { name: '⋙生成源', hotKeys: [], action: conver2Tab },
-    { name: '⋘编辑源', hotKeys: [], action: conver2Source },
+    { name: '⋙生成源', hotKeys: [], action: convert2Tab },
+    { name: '⋘编辑源', hotKeys: [], action: convert2Source },
     { name: '✗清空表单', hotKeys: [], action: clearEdit },
     { name: '↶撤销操作', hotKeys: [], action: undo },
     { name: '↷重做操作', hotKeys: [], action: redo },

@@ -9,6 +9,7 @@ const router = createRouter({
       path: '/',
       name: 'welcome',
       component: () => import('../views/Welcome.vue'),
+      meta: { title: 'Legado Web' },
     },
     ...bookRoutes,
     ...sourceRoutes,
@@ -16,7 +17,9 @@ const router = createRouter({
 })
 
 router.afterEach(to => {
-  if (to.name == 'shelf') document.title = '书架'
+  // 无 meta.title 的路由（如阅读页）保持当前标题不变
+  const title = to.meta.title
+  if (typeof title === 'string') document.title = title
 })
 
 export default router

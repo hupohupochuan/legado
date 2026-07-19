@@ -25,7 +25,7 @@
             v-if="field.type === 'String' && !field.namespace"
             class="web-textarea"
             :placeholder="field.hint || ''"
-            :value="source[field.id]"
+            :value="(source[field.id] as string)"
             @input="updateField(field, $event)"
             :rows="field.id === 'bookSourceComment' ? 1 : 2"
           ></textarea>
@@ -34,7 +34,7 @@
             v-else-if="field.type === 'String' && field.namespace"
             class="web-textarea"
             :placeholder="field.hint || ''"
-            :value="(source[field.namespace] || {})[field.id]"
+            :value="nsFieldValue(field)"
             @input="updateNsField(field, $event)"
             :rows="2"
           ></textarea>
@@ -43,14 +43,14 @@
             v-else-if="field.type === 'Number'"
             class="web-input"
             type="number"
-            :value="source[field.id]"
+            :value="(source[field.id] as number)"
             @input="updateField(field, $event)"
           />
 
           <select
             v-else-if="field.type === 'Array'"
             class="web-select"
-            :value="source[field.id]"
+            :value="(source[field.id] as number)"
             @change="updateField(field, $event)"
           >
             <option
@@ -65,7 +65,7 @@
           <label v-else-if="field.type === 'Boolean'" class="web-switch">
             <input
               type="checkbox"
-              :checked="source[field.id]"
+              :checked="(source[field.id] as boolean)"
               @change="updateBoolField(field, $event)"
             />
             <span class="web-switch__slider"></span>
@@ -77,30 +77,48 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{ config: Record<string, any> }>()
+type SourceEditField = {
+  title: string
+  id: string
+  type: string
+  array?: string[]
+  hint?: string
+  required?: boolean
+  namespace?: string
+}
+type SourceEditTab = { name: string; children: SourceEditField[] }
+
+defineProps<{ config: Record<string, SourceEditTab> }>()
 
 const store = useSourceStore()
-const source = computed(() => store.currentSource as Record<string, any>)
+const source = computed(() => store.currentSource as Record<string, unknown>)
 const activeTab = ref('base')
 
-function updateField(field: any, e: Event) {
+function nsFieldValue(field: SourceEditField): string {
+  const ns = field.namespace ? source.value[field.namespace] : undefined
+  return ((ns ?? {}) as Record<string, unknown>)[field.id] as string
+}
+
+function updateField(field: SourceEditField, e: Event) {
   const target = e.target as HTMLInputElement
   const val = field.type === 'Number' ? parseFloat(target.value) || 0 : target.value
   store.currentSource = { ...store.currentSource, [field.id]: val }
 }
 
-function updateNsField(field: any, e: Event) {
+function updateNsField(field: SourceEditField, e: Event) {
   const target = e.target as HTMLInputElement
+  const namespace = field.namespace
+  if (!namespace) return
   store.currentSource = {
     ...store.currentSource,
-    [field.namespace]: {
-      ...(source.value[field.namespace] || {}),
+    [namespace]: {
+      ...((source.value[namespace] ?? {}) as Record<string, unknown>),
       [field.id]: target.value,
     },
   }
 }
 
-function updateBoolField(field: any, e: Event) {
+function updateBoolField(field: SourceEditField, e: Event) {
   const target = e.target as HTMLInputElement
   store.currentSource = { ...store.currentSource, [field.id]: target.checked }
 }

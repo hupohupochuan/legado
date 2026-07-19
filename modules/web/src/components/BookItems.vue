@@ -53,17 +53,17 @@
   </div>
 </template>
 <script setup lang="ts">
-import type { Book, SeachBook } from '@/book'
+import type { Book, SearchBook } from '@/book'
 import { dateFormat, isLegadoUrl } from '../utils/utils'
 import API from '@api'
 const props = defineProps<{
-  books: Array<Book | SeachBook>
+  books: Array<Book | SearchBook>
   isSearch: boolean
 }>()
 
 const emit = defineEmits(['bookClick'])
-const handleClick = (book: Book | SeachBook) => emit('bookClick', book)
-const getCover = ({ bookUrl, coverUrl }: Book | SeachBook) => {
+const handleClick = (book: Book | SearchBook) => emit('bookClick', book)
+const getCover = ({ bookUrl, coverUrl }: Book | SearchBook) => {
   if (coverUrl === undefined) return API.getProxyCoverUrl(bookUrl)
   return isLegadoUrl(coverUrl) ? API.getProxyCoverUrl(coverUrl) : coverUrl
 }

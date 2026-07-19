@@ -1,24 +1,25 @@
-import type { BookSoure, Source } from '../source'
+import type { BookSource, Source } from '../source'
 import { isNullOrBlank } from './utils'
 
-export const isInvaildSource: (source: Source) => boolean = source => {
+// 源名称、地址、类型三项必填均有效时返回 true
+export const isValidSource: (source: Source) => boolean = source => {
   return (
-    !isNullOrBlank((source as BookSoure).bookSourceName) &&
-    !isNullOrBlank((source as BookSoure).bookSourceUrl) &&
-    !isNullOrBlank((source as BookSoure).bookSourceType)
+    !isNullOrBlank((source as BookSource).bookSourceName) &&
+    !isNullOrBlank((source as BookSource).bookSourceUrl) &&
+    !isNullOrBlank((source as BookSource).bookSourceType)
   )
 }
 
 export const getSourceUniqueKey = (source: Source) =>
-  (source as BookSoure).bookSourceUrl
+  (source as BookSource).bookSourceUrl
 export const getSourceName = (source: Source) =>
-  (source as BookSoure).bookSourceName
+  (source as BookSource).bookSourceName
 
 export const isSourceMatches: (source: Source, searchKey: string) => boolean = (
   source,
   searchKey,
 ) => {
-  const s = source as BookSoure
+  const s = source as BookSource
   return (
     (s.bookSourceName.includes(searchKey) ||
       s.bookSourceUrl.includes(searchKey) ||
@@ -34,7 +35,7 @@ export const convertSourcesToMap = (sources: Source[]): Map<string, Source> => {
   return map
 }
 
-export const normalizeSource = (source: any) => {
+export const normalizeSource = (source: Record<string, unknown>) => {
   for (const key in source) {
     const value = source[key]
     if (
@@ -44,7 +45,7 @@ export const normalizeSource = (source: any) => {
     ) {
       delete source[key]
     } else if (value instanceof Object) {
-      normalizeSource(value)
+      normalizeSource(value as Record<string, unknown>)
     }
   }
 }
@@ -55,4 +56,4 @@ export const emptyBookSource = {
   ruleToc: {},
   ruleContent: {},
   ruleExplore: {},
-} as BookSoure
+} as BookSource

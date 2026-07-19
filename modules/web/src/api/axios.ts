@@ -1,25 +1,39 @@
 /** @type {string} localStorage保存自定义阅读http服务接口的键值 */
 export const baseURL_localStorage_key = 'remoteUrl'
-const SECOND = 1000
 
 const baseURL =
-  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API) ||
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API) ||
   (typeof localStorage !== 'undefined' ? localStorage.getItem(baseURL_localStorage_key) : null) ||
   (typeof location !== 'undefined' ? location.origin : '')
 
 interface FetchConfig {
   baseURL?: string
-  timeout?: number
+}
+
+export interface AjaxRequest {
+  url: string
+  options?: RequestInit
+}
+
+export interface AjaxResponse<T = unknown> {
+  data: T
+  status: number
+  headers: Headers
+  config: AjaxRequest
 }
 
 interface RequestInterceptor {
-  onFulfilled?: (config: FetchConfig & { url: string; options?: RequestInit }) => any
-  onRejected?: (error: any) => any
+  onFulfilled?: (
+    config: AjaxRequest,
+  ) => AjaxRequest | void | Promise<AjaxRequest | void>
+  onRejected?: (error: unknown) => unknown
 }
 
 interface ResponseInterceptor {
-  onFulfilled?: (response: any) => any
-  onRejected?: (error: any) => any
+  onFulfilled?: (
+    response: AjaxResponse,
+  ) => AjaxResponse | void | Promise<AjaxResponse | void>
+  onRejected?: (error: unknown) => unknown
 }
 
 class FetchWrapper {
@@ -48,13 +62,18 @@ class FetchWrapper {
     }
   }
 
-  async _request(url: string, options: RequestInit = {}): Promise<any> {
-    const fullUrl = url.startsWith('http') ? url : this.defaults.baseURL + url
-    let req = { url: fullUrl, options }
+  async _request(
+    url: string,
+    options: RequestInit = {},
+    config: FetchConfig = {},
+  ): Promise<AjaxResponse> {
+    const requestBaseURL = config.baseURL ?? this.defaults.baseURL
+    const fullUrl = url.startsWith('http') ? url : requestBaseURL + url
+    let req: AjaxRequest = { url: fullUrl, options }
 
     for (const interceptor of this._reqInterceptors) {
       if (interceptor.onFulfilled) {
-        req = await interceptor.onFulfilled(req) || req
+        req = (await interceptor.onFulfilled(req)) || req
       }
     }
 
@@ -65,7 +84,7 @@ class FetchWrapper {
         ...req.options,
         headers: {
           'Content-Type': 'application/json',
-          ...((req.options as any)?.headers || {}),
+          ...(req.options?.headers || {}),
         },
       })
       data = await response.json()
@@ -74,7 +93,7 @@ class FetchWrapper {
       for (const interceptor of this._resInterceptors) {
         if (interceptor.onRejected) {
           try {
-            return await interceptor.onRejected(rejection)
+            return (await interceptor.onRejected(rejection)) as AjaxResponse
           } catch (err) {
             rejection = err
           }
@@ -82,48 +101,39 @@ class FetchWrapper {
       }
       throw rejection
     }
-    let result = { data, status: response.status, headers: response.headers, config: req }
+    let result: AjaxResponse = { data, status: response.status, headers: response.headers, config: req }
 
     for (const interceptor of this._resInterceptors) {
       if (interceptor.onFulfilled) {
-        result = await interceptor.onFulfilled(result) || result
+        result = (await interceptor.onFulfilled(result)) || result
       }
     }
 
     return result
   }
 
-  get(url: string, config?: { baseURL?: string; timeout?: number }) {
-    return this._request(url, {
-      method: 'GET',
-      ...(config?.baseURL ? { baseURL: config.baseURL } as any : {}),
-    })
+  get<T = unknown>(
+    url: string,
+    config?: FetchConfig,
+  ): Promise<AjaxResponse<T>> {
+    return this._request(url, { method: 'GET' }, config) as Promise<
+      AjaxResponse<T>
+    >
   }
 
-  post(url: string, data?: any, config?: { baseURL?: string }) {
-    return this._request(url, {
-      method: 'POST',
-      body: JSON.stringify(data),
-      ...(config?.baseURL ? { baseURL: config.baseURL } as any : {}),
-    })
-  }
-
-  async _simpleGet(url: string): Promise<any> {
-    const fullUrl = url.startsWith('http') ? url : this.defaults.baseURL + url
-    const response = await fetch(fullUrl, {
-      headers: { 'Content-Type': 'application/json' },
-    })
-    return { data: await response.json() }
-  }
-
-  async _simplePost(url: string, data?: any): Promise<any> {
-    const fullUrl = url.startsWith('http') ? url : this.defaults.baseURL + url
-    const response = await fetch(fullUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    })
-    return { data: await response.json() }
+  post<T = unknown>(
+    url: string,
+    data?: unknown,
+    config?: FetchConfig,
+  ): Promise<AjaxResponse<T>> {
+    return this._request(
+      url,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+      config,
+    ) as Promise<AjaxResponse<T>>
   }
 }
 
