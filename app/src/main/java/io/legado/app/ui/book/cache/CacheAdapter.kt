@@ -13,6 +13,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemDownloadBinding
 import io.legado.app.help.book.isLocal
 import io.legado.app.model.CacheBook
+import io.legado.app.model.CacheBookProgress
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
@@ -71,8 +72,30 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
                 }
             }
             upDownloadIv(ivDownload, item)
+            upCacheInfo(tvCacheProgress, progressCache, item)
             upExportInfo(tvMsg, progressExport, item)
         }
+    }
+
+    private fun upCacheInfo(msgView: TextView, progressView: ProgressBar, book: Book) {
+        val progress = callBack.cacheProgress(book.bookUrl)
+        if (progress == null || progress.total <= 0) {
+            msgView.gone()
+            progressView.gone()
+            return
+        }
+        msgView.text = context.getString(
+            R.string.cache_book_progress,
+            progress.processed,
+            progress.total,
+            progress.failed,
+            progress.canceled
+        )
+        progressView.isIndeterminate = false
+        progressView.max = progress.total
+        progressView.progress = progress.processed
+        msgView.visible()
+        progressView.visible()
     }
 
     override fun registerListener(holder: ItemViewHolder, binding: ItemDownloadBinding) {
@@ -134,6 +157,7 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
 
     interface CallBack {
         val cacheChapters: HashMap<String, HashSet<String>>
+        fun cacheProgress(bookUrl: String): CacheBookProgress?
         fun export(position: Int)
         fun exportProgress(bookUrl: String): Int?
         fun exportMsg(bookUrl: String): String?

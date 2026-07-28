@@ -26,20 +26,29 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ActivityCacheBookBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogSelectSectionExportBinding
+import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.ExportMissingChapterPolicy
+import io.legado.app.help.book.createBookExportPlan
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isPlainLocalBook
+import io.legado.app.help.book.parseExportChapterScope
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.customView
+import io.legado.app.lib.dialogs.neutralButton
 import io.legado.app.lib.dialogs.noButton
 import io.legado.app.lib.dialogs.okButton
 import io.legado.app.lib.dialogs.positiveButton
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.dialogs.yesButton
 import io.legado.app.model.CacheBook
+import io.legado.app.model.CacheBookProgress
+import io.legado.app.service.CacheBookService
 import io.legado.app.service.ExportBookService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.file.registerHandleFile
@@ -52,6 +61,7 @@ import io.legado.app.utils.checkWrite
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.enableCustomExport
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
+import io.legado.app.utils.gone
 import io.legado.app.utils.iconItemOnLongClick
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.observeEvent
@@ -61,6 +71,7 @@ import io.legado.app.utils.safeStartForegroundService
 import io.legado.app.utils.startService
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.verificationField
+import io.legado.app.utils.visible
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -92,6 +103,19 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
     private val groupList: ArrayList<BookGroup> = arrayListOf()
     private var groupId: Long = -1
 
+    private data class ExportRequest(
+        val type: String? = null,
+        val epubSize: Int = 1,
+        val epubScope: String? = null
+    )
+
+    private data class ExportPreflight(
+        val totalChapterCount: Int,
+        val onlineChapterCount: Int,
+        val missingChapterCount: Int,
+        val canFinishCache: Boolean
+    )
+
     private val exportDir = registerHandleFile { result ->
         var isReadyPath = false
         var dirPath = ""
@@ -111,10 +135,13 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         if (!isReadyPath) {
             return@registerHandleFile
         }
+        if (result.requestCode == -1) {
+            return@registerHandleFile
+        }
         if (enableCustomExport()) {// 启用自定义导出 and 导出类型为Epub
             configExportSection(dirPath, result.requestCode)
         } else {
-            startExport(dirPath, result.requestCode)
+            prepareExport(dirPath, result.requestCode)
         }
     }
 
@@ -129,6 +156,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         initRecyclerView()
         initGroupData()
         initBookData()
+        upCacheProgress()
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -308,7 +336,12 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             notifyItemChanged(it)
         }
         observeEvent<String>(EventBus.UP_DOWNLOAD) {
-            notifyItemChanged(it)
+            upCacheProgress()
+            if (it.isBlank()) {
+                adapter.notifyItemRangeChanged(0, adapter.itemCount, true)
+            } else {
+                notifyItemChanged(it)
+            }
         }
         observeEvent<String>(EventBus.UP_DOWNLOAD_STATE) {
             if (!CacheBook.isRun) {
@@ -331,6 +364,32 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         }
     }
 
+    private fun upCacheProgress() {
+        val progress = CacheBook.progress()
+        if (!CacheBookService.isRun || (progress.total == 0 && progress.loadingBookCount == 0)) {
+            binding.cacheProgressContainer.gone()
+            return
+        }
+        binding.cacheProgressContainer.visible()
+        if (progress.total == 0) {
+            binding.tvCacheProgress.setText(R.string.cache_loading_toc)
+            binding.progressCache.isIndeterminate = true
+            return
+        }
+        binding.tvCacheProgress.text = getString(
+            R.string.cache_progress_summary,
+            progress.processed,
+            progress.total,
+            progress.downloading,
+            progress.waiting,
+            progress.failed,
+            progress.canceled
+        )
+        binding.progressCache.isIndeterminate = false
+        binding.progressCache.max = progress.total
+        binding.progressCache.progress = progress.processed
+    }
+
     override fun export(position: Int) {
         val path = ACache.get().getAsString(exportBookPathKey)
         lifecycleScope.launch {
@@ -341,7 +400,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             } else if (enableCustomExport()) {// 启用自定义导出 and 导出类型为Epub
                 configExportSection(path, position)
             } else {
-                startExport(path, position)
+                prepareExport(path, position)
             }
         }
     }
@@ -351,7 +410,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         if (path.isNullOrEmpty()) {
             selectExportFolder(-10)
         } else {
-            startExport(path, -10)
+            prepareExport(path, -10)
         }
     }
 
@@ -452,7 +511,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         alertDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             alertBinding.apply {
                 if (cbAllExport.isChecked) {
-                    startExport(path, position)
+                    prepareExport(path, position)
                     alertDialog.hide()
                     return@apply
                 }
@@ -463,17 +522,15 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                 }
                 etInputScope.error = null
                 val epubSize = etEpubSize.text.toString().toIntOrNull() ?: 1
-                adapter.getItem(position)?.let { book ->
-                    val intent = Intent(this@CacheActivity, ExportBookService::class.java).apply {
-                        action = IntentAction.start
-                        putExtra("bookUrl", book.bookUrl)
-                        putExtra("exportType", "epub")
-                        putExtra("exportPath", path)
-                        putExtra("epubSize", epubSize)
-                        putExtra("epubScope", epubScope)
-                    }
-                    safeStartForegroundService(intent, "启动导出服务出错")
-                }
+                prepareExport(
+                    path,
+                    position,
+                    ExportRequest(
+                        type = "epub",
+                        epubSize = epubSize,
+                        epubScope = epubScope
+                    )
+                )
                 alertDialog.hide()
             }
 
@@ -492,35 +549,160 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         }
     }
 
-    private fun startExport(path: String, exportPosition: Int) {
-        val exportType = when (AppConfig.exportType) {
+    private fun prepareExport(
+        path: String,
+        exportPosition: Int,
+        request: ExportRequest = ExportRequest()
+    ) {
+        val books = when {
+            exportPosition == -10 -> adapter.getItems().toList()
+            exportPosition >= 0 -> listOfNotNull(adapter.getItem(exportPosition))
+            else -> emptyList()
+        }
+        if (books.isEmpty()) {
+            if (exportPosition >= -10) {
+                toastOnUi(R.string.no_book)
+            }
+            return
+        }
+        lifecycleScope.launch {
+            val preflight = withContext(IO) {
+                inspectExport(books, request.epubScope)
+            }
+            if (preflight.totalChapterCount == 0) {
+                toastOnUi(R.string.export_no_available_chapters)
+                return@launch
+            }
+            if (preflight.missingChapterCount > 0) {
+                alert(R.string.cache_export) {
+                    setMessage(
+                        getString(
+                            if (preflight.canFinishCache) {
+                                R.string.export_cache_incomplete
+                            } else {
+                                R.string.export_cache_incomplete_no_fill
+                            },
+                            preflight.onlineChapterCount - preflight.missingChapterCount,
+                            preflight.onlineChapterCount,
+                            preflight.missingChapterCount
+                        )
+                    )
+                    positiveButton(R.string.export_cached_only) {
+                        chooseExportContentMode(
+                            path,
+                            books,
+                            request,
+                            ExportMissingChapterPolicy.CachedOnly
+                        )
+                    }
+                    if (preflight.canFinishCache) {
+                        neutralButton(R.string.finish_cache_first) {
+                            books.forEach { book ->
+                                CacheBook.start(this@CacheActivity, book, 0, book.lastChapterIndex)
+                            }
+                        }
+                    }
+                    cancelButton()
+                }
+            } else {
+                chooseExportContentMode(
+                    path,
+                    books,
+                    request,
+                    ExportMissingChapterPolicy.RequireComplete
+                )
+            }
+        }
+    }
+
+    private fun inspectExport(books: List<Book>, epubScope: String?): ExportPreflight {
+        var totalChapterCount = 0
+        var onlineChapterCount = 0
+        var missingChapterCount = 0
+        var hasUncacheableMissingChapter = false
+        val scope = epubScope?.let(::parseExportChapterScope)
+        books.forEach { book ->
+            val allChapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
+            val chapters = if (scope == null) {
+                allChapters
+            } else {
+                allChapters.filterIndexed { index, _ -> scope.contains(index) }
+            }
+            val contentChapterCount = chapters.count { !it.isVolume }
+            totalChapterCount += contentChapterCount
+            if (book.isPlainLocalBook) return@forEach
+            val cachedChapterNames = BookHelp.getChapterFiles(book)
+            val plan = createBookExportPlan(
+                chapters = chapters,
+                policy = ExportMissingChapterPolicy.RequireComplete,
+                isContentChapter = { !it.isVolume },
+                isAvailable = {
+                    it.isVolume || cachedChapterNames.contains(it.getFileName())
+                }
+            )
+            onlineChapterCount += contentChapterCount
+            missingChapterCount += plan.missing.size
+            if (plan.missing.isNotEmpty() && book.isLocal) {
+                hasUncacheableMissingChapter = true
+            }
+        }
+        return ExportPreflight(
+            totalChapterCount = totalChapterCount,
+            onlineChapterCount = onlineChapterCount,
+            missingChapterCount = missingChapterCount,
+            canFinishCache = missingChapterCount > 0 && !hasUncacheableMissingChapter
+        )
+    }
+
+    private fun chooseExportContentMode(
+        path: String,
+        books: List<Book>,
+        request: ExportRequest,
+        missingChapterPolicy: ExportMissingChapterPolicy
+    ) {
+        val modes = listOf(
+            getString(R.string.export_original_content),
+            getString(R.string.export_replaced_content)
+        )
+        selector(R.string.export_content_mode, modes) { _, index ->
+            val useReplace = index == 1
+            AppConfig.exportUseReplace = useReplace
+            startExport(
+                path,
+                books,
+                request,
+                missingChapterPolicy,
+                useReplace
+            )
+        }
+    }
+
+    private fun startExport(
+        path: String,
+        books: List<Book>,
+        request: ExportRequest,
+        missingChapterPolicy: ExportMissingChapterPolicy,
+        useReplace: Boolean
+    ) {
+        val exportType = request.type ?: when (AppConfig.exportType) {
             1 -> "epub"
             else -> "txt"
         }
-        if (exportPosition == -10) {
-            if (adapter.getItems().isNotEmpty()) {
-                adapter.getItems().forEach { book ->
-                    val intent = Intent(this, ExportBookService::class.java).apply {
-                        action = IntentAction.start
-                        putExtra("bookUrl", book.bookUrl)
-                        putExtra("exportType", exportType)
-                        putExtra("exportPath", path)
-                    }
-                    safeStartForegroundService(intent, "启动导出服务出错")
-                }
-            } else {
-                toastOnUi(R.string.no_book)
+        books.forEach { book ->
+            val intent = Intent(this, ExportBookService::class.java).apply {
+                action = IntentAction.start
+                putExtra("bookUrl", book.bookUrl)
+                putExtra("exportType", exportType)
+                putExtra("exportPath", path)
+                putExtra("epubSize", request.epubSize)
+                putExtra("epubScope", request.epubScope)
+                putExtra(
+                    ExportBookService.EXTRA_MISSING_CHAPTER_POLICY,
+                    missingChapterPolicy.value
+                )
+                putExtra(ExportBookService.EXTRA_USE_REPLACE, useReplace)
             }
-        } else if (exportPosition >= 0) {
-            adapter.getItem(exportPosition)?.let { book ->
-                val intent = Intent(this, ExportBookService::class.java).apply {
-                    action = IntentAction.start
-                    putExtra("bookUrl", book.bookUrl)
-                    putExtra("exportType", exportType)
-                    putExtra("exportPath", path)
-                }
-                safeStartForegroundService(intent, "启动导出服务出错")
-            }
+            safeStartForegroundService(intent, "启动导出服务出错")
         }
     }
 
@@ -580,6 +762,10 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
 
     override val cacheChapters: HashMap<String, HashSet<String>>
         get() = viewModel.cacheChapters
+
+    override fun cacheProgress(bookUrl: String): CacheBookProgress? {
+        return CacheBook.bookProgress(bookUrl)
+    }
 
     override fun exportProgress(bookUrl: String): Int? {
         return ExportBookService.exportProgress[bookUrl]

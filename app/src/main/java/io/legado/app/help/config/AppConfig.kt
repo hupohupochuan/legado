@@ -349,7 +349,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     var exportUseReplace: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.exportUseReplace, true)
+        get() = appCtx.getPrefBoolean(PreferKey.exportUseReplace, false)
         set(value) {
             appCtx.putPrefBoolean(PreferKey.exportUseReplace, value)
         }
@@ -763,4 +763,3 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
 }
-

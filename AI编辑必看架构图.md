@@ -1,10 +1,10 @@
 # AI 编辑必看架构图
 
-> 最新修订: 2026-07-16 CST
+> 最新修订: 2026-07-28 CST
 > 最近三次修订:
+> - 2026-07-28 CST: 离线缓存增加任务进度；在线书导出必须先校验缓存边界，缺章不得写入占位正文。
 > - 2026-07-16 CST: 原生文本阅读页分离普通触摸与整页滑动阈值；动画中止后仍允许已配置的菜单动作响应。
 > - 2026-07-15 CST: 更新日志只直接展示最近 5 个日期，旧日志收入 `more`；每个日期最多两句话。
-> - 2026-07-15 CST: `ReaderProvider` 增加按变体隔离的签名级权限；删除不参与生产构建的 Web 旧分入口并明确单入口边界。
 
 > 本文件是第一入口；同时按 `AGENTS.md` 要求读完其余三个必读文档，再按具体任务打开 `AI编辑必看/` 子文件。
 
@@ -52,6 +52,7 @@
 - 不要恢复 AGP 旧 `applicationVariants`；APK 输出命名走 `androidComponents`。
 - compileSdk 从 `libs.versions.compileSdk` 读取，不要恢复跨项目隐式查找根项目 `ext` 属性；Android 模块使用 AGP 内置 Kotlin，不要重新应用 `kotlin-android`。
 - UI 协程必须优先传入 `lifecycleScope`/`viewModelScope`/现有组件 scope；`Coroutine.async` 默认 scope 只用于明确需要存活到进程结束的任务。取消异常不得进入普通错误回调。
+- 在线书导出只允许读取已经落盘的章节缓存；导出前必须明确选择“要求完整”或“仅已有缓存”，缓存缺失或导出中途丢失时不得写入 `null` 等占位正文。
 - API 30+ 系统栏显隐和图标明暗统一走 `WindowInsetsControllerCompat`；API 26-29 才保留旧 `systemUiVisibility` 分支。Android 16+、宽度不小于 600dp 的大屏不再强制阅读页方向。
 - 原生文本阅读页用普通 `scaledTouchSlop` 取消长按和启动文本扩选，用 `scaledPagingTouchSlop`（或用户显式配置）判定整页拖动；不要再用普通阈值直接否决抬手单击。动画中止可以消费翻页等非菜单动作，但不得吞掉已配置的菜单动作。
 - 本地 SDK、IDE、签名和产物文件不得提交；完整拦截清单以 `scripts/check-staged-local-files.sh` 为准，尤其不要提交 `.sdk/`、`local.properties`、`app/gradle.properties`、`app/signing/`、`app/app/`、`release签名/`、证书/keystore、`AGENTS.md` 和 `opencode.json`。
@@ -78,4 +79,4 @@ scripts/build-signed-release.sh
 
 脚本会强制使用 `app/gradle.properties` 中的个人签名配置和 `RELEASE_CERT_SHA256`，完成 Release/R8、五个 ABI APK、证书/包名/版本校验，再把同一批 APK、`.idsig`、metadata 原子同步到 `app/app/release/`。`app/gradle.properties` 与 keystore 必须仅所有者可读写（脚本接受 `400` 或 `600`，通常使用 `600`）。Android 64 位真机优先安装 `app/app/release/legado_arm64.apk`；不得直接复制单个 APK，也不得在签名配置缺失时接受 Gradle 的 Debug 签名回退。
 
-*文档版本: 2026-07-16*
+*文档版本: 2026-07-28*

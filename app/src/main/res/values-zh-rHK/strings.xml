@@ -91,6 +91,19 @@
     <string name="offline_cache">離線緩存</string>
     <string name="offline_cache_t">離線緩存</string>
     <string name="offline_cache_s">緩存已選擇的章節到本地</string>
+    <string name="cache_progress_summary">已處理 %1$d/%2$d · 下載中 %3$d · 等待 %4$d · 失敗 %5$d · 取消 %6$d</string>
+    <string name="cache_book_progress">本次 %1$d/%2$d · 失敗 %3$d · 取消 %4$d</string>
+    <string name="cache_loading_toc">正在讀取目錄…</string>
+    <string name="cache_complete_notification">緩存結束：%1$d/%2$d · 失敗 %3$d · 取消 %4$d，點擊可匯出。</string>
+    <string name="export_content_mode">匯出正文</string>
+    <string name="export_original_content">原始緩存正文</string>
+    <string name="export_replaced_content">套用替換淨化規則</string>
+    <string name="export_cache_incomplete">已緩存 %1$d/%2$d 章，仍缺少 %3$d 章。只匯出已有緩存，還是先補齊緩存？</string>
+    <string name="export_cache_incomplete_no_fill">已緩存 %1$d/%2$d 章，仍缺少 %3$d 章；目前來源無法透過離線緩存補齊，只能匯出已有緩存。</string>
+    <string name="export_cached_only">只匯出已緩存</string>
+    <string name="finish_cache_first">先補齊緩存</string>
+    <string name="export_missing_chapters">仍有 %1$d 章未緩存，已停止匯出。</string>
+    <string name="export_no_available_chapters">沒有可匯出的已緩存章節。</string>
     <string name="change_origin">換源</string>
     <string name="about_description">
         \u3000\u3000這是一款使用 Kotlin 全新開發的開源的閲讀應用程式，歡迎你的加入。

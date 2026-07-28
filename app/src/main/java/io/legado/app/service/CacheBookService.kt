@@ -3,6 +3,7 @@ package io.legado.app.service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseService
@@ -15,9 +16,13 @@ import io.legado.app.data.appDb
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.CacheBook
+import io.legado.app.model.CacheProgress
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.ui.book.cache.CacheActivity
+import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
+import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
@@ -25,6 +30,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.util.concurrent.Executors
@@ -52,7 +58,7 @@ class CacheBookService : BaseService() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentTitle(getString(R.string.offline_cache))
-            //.setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
+            .setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
         builder.addAction(
             R.drawable.ic_stop_black_24dp,
             getString(R.string.cancel),
@@ -63,12 +69,12 @@ class CacheBookService : BaseService() {
 
     override fun onCreate() {
         super.onCreate()
+        CacheBook.beginProgressSession()
         isRun = true
         lifecycleScope.launch {
             while (isActive) {
                 delay(1000)
-                notificationContent = CacheBook.downloadSummary
-                upCacheBookNotification()
+                upCacheBookNotification(CacheBook.progress())
                 postEvent(EventBus.UP_DOWNLOAD, "")
             }
         }
@@ -112,6 +118,7 @@ class CacheBookService : BaseService() {
                         kotlin.runCatching {
                             WebBook.getBookInfoAwait(cacheBook.bookSource, book)
                         }.onFailure {
+                            CacheBook.recordSetupFailure(bookUrl, name)
                             removeDownload(bookUrl)
                             val msg = "《$name》目录为空且加载详情页失败\n${it.localizedMessage}"
                             AppLog.put(msg, it, true)
@@ -123,6 +130,7 @@ class CacheBookService : BaseService() {
                             book.totalChapterNum = 0
                             book.update()
                         }
+                        CacheBook.recordSetupFailure(bookUrl, name)
                         removeDownload(bookUrl)
                         val msg = "《$name》目录为空且加载目录失败\n${it.localizedMessage}"
                         AppLog.put(msg, it, true)
@@ -139,8 +147,7 @@ class CacheBookService : BaseService() {
                 min(end, book.lastChapterIndex)
             }
             cacheBook.addDownload(start, end2)
-            notificationContent = CacheBook.downloadSummary
-            upCacheBookNotification()
+            upCacheBookNotification(CacheBook.progress())
         }.onFinally {
             if (downloadJob == null) {
                 download()
@@ -164,14 +171,69 @@ class CacheBookService : BaseService() {
         downloadJob?.cancel()
         downloadJob = lifecycleScope.launch(cachePool) {
             CacheBook.startProcessJob(cachePool)
-            stopSelf()
+            val progress = CacheBook.progress()
+            withContext(Main) {
+                if (progress.total > 0) {
+                    showCompletionNotification(progress)
+                }
+                stopSelf()
+            }
         }
     }
 
-    private fun upCacheBookNotification() {
+    private fun upCacheBookNotification(progress: CacheProgress) {
+        notificationContent = when {
+            progress.total > 0 -> getString(
+                R.string.cache_progress_summary,
+                progress.processed,
+                progress.total,
+                progress.downloading,
+                progress.waiting,
+                progress.failed,
+                progress.canceled
+            )
+
+            progress.loadingBookCount > 0 -> getString(R.string.cache_loading_toc)
+            else -> getString(R.string.service_starting)
+        }
         notificationBuilder.setContentText(notificationContent)
+        when {
+            progress.total > 0 -> notificationBuilder.setProgress(
+                progress.total,
+                progress.processed,
+                false
+            )
+
+            progress.isIndeterminate -> notificationBuilder.setProgress(0, 0, true)
+            else -> notificationBuilder.setProgress(0, 0, false)
+        }
         val notification = notificationBuilder.build()
         notificationManager.notify(NotificationId.CacheBookService, notification)
+    }
+
+    private fun showCompletionNotification(progress: CacheProgress) {
+        val openCache = activityPendingIntent<CacheActivity>("cacheActivity")
+        notificationBuilder
+            .clearActions()
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .setContentIntent(openCache)
+            .setContentText(
+                getString(
+                    R.string.cache_complete_notification,
+                    progress.processed,
+                    progress.total,
+                    progress.failed,
+                    progress.canceled
+                )
+            )
+            .setProgress(progress.total, progress.processed, false)
+            .addAction(R.drawable.ic_export, getString(R.string.export), openCache)
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
+        notificationManager.notify(
+            NotificationId.CacheBookService,
+            notificationBuilder.build()
+        )
     }
 
     /**
@@ -179,6 +241,7 @@ class CacheBookService : BaseService() {
      */
     override fun startForegroundNotification() {
         notificationBuilder.setContentText(notificationContent)
+        notificationBuilder.setProgress(0, 0, true)
         val notification = notificationBuilder.build()
         startForegroundCompat(
             NotificationId.CacheBookService,

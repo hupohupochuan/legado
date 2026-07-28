@@ -103,6 +103,19 @@
     <string name="offline_cache_t">Offline cache</string>
     <string name="download_to_local">Download to local</string>
     <string name="offline_cache_s">cache the selected chapter(s) to Storage</string>
+    <string name="cache_progress_summary">Processed %1$d/%2$d · Downloading %3$d · Waiting %4$d · Failed %5$d · Canceled %6$d</string>
+    <string name="cache_book_progress">This task %1$d/%2$d · Failed %3$d · Canceled %4$d</string>
+    <string name="cache_loading_toc">Loading the table of contents…</string>
+    <string name="cache_complete_notification">Cache finished: %1$d/%2$d · Failed %3$d · Canceled %4$d. Tap to export.</string>
+    <string name="export_content_mode">Export content</string>
+    <string name="export_original_content">Original cached text</string>
+    <string name="export_replaced_content">Apply replace and cleanup rules</string>
+    <string name="export_cache_incomplete">Cached %1$d/%2$d chapters; %3$d chapters are missing. Export only cached chapters or finish caching first?</string>
+    <string name="export_cache_incomplete_no_fill">Cached %1$d/%2$d chapters; %3$d chapters are missing and cannot be filled by offline cache for this source. Only cached chapters can be exported.</string>
+    <string name="export_cached_only">Export cached</string>
+    <string name="finish_cache_first">Finish caching</string>
+    <string name="export_missing_chapters">Export stopped because %1$d chapter(s) are not cached.</string>
+    <string name="export_no_available_chapters">No cached chapter is available to export.</string>
     <string name="change_origin">Change Origin</string>
     <string name="about_description">
         \u3000\u3000 This is an open source reading software newly developed by Kotlin, welcome to join us.

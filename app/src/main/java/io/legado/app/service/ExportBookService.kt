@@ -18,10 +18,14 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.book.ExportMissingChapterPolicy
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
+import io.legado.app.help.book.createBookExportPlan
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isLocalModified
+import io.legado.app.help.book.isPlainLocalBook
+import io.legado.app.help.book.parseExportChapterScope
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
@@ -78,13 +82,18 @@ class ExportBookService : BaseService() {
     companion object {
         val exportProgress = ConcurrentHashMap<String, Int>()
         val exportMsg = ConcurrentHashMap<String, String>()
+        const val EXTRA_MISSING_CHAPTER_POLICY = "missingChapterPolicy"
+        const val EXTRA_USE_REPLACE = "useReplace"
     }
 
     data class ExportConfig(
         val path: String,
         val type: String,
         val epubSize: Int = 1,
-        val epubScope: String? = null
+        val epubScope: String? = null,
+        val missingChapterPolicy: ExportMissingChapterPolicy =
+            ExportMissingChapterPolicy.RequireComplete,
+        val useReplace: Boolean = false
     )
 
     private val groupKey = "${appCtx.packageName}.exportBook"
@@ -102,7 +111,14 @@ class ExportBookService : BaseService() {
                         path = intent.getStringExtra("exportPath")!!,
                         type = intent.getStringExtra("exportType")!!,
                         epubSize = intent.getIntExtra("epubSize", 1),
-                        epubScope = intent.getStringExtra("epubScope")
+                        epubScope = intent.getStringExtra("epubScope"),
+                        missingChapterPolicy = ExportMissingChapterPolicy.from(
+                            intent.getStringExtra(EXTRA_MISSING_CHAPTER_POLICY)
+                        ),
+                        useReplace = intent.getBooleanExtra(
+                            EXTRA_USE_REPLACE,
+                            AppConfig.exportUseReplace
+                        )
                     )
                     waitExportBooks[bookUrl] = exportConfig
                     exportMsg[bookUrl] = getString(R.string.export_wait)
@@ -193,15 +209,16 @@ class ExportBookService : BaseService() {
                     upExportNotification()
                     if (exportConfig.type == "epub") {
                         if (exportConfig.epubScope.isNullOrBlank()) {
-                            exportEpub(exportConfig.path, book)
+                            exportEpub(exportConfig.path, book, exportConfig)
                         } else {
                             CustomExporter(
                                 exportConfig.epubScope,
-                                exportConfig.epubSize
+                                exportConfig.epubSize,
+                                exportConfig
                             ).export(exportConfig.path, book)
                         }
                     } else {
-                        exportTxt(exportConfig.path, book)
+                        exportTxt(exportConfig.path, book, exportConfig)
                     }
                     exportMsg[book.bookUrl] = getString(R.string.export_success)
                 } catch (e: Throwable) {
@@ -217,7 +234,7 @@ class ExportBookService : BaseService() {
     }
 
     private fun refreshChapterList(book: Book) {
-        if (!book.isLocalModified()) {
+        if (!book.isPlainLocalBook || !book.isLocalModified()) {
             return
         }
         kotlin.runCatching {
@@ -236,36 +253,50 @@ class ExportBookService : BaseService() {
         val src: String
     )
 
-    private suspend fun exportTxt(path: String, book: Book) {
+    private suspend fun exportTxt(path: String, book: Book, exportConfig: ExportConfig) {
         exportMsg.remove(book.bookUrl)
         postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
         val fileDoc = FileDoc.fromDir(path)
-        exportTxt(fileDoc, book)
+        exportTxt(fileDoc, book, exportConfig)
     }
 
-    private suspend fun exportTxt(fileDoc: FileDoc, book: Book) {
+    private suspend fun exportTxt(
+        fileDoc: FileDoc,
+        book: Book,
+        exportConfig: ExportConfig
+    ) {
+        val chapters = getExportChapters(
+            book,
+            appDb.bookChapterDao.getChapterList(book.bookUrl),
+            exportConfig
+        )
         val filename = book.getExportFileName("txt")
         fileDoc.find(filename)?.delete()
 
         val bookDoc = fileDoc.createFileIfNotExist(filename)
         val charset = Charset.forName(AppConfig.exportCharset)
-        bookDoc.openOutputStream().getOrThrow().bufferedWriter(charset).use { bw ->
-            getAllContents(book) { text, srcList ->
-                bw.write(text)
-                srcList?.forEach {
-                    val vFile = BookHelp.getImage(book, it.src)
-                    if (vFile.exists()) {
-                        fileDoc.createFileIfNotExist(
-                            "${it.index}-${MD5Utils.md5Encode16(it.src)}.jpg",
-                            subDirs = arrayOf(
-                                "${book.name}_${book.author}",
-                                "images",
-                                it.chapterTitle
-                            )
-                        ).writeFile(vFile)
+        try {
+            bookDoc.openOutputStream().getOrThrow().bufferedWriter(charset).use { bw ->
+                getAllContents(book, chapters, exportConfig) { text, srcList ->
+                    bw.write(text)
+                    srcList?.forEach {
+                        val vFile = BookHelp.getImage(book, it.src)
+                        if (vFile.exists()) {
+                            fileDoc.createFileIfNotExist(
+                                "${it.index}-${MD5Utils.md5Encode16(it.src)}.jpg",
+                                subDirs = arrayOf(
+                                    "${book.name}_${book.author}",
+                                    "images",
+                                    it.chapterTitle
+                                )
+                            ).writeFile(vFile)
+                        }
                     }
                 }
             }
+        } catch (error: Throwable) {
+            bookDoc.delete()
+            throw error
         }
         if (AppConfig.exportToWebDav) {
             // 导出到webdav
@@ -275,9 +306,11 @@ class ExportBookService : BaseService() {
 
     private suspend fun getAllContents(
         book: Book,
+        chapters: List<BookChapter>,
+        exportConfig: ExportConfig,
         append: (text: String, srcList: ArrayList<SrcData>?) -> Unit
     ) = coroutineScope {
-        val useReplace = AppConfig.exportUseReplace && book.getUseReplaceRule()
+        val useReplace = exportConfig.useReplace && book.getUseReplaceRule()
         val contentProcessor = ContentProcessor.get(book.name, book.origin)
         val qy = "${book.name}\n${
             getString(R.string.author_show, book.getRealAuthor())
@@ -294,7 +327,7 @@ class ExportBookService : BaseService() {
             1
         }
         flow {
-            appDb.bookChapterDao.getChapterList(book.bookUrl).forEach { chapter ->
+            chapters.forEach { chapter ->
                 emit(chapter)
             }
         }.mapAsync(threads) { chapter ->
@@ -313,22 +346,32 @@ class ExportBookService : BaseService() {
         contentProcessor: ContentProcessor,
         useReplace: Boolean
     ): Pair<String, ArrayList<SrcData>?> {
-        val content = BookHelp.getContent(book, chapter)
-        val content1 = contentProcessor
+        val content = getRequiredContent(book, chapter)
+        val processedContent = contentProcessor
             .getContent(
                 book,
                 // 不导出vip标识
                 chapter.apply { isVip = false },
-                content ?: if (chapter.isVolume) "" else "null",
-                includeTitle = !AppConfig.exportNoChapterName,
+                content,
+                includeTitle = false,
                 useReplace = useReplace,
                 chineseConvert = false,
                 reSegment = false
             ).toString()
+        val content1 = if (AppConfig.exportNoChapterName) {
+            processedContent
+        } else {
+            val title = chapter.getDisplayTitle(
+                contentProcessor.getTitleReplaceRules(),
+                useReplace = useReplace,
+                chineseConvert = false
+            )
+            "$title\n$processedContent"
+        }
         if (AppConfig.exportPictureFile) {
             //txt导出图片文件
             val srcList = arrayListOf<SrcData>()
-            content?.split("\n")?.forEachIndexed { index, text ->
+            content.split("\n").forEachIndexed { index, text ->
                 val matcher = HtmlFormatter.formatImagePattern.matcher(text)
                 if (matcher.find()) {
                     srcList.add(SrcData(chapter.title, index, matcher.group(1)!!))
@@ -343,15 +386,24 @@ class ExportBookService : BaseService() {
     /**
      * 导出Epub
      */
-    private suspend fun exportEpub(path: String, book: Book) {
+    private suspend fun exportEpub(path: String, book: Book, exportConfig: ExportConfig) {
         exportMsg.remove(book.bookUrl)
         postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
         val fileDoc = FileDoc.fromDir(path)
-        exportEpub(fileDoc, book)
+        exportEpub(fileDoc, book, exportConfig)
     }
 
-    private suspend fun exportEpub(fileDoc: FileDoc, book: Book) {
+    private suspend fun exportEpub(
+        fileDoc: FileDoc,
+        book: Book,
+        exportConfig: ExportConfig
+    ) {
         val filename = book.getExportFileName("epub")
+        val chapters = getExportChapters(
+            book,
+            appDb.bookChapterDao.getChapterList(book.bookUrl),
+            exportConfig
+        )
         fileDoc.find(filename)?.delete()
 
         val epubBook = EpubBook()
@@ -364,11 +416,16 @@ class ExportBookService : BaseService() {
         val contentModel = setAssets(fileDoc, book, epubBook)
 
         //设置正文
-        setEpubContent(contentModel, book, epubBook)
+        setEpubContent(contentModel, book, epubBook, chapters, exportConfig)
 
         val bookDoc = fileDoc.createFileIfNotExist(filename)
-        bookDoc.openOutputStream().getOrThrow().buffered().use { bookOs ->
-            EpubWriter().write(epubBook, bookOs)
+        try {
+            bookDoc.openOutputStream().getOrThrow().buffered().use { bookOs ->
+                EpubWriter().write(epubBook, bookOs)
+            }
+        } catch (error: Throwable) {
+            bookDoc.delete()
+            throw error
         }
 
         if (AppConfig.exportToWebDav) {
@@ -503,9 +560,13 @@ class ExportBookService : BaseService() {
 
     private fun setCover(book: Book, epubBook: EpubBook) {
         kotlin.runCatching {
-            val file = Glide.with(this)
+            val request = Glide.with(this)
                 .asFile()
                 .load(book.getDisplayCover())
+            if (!book.isPlainLocalBook) {
+                request.onlyRetrieveFromCache(true)
+            }
+            val file = request
                 .submit()
                 .get()
             val provider = LazyResourceProvider { _ ->
@@ -520,10 +581,12 @@ class ExportBookService : BaseService() {
     private suspend fun setEpubContent(
         contentModel: String,
         book: Book,
-        epubBook: EpubBook
+        epubBook: EpubBook,
+        chapters: List<BookChapter>,
+        exportConfig: ExportConfig
     ) = coroutineScope {
         //正文
-        val useReplace = AppConfig.exportUseReplace && book.getUseReplaceRule()
+        val useReplace = exportConfig.useReplace && book.getUseReplaceRule()
         val contentProcessor = ContentProcessor.get(book.name, book.origin)
         val threads = if (AppConfig.parallelExportBook) {
             AppConst.MAX_THREAD
@@ -532,14 +595,14 @@ class ExportBookService : BaseService() {
         }
         var parentSection: TOCReference? = null
         flow {
-            appDb.bookChapterDao.getChapterList(book.bookUrl).forEach { chapter ->
+            chapters.forEach { chapter ->
                 emit(chapter)
             }
         }.mapAsyncIndexed(threads) { index, chapter ->
-            val content = BookHelp.getContent(book, chapter)
+            val content = getRequiredContent(book, chapter)
             val (contentFix, resources) = fixPic(
                 book,
-                content ?: if (chapter.isVolume) "" else "null",
+                content,
                 chapter
             )
             // 不导出vip标识
@@ -559,7 +622,8 @@ class ExportBookService : BaseService() {
                 isVip = false
                 getDisplayTitle(
                     contentProcessor.getTitleReplaceRules(),
-                    useReplace = useReplace
+                    useReplace = useReplace,
+                    chineseConvert = false
                 )
             }
             val chapterResource = ResourceUtil.createChapterResource(
@@ -582,6 +646,55 @@ class ExportBookService : BaseService() {
                 epubBook.addSection(parentSection, title, chapterResource)
             }
         }
+    }
+
+    private fun getExportChapters(
+        book: Book,
+        chapters: List<BookChapter>,
+        exportConfig: ExportConfig
+    ): List<BookChapter> {
+        if (chapters.isEmpty()) {
+            throw NoStackTraceException(getString(R.string.export_no_available_chapters))
+        }
+        if (book.isPlainLocalBook) {
+            return chapters
+        }
+        val plan = createBookExportPlan(
+            chapters = chapters,
+            policy = exportConfig.missingChapterPolicy,
+            isContentChapter = { !it.isVolume },
+            isAvailable = { BookHelp.getCachedContent(book, it) != null }
+        )
+        if (exportConfig.missingChapterPolicy == ExportMissingChapterPolicy.RequireComplete &&
+            plan.missing.isNotEmpty()
+        ) {
+            throw NoStackTraceException(
+                getString(R.string.export_missing_chapters, plan.missing.size)
+            )
+        }
+        if (plan.selected.none { !it.isVolume }) {
+            throw NoStackTraceException(getString(R.string.export_no_available_chapters))
+        }
+        return plan.selected
+    }
+
+    private fun getRequiredContent(book: Book, chapter: BookChapter): String {
+        if (chapter.isVolume) {
+            val content = if (book.isPlainLocalBook) {
+                BookHelp.getContent(book, chapter)
+            } else {
+                BookHelp.getCachedContent(book, chapter)
+            }
+            return content ?: chapter.tag.orEmpty()
+        }
+        val content = if (book.isPlainLocalBook) {
+            BookHelp.getContent(book, chapter)
+        } else {
+            BookHelp.getCachedContent(book, chapter)
+        }
+        return content ?: throw NoStackTraceException(
+            getString(R.string.export_missing_chapters, 1)
+        )
     }
 
     data class ExportChapter(
@@ -641,9 +754,14 @@ class ExportBookService : BaseService() {
      * @param scope 导出范围
      * @param size epub 文件包含最大章节数
      */
-    inner class CustomExporter(scopeStr: String, private val size: Int) {
+    inner class CustomExporter(
+        scopeStr: String,
+        private val size: Int,
+        private val exportConfig: ExportConfig
+    ) {
 
-        private var scope = parseScope(scopeStr)
+        private var scope = parseExportChapterScope(scopeStr)
+        private var selectedChapters: List<BookChapter> = emptyList()
 
         init {
             if (size <= 0) {
@@ -664,36 +782,49 @@ class ExportBookService : BaseService() {
             exportMsg.remove(book.bookUrl)
             postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
             val currentTimeMillis = System.currentTimeMillis()
-            val count = appDb.bookChapterDao.getChapterCount(book.bookUrl)
-            scope = scope.filter { it < count }.toHashSet()
+            val allChapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
+            scope = scope.filter { it < allChapters.size }.toHashSet()
             if (scope.isEmpty()) {
                 throw NoStackTraceException("导出范围未匹配到章节")
             }
+            val requestedChapters = allChapters.filterIndexed { index, _ ->
+                scope.contains(index)
+            }
+            selectedChapters = getExportChapters(book, requestedChapters, exportConfig)
 
             val fileDoc = FileDoc.fromDir(path)
 
             val (contentModel, epubList) = createEpubs(book, fileDoc)
             var progressBar = 0.0
-            epubList.forEachIndexed { index, ep ->
-                val (filename, epubBook) = ep
-                //设置正文
-                setEpubContent(
-                    contentModel,
-                    book,
-                    epubBook,
-                    index
-                ) { _, _ ->
-                    // 将章节写入内存时更新进度条
-                    postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
-                    progressBar += book.totalChapterNum.toDouble() / scope.size / 2
-                    exportProgress[book.bookUrl] = progressBar.toInt()
+            try {
+                epubList.forEachIndexed { index, ep ->
+                    val (filename, epubBook) = ep
+                    //设置正文
+                    setEpubContent(
+                        contentModel,
+                        book,
+                        epubBook,
+                        index
+                    ) { _, _ ->
+                        // 将章节写入内存时更新进度条
+                        postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
+                        progressBar +=
+                            book.totalChapterNum.toDouble() / selectedChapters.size / 2
+                        exportProgress[book.bookUrl] = progressBar.toInt()
+                    }
+                    save2Drive(filename, epubBook, fileDoc) { total, _ ->
+                        //写入硬盘时更新进度条
+                        progressBar +=
+                            book.totalChapterNum.toDouble() / epubList.size / total / 2
+                        postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
+                        exportProgress[book.bookUrl] = progressBar.toInt()
+                    }
                 }
-                save2Drive(filename, epubBook, fileDoc) { total, _ ->
-                    //写入硬盘时更新进度条
-                    progressBar += book.totalChapterNum.toDouble() / epubList.size / total / 2
-                    postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
-                    exportProgress[book.bookUrl] = progressBar.toInt()
+            } catch (error: Throwable) {
+                epubList.forEach { (filename, _) ->
+                    fileDoc.find(filename)?.delete()
                 }
+                throw error
             }
 
             val elapsed = System.currentTimeMillis() - currentTimeMillis
@@ -714,35 +845,25 @@ class ExportBookService : BaseService() {
             book: Book,
             epubBook: EpubBook,
             epubBookIndex: Int,
-            updateProgress: (chapterList: MutableList<BookChapter>, index: Int) -> Unit
+            updateProgress: (chapterList: List<BookChapter>, index: Int) -> Unit
         ) {
             //正文
-            val useReplace = AppConfig.exportUseReplace && book.getUseReplaceRule()
+            val useReplace = exportConfig.useReplace && book.getUseReplaceRule()
             val contentProcessor = ContentProcessor.get(book.name, book.origin)
-            var chapterList: MutableList<BookChapter> = ArrayList()
-            appDb.bookChapterDao.getChapterList(book.bookUrl).forEachIndexed { index, chapter ->
-                if (scope.contains(index)) {
-                    chapterList.add(chapter)
-                }
-                if (scope.size == chapterList.size) {
-                    return@forEachIndexed
-                }
-            }
-            // val totalChapterNum = book.totalChapterNum / scope.size
-            if (chapterList.isEmpty()) {
+            if (selectedChapters.isEmpty()) {
                 throw RuntimeException("书籍<${book.name}>(${epubBookIndex + 1})未找到章节信息")
             }
-            chapterList = chapterList.subList(
+            val chapterList = selectedChapters.subList(
                 epubBookIndex * size,
-                min(scope.size, (epubBookIndex + 1) * size)
+                min(selectedChapters.size, (epubBookIndex + 1) * size)
             )
             chapterList.forEachIndexed { index, chapter ->
                 currentCoroutineContext().ensureActive()
                 updateProgress(chapterList, index)
-                BookHelp.getContent(book, chapter).let { content ->
+                getRequiredContent(book, chapter).let { content ->
                     val (contentFix, resources) = fixPic(
                         book,
-                        content ?: if (chapter.isVolume) "" else "null",
+                        content,
                         chapter
                     )
                     epubBook.resources.addAll(resources)
@@ -761,7 +882,8 @@ class ExportBookService : BaseService() {
                         isVip = false
                         getDisplayTitle(
                             contentProcessor.getTitleReplaceRules(),
-                            useReplace = useReplace
+                            useReplace = useReplace,
+                            chineseConvert = false
                         )
                     }
                     epubBook.addSection(
@@ -790,7 +912,7 @@ class ExportBookService : BaseService() {
             book: Book,
             fileDoc: FileDoc
         ): Pair<String, List<Pair<String, EpubBook>>> {
-            val paresNumOfEpub = paresNumOfEpub(scope.size, size)
+            val paresNumOfEpub = paresNumOfEpub(selectedChapters.size, size)
             val result: MutableList<Pair<String, EpubBook>> = ArrayList(paresNumOfEpub)
             var contentModel = ""
             for (i in 1..paresNumOfEpub) {
@@ -822,14 +944,19 @@ class ExportBookService : BaseService() {
             callback: (total: Int, progress: Int) -> Unit
         ) {
             val bookDoc = fileDoc.createFileIfNotExist(filename)
-            bookDoc.openOutputStream().getOrThrow().buffered().use { bookOs ->
-                EpubWriter()
-                    .setCallback(object : EpubWriterProcessor.Callback {
-                        override fun onProgressing(total: Int, progress: Int) {
-                            callback(total, progress)
-                        }
-                    })
-                    .write(epubBook, bookOs)
+            try {
+                bookDoc.openOutputStream().getOrThrow().buffered().use { bookOs ->
+                    EpubWriter()
+                        .setCallback(object : EpubWriterProcessor.Callback {
+                            override fun onProgressing(total: Int, progress: Int) {
+                                callback(total, progress)
+                            }
+                        })
+                        .write(epubBook, bookOs)
+                }
+            } catch (error: Throwable) {
+                bookDoc.delete()
+                throw error
             }
 
             if (AppConfig.exportToWebDav) {
@@ -853,44 +980,5 @@ class ExportBookService : BaseService() {
             return result
         }
 
-        /**
-         * 解析范围字符串
-         *
-         * @param scope 范围字符串
-         * @return 范围
-         *
-         * @since 2023/5/22
-         * @author Discut
-         */
-        private fun parseScope(scope: String): Set<Int> {
-            val split = scope.split(",")
-
-            val result = linkedSetOf<Int>()
-            for (s in split.map { it.trim() }.filter { it.isNotEmpty() }) {
-                val v = s.split("-")
-                if (v.size != 2) {
-                    val index = s.toIntOrNull()
-                    if (index == null || index <= 0) {
-                        AppLog.put("Error expression : $s")
-                        continue
-                    }
-                    result.add(index - 1)
-                    continue
-                }
-                val left = v[0].trim().toIntOrNull()
-                val right = v[1].trim().toIntOrNull()
-                if (left == null || right == null || left <= 0 || right <= 0) {
-                    AppLog.put("Error expression : $s")
-                    continue
-                }
-                if (left > right) {
-                    AppLog.put("Error expression : $s; left > right")
-                    continue
-                }
-                for (i in left..right)
-                    result.add(i - 1)
-            }
-            return result
-        }
     }
 }
