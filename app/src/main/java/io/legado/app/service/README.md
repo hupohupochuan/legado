@@ -1,7 +1,7 @@
 # Android 服务
 
 - `AudioPlayService`：音频播放。
-- `CacheBookService`：书籍离线缓存；页面和通知共用本次任务进度，完成通知可返回缓存页导出。
+- `CacheBookService`：书籍离线缓存；页面和通知共用本次任务进度，只有自然完成才保留可返回缓存页导出的通知，用户取消或服务销毁会先关闭完成通知门闩。
 - `CheckSourceService`：书源检测。
 - `DownloadService`：通过系统 `DownloadManager` 下载普通文件。
 - `ExportBookService`：导出 TXT/EPUB；在线书和 WebDAV 来源书只读已落盘缓存，按“要求完整/仅已有缓存”策略处理缺章。

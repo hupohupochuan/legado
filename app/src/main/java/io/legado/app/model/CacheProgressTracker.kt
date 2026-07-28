@@ -118,3 +118,17 @@ internal class CacheProgressTracker {
         )
     }
 }
+
+internal class CacheCompletionGate {
+
+    @Volatile
+    private var isSuppressed = false
+
+    fun suppress() {
+        isSuppressed = true
+    }
+
+    fun shouldShow(progress: CacheProgress): Boolean {
+        return !isSuppressed && progress.total > 0
+    }
+}

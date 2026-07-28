@@ -99,6 +99,19 @@
     <string name="offline_cache">Offline cache</string>
     <string name="offline_cache_t">Offline cache</string>
     <string name="offline_cache_s">cache the selected chapter(s) to Storage</string>
+    <string name="cache_progress_summary">処理済み %1$d/%2$d・ダウンロード中 %3$d・待機中 %4$d・失敗 %5$d・キャンセル %6$d</string>
+    <string name="cache_book_progress">今回 %1$d/%2$d・失敗 %3$d・キャンセル %4$d</string>
+    <string name="cache_loading_toc">目次を読み込み中…</string>
+    <string name="cache_complete_notification">キャッシュ終了：%1$d/%2$d・失敗 %3$d・キャンセル %4$d。タップしてエクスポートできます。</string>
+    <string name="export_content_mode">エクスポートする本文</string>
+    <string name="export_original_content">キャッシュ済みの元の本文</string>
+    <string name="export_replaced_content">置換・整形ルールを適用</string>
+    <string name="export_cache_incomplete">全%2$d章のうち%1$d章をキャッシュ済みで、%3$d章が不足しています。キャッシュ済みの章だけをエクスポートしますか、それとも先にキャッシュを完了しますか？</string>
+    <string name="export_cache_incomplete_no_fill">全%2$d章のうち%1$d章をキャッシュ済みで、%3$d章が不足しています。この配信元はオフラインキャッシュでは補完できないため、キャッシュ済みの章だけをエクスポートできます。</string>
+    <string name="export_cached_only">キャッシュ済みのみエクスポート</string>
+    <string name="finish_cache_first">先にキャッシュを完了</string>
+    <string name="export_missing_chapters">未キャッシュの章が%1$d件あるため、エクスポートを中止しました。</string>
+    <string name="export_no_available_chapters">エクスポート可能なキャッシュ済みの章がありません。</string>
     <string name="change_origin">Change Origin</string>
     <string name="about_description">
         \u3000\u3000 This is an open source reading software newly developed by Kotlin, welcome to join us.

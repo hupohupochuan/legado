@@ -99,6 +99,19 @@
     <string name="offline_cache">Cache off-line</string>
     <string name="offline_cache_t">Cache off-line</string>
     <string name="offline_cache_s">salvar o(s) capítulo(s) selecionado(s) no Armazenamento em cache</string>
+    <string name="cache_progress_summary">Processado %1$d/%2$d · Baixando %3$d · Aguardando %4$d · Falhas %5$d · Cancelados %6$d</string>
+    <string name="cache_book_progress">Esta tarefa %1$d/%2$d · Falhas %3$d · Cancelados %4$d</string>
+    <string name="cache_loading_toc">Carregando o sumário…</string>
+    <string name="cache_complete_notification">Cache finalizado: %1$d/%2$d · Falhas %3$d · Cancelados %4$d. Toque para exportar.</string>
+    <string name="export_content_mode">Conteúdo da exportação</string>
+    <string name="export_original_content">Texto original em cache</string>
+    <string name="export_replaced_content">Aplicar regras de substituição e limpeza</string>
+    <string name="export_cache_incomplete">%1$d/%2$d capítulos estão em cache; faltam %3$d. Exportar somente os capítulos em cache ou concluir o cache primeiro?</string>
+    <string name="export_cache_incomplete_no_fill">%1$d/%2$d capítulos estão em cache; faltam %3$d e esta origem não pode ser completada pelo cache off-line. Somente os capítulos em cache podem ser exportados.</string>
+    <string name="export_cached_only">Exportar somente o cache</string>
+    <string name="finish_cache_first">Concluir o cache</string>
+    <string name="export_missing_chapters">A exportação foi interrompida porque %1$d capítulo(s) não estão em cache.</string>
+    <string name="export_no_available_chapters">Não há capítulos em cache disponíveis para exportar.</string>
     <string name="change_origin">Alterar a origem</string>
     <string name="about_description">
         \u3000\u3000 Este é um App de leitura de software livre, desenvolvido em Kotlin, você é bem-vindo a participar em projeto.

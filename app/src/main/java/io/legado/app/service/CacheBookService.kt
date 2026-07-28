@@ -16,6 +16,7 @@ import io.legado.app.data.appDb
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.CacheBook
+import io.legado.app.model.CacheCompletionGate
 import io.legado.app.model.CacheProgress
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.cache.CacheActivity
@@ -52,6 +53,7 @@ class CacheBookService : BaseService() {
     private var downloadJob: Job? = null
     private var notificationContent = appCtx.getString(R.string.service_starting)
     private var mutex = Mutex()
+    private val completionGate = CacheCompletionGate()
     private val notificationBuilder by lazy {
         val builder = NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_download)
@@ -89,17 +91,26 @@ class CacheBookService : BaseService() {
                     intent.getIntExtra("end", 0)
                 )
 
-                IntentAction.remove -> removeDownload(intent.getStringExtra("bookUrl"))
-                IntentAction.stop -> stopSelf()
+                IntentAction.remove -> {
+                    completionGate.suppress()
+                    removeDownload(intent.getStringExtra("bookUrl"))
+                }
+
+                IntentAction.stop -> {
+                    completionGate.suppress()
+                    stopSelf()
+                }
             }
         }
         return super.onStartCommand(intent, flags, startId)
     }
 
     override fun onDestroy() {
+        completionGate.suppress()
         isRun = false
-        cachePool.close()
+        downloadJob?.cancel()
         CacheBook.close()
+        cachePool.close()
         super.onDestroy()
         postEvent(EventBus.UP_DOWNLOAD, "")
     }
@@ -173,7 +184,7 @@ class CacheBookService : BaseService() {
             CacheBook.startProcessJob(cachePool)
             val progress = CacheBook.progress()
             withContext(Main) {
-                if (progress.total > 0) {
+                if (completionGate.shouldShow(progress)) {
                     showCompletionNotification(progress)
                 }
                 stopSelf()

@@ -72,4 +72,17 @@ class CacheProgressTrackerTest {
         tracker.end()
         assertEquals(CacheProgress(), tracker.snapshot())
     }
+
+    @Test
+    fun completionGateSuppressesNotificationAfterManualStop() {
+        val gate = CacheCompletionGate()
+        val progress = CacheProgress(total = 2, processed = 2)
+
+        assertFalse(gate.shouldShow(CacheProgress()))
+        assertTrue(gate.shouldShow(progress))
+
+        gate.suppress()
+
+        assertFalse(gate.shouldShow(progress))
+    }
 }
