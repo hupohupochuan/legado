@@ -361,7 +361,10 @@ class ThemeConfigFragment : PreferenceFragment(),
     }
 
     private fun setBgFromUri(uri: Uri, preferenceKey: String, success: () -> Unit) {
-        readUri(uri) { fileDoc, inputStream ->
+        readUri(
+            uri,
+            error = { appCtx.toastOnUi(it.localizedMessage) }
+        ) { fileDoc, inputStream ->
             kotlin.runCatching {
                 var file = requireContext().externalFiles
                 val suffix = fileDoc.name.substringAfterLast(".")

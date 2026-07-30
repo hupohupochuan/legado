@@ -27,6 +27,14 @@ import okhttp3.MediaType.Companion.toMediaType
 import splitties.init.appCtx
 
 class FileAssociationViewModel(application: Application) : BaseAssociationViewModel(application) {
+
+    companion object {
+        private const val MAX_TXT_JSON_PROBE_SIZE = 1024L * 1024L
+        private val binaryBookExtensions = setOf(
+            "epub", "umd", "pdf", "mobi", "azw3", "azw", "cbz"
+        )
+    }
+
     val importBookLiveData = MutableLiveData<Uri>()
     val onLineImportLive = MutableLiveData<Uri>()
     val openBookLiveData = MutableLiveData<Book>()
@@ -59,12 +67,14 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
     }
 
     private fun dispatch(fileDoc: FileDoc) {
-        // 已知书籍扩展名优先分流，避免 EPUB/PDF/CBZ 等大型文件被 JSON 探测完整扫描
-        if (fileDoc.name.matches(bookFileRegex)) {
+        val extension = fileDoc.name.substringAfterLast('.', "").lowercase()
+        // 二进制书籍直接分流；TXT 仅在体积较小时保留历史 JSON 内容识别能力。
+        if (extension in binaryBookExtensions
+            || extension == "txt" && fileDoc.size > MAX_TXT_JSON_PROBE_SIZE
+        ) {
             importBookLiveData.postValue(fileDoc.uri)
             return
         }
-        // 仅对未知类型或 JSON 扩展名执行内容探测
         kotlin.runCatching {
             if (fileDoc.openInputStream().getOrNull().isJson()) {
                 importJson(fileDoc.uri)
@@ -73,6 +83,10 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
         }.onFailure {
             it.printOnDebug()
             AppLog.put("尝试导入为JSON文件失败\n${it.localizedMessage}", it)
+        }
+        if (fileDoc.name.matches(bookFileRegex)) {
+            importBookLiveData.postValue(fileDoc.uri)
+            return
         }
         notSupportedLiveData.postValue(Pair(fileDoc.uri, fileDoc.name))
     }

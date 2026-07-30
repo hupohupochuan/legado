@@ -647,6 +647,11 @@
     <string name="book_type">類型：</string>
     <string name="to_backstage">後台</string>
     <string name="importing">正在匯入</string>
+    <string name="import_backing_up">正在備份</string>
+    <string name="import_writing">正在寫入</string>
+    <string name="import_verifying">正在驗證</string>
+    <string name="import_rolling_back">正在復原原始檔案</string>
+    <string name="import_cancelling">正在取消</string>
     <string name="exporting">正在匯出</string>
     <string name="custom_page_key">自訂翻頁按鍵</string>
     <string name="prev_page_key">上一頁按鍵</string>

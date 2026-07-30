@@ -163,7 +163,10 @@ class BookInfoEditActivity :
     }
 
     private fun coverChangeTo(uri: Uri) {
-        readUri(uri) { fileDoc, inputStream ->
+        readUri(
+            uri,
+            error = { appCtx.toastOnUi(it.localizedMessage) }
+        ) { fileDoc, inputStream ->
             runCatching {
                 inputStream.use {
                     var file = this.externalFiles

@@ -641,6 +641,11 @@
     <string name="book_type">Type:</string>
     <string name="to_backstage">Background</string>
     <string name="importing">Importing</string>
+    <string name="import_backing_up">バックアップ中</string>
+    <string name="import_writing">書き込み中</string>
+    <string name="import_verifying">検証中</string>
+    <string name="import_rolling_back">元のファイルを復元中</string>
+    <string name="import_cancelling">キャンセル中</string>
     <string name="exporting">Exporting</string>
     <string name="custom_page_key">Set page-turning buttons</string>
     <string name="prev_page_key">Page up button</string>

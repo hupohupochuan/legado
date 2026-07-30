@@ -39,6 +39,8 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
@@ -70,9 +72,17 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val uri = arguments?.let { BundleCompat.getParcelable(it, "uri", Uri::class.java) } ?: return dismiss()
 
-        view.findViewById<View>(R.id.tv_footer_left).setOnClickListener {
-            importJob?.cancel()
-            finishActivity()
+        view.findViewById<View>(R.id.tv_footer_left).setOnClickListener { cancelView ->
+            val job = importJob
+            if (job?.isActive == true) {
+                cancelView.isEnabled = false
+                view.findViewById<ProgressBar>(R.id.ck_progress).isIndeterminate = true
+                view.findViewById<TextView>(R.id.ck_progress_text).text =
+                    getString(R.string.import_cancelling)
+                job.cancel()
+            } else {
+                finishActivity()
+            }
         }
         view.findViewById<ProgressBar>(R.id.ck_progress).isIndeterminate = true
         view.findViewById<TextView>(R.id.ck_progress_text).text = getString(R.string.importing)
@@ -218,9 +228,11 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
     private fun importBook(treeUri: Uri?, uri: Uri) {
         importJob?.cancel()
         importJob = lifecycleScope.launch {
+            val runningJob = coroutineContext[Job]
             try {
                 withContext(IO) {
                     if (treeUri == null) {
+                        currentCoroutineContext().ensureActive()
                         viewModel.importBook(uri)
                     } else if (treeUri.isContentScheme()) {
                         val treeDoc = DocumentFile.fromTreeUri(requireContext(), treeUri)
@@ -229,23 +241,23 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                         }
                         val fileDoc = FileDoc.fromUri(uri, false)
                         val name = getImportFileName(fileDoc, uri)
-                        var doc = treeDoc.findFile(name)
-                        if (doc == null) {
-                            doc = treeDoc.createFile(FileUtils.getMimeType(name), name)
-                                ?: throw InvalidBooksDirException("请重新设置书籍保存位置")
-                        }
-                        if (LocalBookFileImportHelper.isSameFile(requireContext(), uri, doc.uri)) {
-                            viewModel.importBook(doc.uri)
-                        } else {
-                            LocalBookFileImportHelper.copyToDocument(
-                                requireContext(), uri, doc.uri
-                            ) { stage, copied, _ ->
-                                view?.post {
-                                    updateImportProgress(stage, copied, fileDoc.size)
-                                }
+                        val targetDoc = LocalBookFileImportHelper.copyToDocumentTree(
+                            context = requireContext(),
+                            sourceUri = uri,
+                            treeUri = treeUri,
+                            displayName = name,
+                            mimeType = FileUtils.getMimeType(name)
+                        ) { stage, copied, total ->
+                            view?.post {
+                                updateImportProgress(
+                                    stage,
+                                    copied,
+                                    total.takeIf { it > 0L } ?: fileDoc.size
+                                )
                             }
-                            viewModel.importBook(doc.uri)
                         }
+                        currentCoroutineContext().ensureActive()
+                        viewModel.importBook(targetDoc.uri)
                     } else {
                         val treeFile = File(treeUri.path ?: treeUri.toString())
                         if (!treeFile.checkWrite()) {
@@ -254,28 +266,29 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                         val fileDoc = FileDoc.fromUri(uri, false)
                         val name = getImportFileName(fileDoc, uri)
                         val file = treeFile.getFile(name)
-                        if (LocalBookFileImportHelper.isSameFile(
-                                requireContext(), uri, Uri.fromFile(file)
-                            )
-                        ) {
-                            viewModel.importBook(Uri.fromFile(file))
-                        } else {
-                            LocalBookFileImportHelper.copyToFile(
-                                requireContext(), uri, file
-                            ) { stage, copied, _ ->
-                                view?.post {
-                                    updateImportProgress(stage, copied, fileDoc.size)
-                                }
+                        LocalBookFileImportHelper.copyToFile(
+                            requireContext(), uri, file
+                        ) { stage, copied, total ->
+                            view?.post {
+                                updateImportProgress(
+                                    stage,
+                                    copied,
+                                    total.takeIf { it > 0L } ?: fileDoc.size
+                                )
                             }
-                            if (fileDoc.lastModified > 0) {
-                                file.setLastModified(fileDoc.lastModified)
-                            }
-                            viewModel.importBook(Uri.fromFile(file))
                         }
+                        currentCoroutineContext().ensureActive()
+                        if (fileDoc.lastModified > 0) {
+                            file.setLastModified(fileDoc.lastModified)
+                        }
+                        currentCoroutineContext().ensureActive()
+                        viewModel.importBook(Uri.fromFile(file))
                     }
                 }
             } catch (_: CancellationException) {
-                // 用户取消，静默结束
+                if (importJob === runningJob) {
+                    finishActivity()
+                }
             } catch (e: InvalidBooksDirException) {
                 localBookTreeSelect.launch {
                     title = getString(R.string.select_book_folder)
@@ -286,6 +299,10 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                 AppLog.put(msg, e)
                 toastOnUi(msg)
                 finishActivity()
+            } finally {
+                if (importJob === runningJob) {
+                    importJob = null
+                }
             }
         }
     }
@@ -299,7 +316,7 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
         val progressText = view?.findViewById<TextView>(R.id.ck_progress_text) ?: return
         when (stage) {
             LocalBookFileImportHelper.ImportStage.STAGING -> {
-                progressText.text = "正在导入"
+                progressText.text = getString(R.string.importing)
                 if (totalSize > 0) {
                     progressBar.isIndeterminate = false
                     progressBar.max = 100
@@ -309,19 +326,19 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                 }
             }
             LocalBookFileImportHelper.ImportStage.BACKING_UP -> {
-                progressText.text = "正在备份"
+                progressText.text = getString(R.string.import_backing_up)
                 progressBar.isIndeterminate = true
             }
             LocalBookFileImportHelper.ImportStage.WRITING -> {
-                progressText.text = "正在写入"
+                progressText.text = getString(R.string.import_writing)
                 progressBar.isIndeterminate = true
             }
             LocalBookFileImportHelper.ImportStage.VERIFYING -> {
-                progressText.text = "正在校验"
+                progressText.text = getString(R.string.import_verifying)
                 progressBar.isIndeterminate = true
             }
             LocalBookFileImportHelper.ImportStage.ROLLING_BACK -> {
-                progressText.text = "正在回滚"
+                progressText.text = getString(R.string.import_rolling_back)
                 progressBar.isIndeterminate = true
             }
         }

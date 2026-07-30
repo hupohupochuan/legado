@@ -65,14 +65,40 @@ class InputStreamExtensionsTest {
     }
 
     @Test
+    fun isJson_detectsJsonWhenFinalChunkHasOneByte() {
+        val bytes = ByteArray(128 + 8192 + 1) { ' '.code.toByte() }
+        bytes[0] = '{'.code.toByte()
+        bytes[bytes.lastIndex] = '}'.code.toByte()
+
+        ByteArrayInputStream(bytes).use {
+            assertTrue(it.isJson())
+        }
+    }
+
+    @Test
+    fun isJson_detectsJsonFromRepeatedSmallChunks() {
+        val bytes = buildString {
+            append('{')
+            repeat(600) { append(' ') }
+            append('}')
+        }.toByteArray()
+
+        listOf(1, 50, 127).forEach { chunkSize ->
+            ChunkedInputStream(bytes, chunkSize).use {
+                assertTrue("chunkSize=$chunkSize", it.isJson())
+            }
+        }
+    }
+
+    @Test
     fun isJson_worksWhenAvailableAndSkipThrow() {
-        // 模拟某些 Provider 的 InputStream：available() 返回 0，skip() 抛异常
+        // 模拟某些 Provider 的 InputStream：available()/skip() 都不支持
         val bytes = "{\"a\":1}".toByteArray()
         val stream = object : InputStream() {
             private val delegate = ByteArrayInputStream(bytes)
             override fun read(): Int = delegate.read()
             override fun read(b: ByteArray, off: Int, len: Int): Int = delegate.read(b, off, len)
-            override fun available(): Int = 0
+            override fun available(): Int = throw UnsupportedOperationException("available not supported")
             override fun skip(n: Long): Long = throw UnsupportedOperationException("skip not supported")
         }
         stream.use {
@@ -84,6 +110,20 @@ class InputStreamExtensionsTest {
     fun isJson_falseForShortNonJson() {
         ByteArrayInputStream("abc".toByteArray()).use {
             assertFalse(it.isJson())
+        }
+    }
+
+    private class ChunkedInputStream(
+        bytes: ByteArray,
+        private val chunkSize: Int
+    ) : InputStream() {
+
+        private val delegate = ByteArrayInputStream(bytes)
+
+        override fun read(): Int = delegate.read()
+
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            return delegate.read(buffer, offset, minOf(length, chunkSize))
         }
     }
 }

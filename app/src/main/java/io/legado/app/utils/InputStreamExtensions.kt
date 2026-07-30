@@ -27,29 +27,26 @@ fun InputStream?.isJson(): Boolean {
  * 不依赖 [InputStream.available] 或 [InputStream.skip]。
  */
 private fun readTailBytes(stream: InputStream, maxLen: Int): ByteArray {
+    require(maxLen > 0)
     val tail = ByteArray(maxLen)
     val buffer = ByteArray(8192)
-    var total = 0
+    var tailSize = 0
     var read: Int
     while (stream.read(buffer).also { read = it } != -1) {
-        if (read > 0) {
-            if (total + read <= maxLen) {
-                System.arraycopy(buffer, 0, tail, total, read)
-            } else {
-                val discard = total + read - maxLen
-                if (discard < total) {
-                    // tail 中保留最后 (total - discard) 字节，移到开头
-                    System.arraycopy(tail, discard, tail, 0, total - discard)
-                    System.arraycopy(buffer, 0, tail, total - discard, read)
-                } else {
-                    // 新读取的数据本身就超过 maxLen，直接取最后 maxLen 字节
-                    System.arraycopy(buffer, read - maxLen, tail, 0, maxLen)
-                }
+        if (read <= 0) continue
+        if (read >= maxLen) {
+            System.arraycopy(buffer, read - maxLen, tail, 0, maxLen)
+            tailSize = maxLen
+        } else {
+            val keep = minOf(tailSize, maxLen - read)
+            if (keep > 0) {
+                System.arraycopy(tail, tailSize - keep, tail, 0, keep)
             }
-            total += read
+            System.arraycopy(buffer, 0, tail, keep, read)
+            tailSize = keep + read
         }
     }
-    return if (total <= maxLen) tail.copyOf(total) else tail
+    return tail.copyOf(tailSize)
 }
 
 fun InputStream?.contains(str: String): Boolean {

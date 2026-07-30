@@ -42,7 +42,10 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
     private val selectImage by lazy {
         registerHandleFile { result ->
             result.uri ?: return@registerHandleFile
-            readUri(result.uri) { fileDoc, inputStream ->
+            readUri(
+                result.uri,
+                error = { appCtx.toastOnUi(it.localizedMessage) }
+            ) { fileDoc, inputStream ->
             try {
                 var file = requireContext().externalFiles
                 val suffix = fileDoc.name.substringAfterLast(".")

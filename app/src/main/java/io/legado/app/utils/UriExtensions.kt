@@ -32,20 +32,18 @@ fun Uri.isFileScheme() = this.scheme == "file"
 /**
  * 读取URI。
  *
- * 所有异常都会通过 [error] 回调传递；未提供 [error] 时异常继续向上抛出，不会静默吞掉。
- * 权限分支的错误同样通过 [error] 回调传递。
+ * 所有异常（包括权限分支）都会通过必传的 [error] 回调传递。
  */
 fun AppCompatActivity.readUri(
     uri: Uri?,
-    error: ((Throwable) -> Unit)? = null,
+    error: (Throwable) -> Unit,
     success: (fileDoc: FileDoc, inputStream: InputStream) -> Unit
 ) {
     uri ?: return
-    fun handleError(e: Exception) {
+    fun handleError(e: Throwable) {
         e.printOnDebug()
         AppLog.put("读取Uri出错\n$uri\n$e", e, true)
-        if (e is SecurityException) throw e
-        error?.invoke(e) ?: throw e
+        error.invoke(e)
     }
     if (uri.isContentScheme()) {
         val fileDoc: FileDoc
@@ -70,17 +68,16 @@ fun AppCompatActivity.readUri(
             .addPermissions(*Permissions.Group.STORAGE)
             .rationale(R.string.get_storage_per)
             .onGranted {
-                try {
+                val failure = runCatching {
                     RealPathUtil.getPath(this, uri)?.let { path ->
                         val file = File(path)
                         val fileDoc = FileDoc.fromFile(file)
                         FileInputStream(file).use { inputStream ->
                             success.invoke(fileDoc, inputStream)
                         }
-                    } ?: handleError(NoStackTraceException("未获取到文件真实地址"))
-                } catch (e: Exception) {
-                    handleError(e)
-                }
+                    } ?: throw NoStackTraceException("未获取到文件真实地址")
+                }.exceptionOrNull()
+                failure?.let(::handleError)
             }
             .onDenied {
                 handleError(NoStackTraceException("存储权限被拒绝"))
@@ -92,20 +89,18 @@ fun AppCompatActivity.readUri(
 /**
  * 读取URI。
  *
- * 所有异常都会通过 [error] 回调传递；未提供 [error] 时异常继续向上抛出，不会静默吞掉。
- * 权限分支的错误同样通过 [error] 回调传递。
+ * 所有异常（包括权限分支）都会通过必传的 [error] 回调传递。
  */
 fun Fragment.readUri(
     uri: Uri?,
-    error: ((Throwable) -> Unit)? = null,
+    error: (Throwable) -> Unit,
     success: (fileDoc: FileDoc, inputStream: InputStream) -> Unit
 ) {
     uri ?: return
-    fun handleError(e: Exception) {
+    fun handleError(e: Throwable) {
         e.printOnDebug()
         AppLog.put("读取Uri出错\n$uri\n$e", e, true)
-        if (e is SecurityException) throw e
-        error?.invoke(e) ?: throw e
+        error.invoke(e)
     }
     if (uri.isContentScheme()) {
         val fileDoc: FileDoc
@@ -131,17 +126,16 @@ fun Fragment.readUri(
             .addPermissions(*Permissions.Group.STORAGE)
             .rationale(R.string.get_storage_per)
             .onGranted {
-                try {
+                val failure = runCatching {
                     RealPathUtil.getPath(requireContext(), uri)?.let { path ->
                         val file = File(path)
                         val fileDoc = FileDoc.fromFile(file)
                         FileInputStream(file).use { inputStream ->
                             success.invoke(fileDoc, inputStream)
                         }
-                    } ?: handleError(NoStackTraceException("未获取到文件真实地址"))
-                } catch (e: Exception) {
-                    handleError(e)
-                }
+                    } ?: throw NoStackTraceException("未获取到文件真实地址")
+                }.exceptionOrNull()
+                failure?.let(::handleError)
             }
             .onDenied {
                 handleError(NoStackTraceException("存储权限被拒绝"))

@@ -123,7 +123,10 @@ class WelcomeConfigFragment : PreferenceFragment(),
     }
 
     private fun setCoverFromUri(preferenceKey: String, uri: Uri) {
-        readUri(uri) { _, inputStream ->
+        readUri(
+            uri,
+            error = { appCtx.toastOnUi(it.localizedMessage) }
+        ) { _, inputStream ->
             runCatching {
                 val windowManager =
                     requireContext().getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -161,7 +164,10 @@ class WelcomeConfigFragment : PreferenceFragment(),
                 }
 
                 // 重新打开流来解码图片
-                readUri(uri) { _, newInputStream ->
+                readUri(
+                    uri,
+                    error = { appCtx.toastOnUi(it.localizedMessage) }
+                ) { _, newInputStream ->
                     op.inJustDecodeBounds = false
                     val originalBitmap = BitmapFactory.decodeStream(newInputStream, null, op)
                         ?: throw IllegalArgumentException("Failed to decode image from Uri")

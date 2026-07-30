@@ -637,6 +637,11 @@
     <string name="book_type">Tipo:</string>
     <string name="to_backstage">Fondo</string>
     <string name="importing">Importando</string>
+    <string name="import_backing_up">Creando copia de seguridad</string>
+    <string name="import_writing">Escribiendo</string>
+    <string name="import_verifying">Verificando</string>
+    <string name="import_rolling_back">Restaurando el archivo original</string>
+    <string name="import_cancelling">Cancelando</string>
     <string name="exporting">Exportando</string>
     <string name="custom_page_key">Defina qué botones pasan de página</string>
     <string name="prev_page_key">Botón de página anterior</string>

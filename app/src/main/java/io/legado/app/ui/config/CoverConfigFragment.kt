@@ -171,7 +171,10 @@ class CoverConfigFragment : PreferenceFragment(),
     }
 
     private fun setCoverFromUri(preferenceKey: String, uri: Uri) {
-        readUri(uri) { fileDoc, inputStream ->
+        readUri(
+            uri,
+            error = { appCtx.toastOnUi(it.localizedMessage) }
+        ) { fileDoc, inputStream ->
             kotlin.runCatching {
                 var file = requireContext().externalFiles
                 val suffix = fileDoc.name.substringAfterLast(".")

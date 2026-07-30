@@ -9,10 +9,11 @@ import android.system.OsConstants
 import androidx.documentfile.provider.DocumentFile
 import io.legado.app.exception.EmptyFileException
 import io.legado.app.exception.NoStackTraceException
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import java.io.File
@@ -25,59 +26,40 @@ import java.security.MessageDigest
 /**
  * 本地书籍文件安全导入辅助类。
  *
- * 核心安全约束：
- * 1. 跨 Provider 的 Uri 可能指向同一底层文件，必须先通过 dev/ino 判断，相同则跳过复制。
- * 2. 无法确认身份时，必须先把源文件完整复制到 App 临时文件，校验非空后再替换目标。
- * 3. 禁止在源、目标可能是同一文件时直接以 "wt" 打开目标并复制源流。
- * 4. 已有目标必须“备份成功并校验后才能写入”；写后校验大小/SHA-256；失败必须回滚；
- *    回滚失败向上传播并保留备份路径；新目标失败时删除。
- * 5. 所有复制阶段均为可取消分块复制；阶段间执行 ensureActive()；取消后的回滚清理放入
- *    NonCancellable，清理完成前不进入成功状态。
+ * 所有导入都必须先暂存源文件，再备份旧目标，最后覆盖并校验。事务持有全局互斥锁，
+ * 避免多个文件关联 Activity 同时修改同一目标。任何失败或取消都会在
+ * [NonCancellable] 中完成回滚和临时文件清理。
  */
 object LocalBookFileImportHelper {
 
-    /**
-     * 导入阶段，用于进度回调区分当前工作。
-     */
     enum class ImportStage {
         STAGING, BACKING_UP, WRITING, VERIFYING, ROLLING_BACK
     }
 
-    /**
-     * 进度回调。total 未知时为 -1。
-     */
     typealias ImportProgressCallback = (stage: ImportStage, copied: Long, total: Long) -> Unit
 
-    /**
-     * 底层文件身份标识，通过只读文件描述符的 st_dev / st_ino 获得。
-     */
     data class FileIdentity(
         val dev: Long,
         val ino: Long
     )
 
-    /**
-     * 复制结果，包含实际字节数和 SHA-256 摘要。
-     */
     private data class CopyResult(
         val size: Long,
         val sha256: ByteArray
     )
 
-    /**
-     * 备份结果，包含备份文件、原始大小和摘要。
-     */
     private data class BackupResult(
         val file: File,
         val size: Long,
         val sha256: ByteArray
     )
 
+    private const val BUFFER_SIZE = 8192
+    private const val PROGRESS_STEP_BYTES = 1024L * 1024L
+    private val importMutex = Mutex()
+
     /**
-     * 判断两个 Uri 是否指向同一个底层文件。
-     *
-     * 契约：URI 相同但底层文件不存在或不是普通文件时返回 false；
-     * 跨 Provider 通过只读文件描述符的 st_dev/st_ino 比较。
+     * 判断两个 Uri 是否指向同一个存在的普通文件。
      */
     fun isSameFile(context: Context, left: Uri, right: Uri): Boolean {
         if (left == right) {
@@ -89,7 +71,10 @@ object LocalBookFileImportHelper {
             val sameId = runCatching {
                 DocumentsContract.getDocumentId(left) == DocumentsContract.getDocumentId(right)
             }.getOrDefault(false)
-            if (sameId) return true
+            if (sameId) {
+                val leftId = fileIdentity(context, left) ?: return false
+                return leftId == fileIdentity(context, right)
+            }
         }
         val leftId = fileIdentity(context, left) ?: return false
         val rightId = fileIdentity(context, right) ?: return false
@@ -97,14 +82,13 @@ object LocalBookFileImportHelper {
     }
 
     /**
-     * 获取 Uri 对应的底层文件身份。仅当文件存在、为普通文件且 inode 有效时返回非空。
+     * 获取 Uri 对应的底层文件身份。仅普通文件且 inode 有效时返回结果。
      */
     fun fileIdentity(context: Context, uri: Uri): FileIdentity? {
         return runCatching {
             if (uri.isContentScheme()) {
                 context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                    val stat = Os.fstat(pfd.fileDescriptor)
-                    stat.toIdentityOrNull()
+                    Os.fstat(pfd.fileDescriptor).toIdentityOrNull()
                 }
             } else {
                 val path = uri.path ?: return null
@@ -114,8 +98,7 @@ object LocalBookFileImportHelper {
                     file,
                     ParcelFileDescriptor.MODE_READ_ONLY
                 ).use { pfd ->
-                    val stat = Os.fstat(pfd.fileDescriptor)
-                    stat.toIdentityOrNull()
+                    Os.fstat(pfd.fileDescriptor).toIdentityOrNull()
                 }
             }
         }.getOrNull()
@@ -124,28 +107,59 @@ object LocalBookFileImportHelper {
     private fun android.system.StructStat.toIdentityOrNull(): FileIdentity? {
         return if (st_mode and OsConstants.S_IFMT == OsConstants.S_IFREG && st_ino != 0L) {
             FileIdentity(st_dev, st_ino)
-        } else null
+        } else {
+            null
+        }
     }
 
     /**
-     * 安全复制源文件到目标 DocumentFile（已存在则覆盖）。
-     *
-     * 流程：
-     * 1. 源完整复制到 App 临时文件并计算 SHA-256；
-     * 2. 校验实际字节数，0 字节抛 [EmptyFileException]；
-     * 3. 已有目标必须备份成功并校验后才能写入；
-     * 4. 将临时文件写入目标；
-     * 5. 重新读取目标并校验大小/SHA-256；
-     * 6. 失败必须回滚；回滚失败向上传播并保留备份路径；
-     * 7. 新目标失败时删除；清理完成前不进入成功状态。
-     *
-     * @return 写入后的目标 [FileDoc]
+     * 在互斥事务内查找或创建 SAF 目标，确保“导入前是否存在”的状态不会丢失。
+     */
+    suspend fun copyToDocumentTree(
+        context: Context,
+        sourceUri: Uri,
+        treeUri: Uri,
+        displayName: String,
+        mimeType: String,
+        tempDir: File = context.externalCacheDir ?: context.cacheDir,
+        onProgress: ImportProgressCallback? = null
+    ): FileDoc = importMutex.withLock {
+        currentCoroutineContext().ensureActive()
+        val treeDoc = DocumentFile.fromTreeUri(context, treeUri)
+            ?: throw NoStackTraceException("无法读取书籍保存目录")
+        val existingDoc = treeDoc.findFile(displayName)
+        if (existingDoc != null && !existingDoc.isFile) {
+            throw NoStackTraceException("书籍保存目录存在同名文件夹")
+        }
+        if (existingDoc != null && isSameFile(context, sourceUri, existingDoc.uri)) {
+            return@withLock FileDoc.fromUri(existingDoc.uri, false)
+        }
+        val targetExisted = existingDoc != null
+        val targetDoc = existingDoc ?: treeDoc.createFile(mimeType, displayName)
+        ?: throw NoStackTraceException("无法创建目标文件")
+        if (!targetExisted && isSameFile(context, sourceUri, targetDoc.uri)) {
+            return@withLock FileDoc.fromUri(targetDoc.uri, false)
+        }
+        copyToDocumentLocked(
+            context = context,
+            sourceUri = sourceUri,
+            targetDocUri = targetDoc.uri,
+            targetExisted = targetExisted,
+            tempDir = tempDir,
+            onProgress = onProgress
+        )
+    }
+
+    /**
+     * 安全复制到一个已知的目标 Uri。调用方创建了新目标时必须显式传
+     * `targetExisted = false`。
      */
     suspend fun copyToDocument(
         context: Context,
         sourceUri: Uri,
         targetDocUri: Uri,
         tempDir: File = context.externalCacheDir ?: context.cacheDir,
+        targetExisted: Boolean = true,
         onProgress: ImportProgressCallback? = null
     ): FileDoc {
         if (!targetDocUri.isContentScheme()) {
@@ -155,73 +169,39 @@ object LocalBookFileImportHelper {
             copyToFile(context, sourceUri, targetFile, tempDir, onProgress)
             return FileDoc.fromFile(targetFile)
         }
-        val tempFile = File(tempDir, "import_tmp_${System.currentTimeMillis()}")
-        var backup: BackupResult? = null
-        var isNewTarget = false
         try {
-            // 1. 复制源到临时文件
-            val copyResult = readSourceToTempCancellable(
-                context, sourceUri, tempFile, ImportStage.STAGING, onProgress
-            )
-            if (copyResult.size == 0L) {
-                throw EmptyFileException("Unexpected empty File")
-            }
-
-            // 2. 判断目标是否为新文件
-            val targetDoc = DocumentFile.fromSingleUri(context, targetDocUri)
-            isNewTarget = targetDoc?.exists() != true
-
-            // 3. 已有目标必须备份成功并校验后才能写入
-            if (!isNewTarget) {
-                backup = backupDocumentCancellable(
-                    context, targetDocUri, tempDir, onProgress
-                ) ?: throw NoStackTraceException("目标文件备份失败，拒绝覆盖")
-            }
-
-            // 4. 写入目标
-            writeTempToDocumentCancellable(
-                context, tempFile, targetDocUri, ImportStage.WRITING, onProgress
-            )
-
-            // 5. 重新读取目标并校验大小/SHA-256
-            onProgress?.invoke(ImportStage.VERIFYING, copyResult.size, copyResult.size)
-            verifyDocumentContentCancellable(context, targetDocUri, copyResult.size, copyResult.sha256)
-
-            // 6. 校验通过后清理备份
-            backup?.file?.delete()
-            return FileDoc.fromUri(targetDocUri, false)
-        } catch (e: CancellationException) {
-            // 取消：NonCancellable 中完成回滚与清理，然后继续抛出
-            withContext(NonCancellable) {
-                backup?.let {
-                    onProgress?.invoke(ImportStage.ROLLING_BACK, 0, -1)
-                    restoreDocumentBackupCancellable(context, it, targetDocUri)
+            return importMutex.withLock {
+                currentCoroutineContext().ensureActive()
+                if (targetExisted && isSameFile(context, sourceUri, targetDocUri)) {
+                    return@withLock FileDoc.fromUri(targetDocUri, false)
                 }
-                if (isNewTarget) {
-                    runCatching { DocumentFile.fromSingleUri(context, targetDocUri)?.delete() }
+                copyToDocumentLocked(
+                    context = context,
+                    sourceUri = sourceUri,
+                    targetDocUri = targetDocUri,
+                    targetExisted = targetExisted,
+                    tempDir = tempDir,
+                    onProgress = onProgress
+                )
+            }
+        } catch (cause: Throwable) {
+            if (!targetExisted) {
+                val cleanupFailure = withContext(NonCancellable) {
+                    runCatching {
+                        deleteNewDocument(context, targetDocUri)
+                    }.exceptionOrNull()
                 }
-                tempFile.delete()
+                if (cleanupFailure != null) {
+                    cleanupFailure.addSuppressed(cause)
+                    throw cleanupFailure
+                }
             }
-            throw e
-        } catch (e: Exception) {
-            // 失败：回滚；回滚失败向上传播并保留备份路径
-            backup?.let {
-                onProgress?.invoke(ImportStage.ROLLING_BACK, 0, -1)
-                restoreDocumentBackupCancellable(context, it, targetDocUri)
-            }
-            if (isNewTarget) {
-                runCatching { DocumentFile.fromSingleUri(context, targetDocUri)?.delete() }
-            }
-            throw e
-        } finally {
-            tempFile.delete()
+            throw cause
         }
     }
 
     /**
-     * 安全复制源文件到目标 [File]（已存在则覆盖）。逻辑同 [copyToDocument]。
-     *
-     * @return 写入后的目标 [File]
+     * 安全复制到普通文件。所有调用同样经过全局导入互斥锁。
      */
     suspend fun copyToFile(
         context: Context,
@@ -229,285 +209,530 @@ object LocalBookFileImportHelper {
         targetFile: File,
         tempDir: File = context.externalCacheDir ?: context.cacheDir,
         onProgress: ImportProgressCallback? = null
-    ): File {
-        val tempFile = File(tempDir, "import_tmp_${System.currentTimeMillis()}")
+    ): File = importMutex.withLock {
+        currentCoroutineContext().ensureActive()
+        if (isSameFile(context, sourceUri, Uri.fromFile(targetFile))) {
+            return@withLock targetFile
+        }
+        copyToFileLocked(context, sourceUri, targetFile, tempDir, onProgress)
+    }
+
+    private suspend fun copyToDocumentLocked(
+        context: Context,
+        sourceUri: Uri,
+        targetDocUri: Uri,
+        targetExisted: Boolean,
+        tempDir: File,
+        onProgress: ImportProgressCallback?
+    ): FileDoc {
+        var tempFile: File? = null
         var backup: BackupResult? = null
-        var isNewTarget = false
+        var completed = false
         try {
+            val stagingFile = createImportTempFile(tempDir, "import_tmp_")
+            tempFile = stagingFile
             val copyResult = readSourceToTempCancellable(
-                context, sourceUri, tempFile, ImportStage.STAGING, onProgress
+                context, sourceUri, stagingFile, onProgress
             )
             if (copyResult.size == 0L) {
                 throw EmptyFileException("Unexpected empty File")
             }
-            isNewTarget = !targetFile.exists()
-            if (!isNewTarget) {
-                backup = backupFileCancellable(targetFile, tempDir, onProgress)
+            currentCoroutineContext().ensureActive()
+            if (targetExisted) {
+                backup = backupDocumentCancellable(
+                    context, targetDocUri, tempDir, onProgress
+                )
             }
-            writeTempToFileCancellable(tempFile, targetFile, ImportStage.WRITING, onProgress)
-            onProgress?.invoke(ImportStage.VERIFYING, copyResult.size, copyResult.size)
-            verifyFileContentCancellable(targetFile, copyResult.size, copyResult.sha256)
+            currentCoroutineContext().ensureActive()
+            writeTempToDocumentCancellable(context, stagingFile, targetDocUri, onProgress)
+            verifyDocumentWithProgress(
+                context, targetDocUri, copyResult, onProgress
+            )
+            val result = FileDoc.fromUri(targetDocUri, false)
+            completed = true
             backup?.file?.delete()
-            return targetFile
-        } catch (e: CancellationException) {
-            withContext(NonCancellable) {
-                backup?.let {
-                    onProgress?.invoke(ImportStage.ROLLING_BACK, 0, -1)
-                    restoreFileBackupCancellable(it, targetFile)
-                }
-                if (isNewTarget) {
-                    targetFile.delete()
-                }
-                tempFile.delete()
+            return result
+        } catch (cause: Throwable) {
+            val rollbackFailure = withContext(NonCancellable) {
+                rollbackDocument(
+                    context = context,
+                    targetDocUri = targetDocUri,
+                    targetExisted = targetExisted,
+                    backup = backup,
+                    onProgress = onProgress
+                )
             }
-            throw e
-        } catch (e: Exception) {
-            backup?.let {
-                onProgress?.invoke(ImportStage.ROLLING_BACK, 0, -1)
-                restoreFileBackupCancellable(it, targetFile)
+            if (rollbackFailure != null) {
+                rollbackFailure.addSuppressed(cause)
+                throw rollbackFailure
             }
-            if (isNewTarget) {
-                targetFile.delete()
-            }
-            throw e
+            throw cause
         } finally {
-            tempFile.delete()
+            withContext(NonCancellable) {
+                tempFile?.delete()
+                if (completed) {
+                    backup?.file?.delete()
+                }
+            }
         }
     }
 
-    /**
-     * 把源文件完整复制到临时文件，返回实际字节数和 SHA-256。
-     */
+    private suspend fun copyToFileLocked(
+        context: Context,
+        sourceUri: Uri,
+        targetFile: File,
+        tempDir: File,
+        onProgress: ImportProgressCallback?
+    ): File {
+        val targetExisted = targetFile.exists()
+        var tempFile: File? = null
+        var backup: BackupResult? = null
+        var completed = false
+        try {
+            val stagingFile = createImportTempFile(tempDir, "import_tmp_")
+            tempFile = stagingFile
+            val copyResult = readSourceToTempCancellable(
+                context, sourceUri, stagingFile, onProgress
+            )
+            if (copyResult.size == 0L) {
+                throw EmptyFileException("Unexpected empty File")
+            }
+            currentCoroutineContext().ensureActive()
+            if (targetExisted) {
+                backup = backupFileCancellable(targetFile, tempDir, onProgress)
+            }
+            currentCoroutineContext().ensureActive()
+            writeTempToFileCancellable(stagingFile, targetFile, onProgress)
+            verifyFileWithProgress(targetFile, copyResult, onProgress)
+            completed = true
+            backup?.file?.delete()
+            return targetFile
+        } catch (cause: Throwable) {
+            val rollbackFailure = withContext(NonCancellable) {
+                rollbackFile(
+                    targetFile = targetFile,
+                    targetExisted = targetExisted,
+                    backup = backup,
+                    onProgress = onProgress
+                )
+            }
+            if (rollbackFailure != null) {
+                rollbackFailure.addSuppressed(cause)
+                throw rollbackFailure
+            }
+            throw cause
+        } finally {
+            withContext(NonCancellable) {
+                tempFile?.delete()
+                if (completed) {
+                    backup?.file?.delete()
+                }
+            }
+        }
+    }
+
+    private fun createImportTempFile(tempDir: File, prefix: String): File {
+        if (!tempDir.exists() && !tempDir.mkdirs()) {
+            throw NoStackTraceException("无法创建导入临时目录")
+        }
+        return File.createTempFile(prefix, ".part", tempDir)
+    }
+
     private suspend fun readSourceToTempCancellable(
         context: Context,
         sourceUri: Uri,
         tempFile: File,
-        stage: ImportStage,
-        onProgress: ImportProgressCallback? = null
+        onProgress: ImportProgressCallback?
     ): CopyResult {
+        val sizeHint = sourceSizeHint(context, sourceUri)
         return sourceUri.inputStream(context).getOrThrow().use { input ->
             FileOutputStream(tempFile).use { out ->
-                copyStreamCancellable(input, out, stage, onProgress)
+                copyStreamCancellable(
+                    input = input,
+                    out = out,
+                    stage = ImportStage.STAGING,
+                    totalHint = sizeHint,
+                    onProgress = onProgress,
+                    reportIntermediate = true
+                )
             }
         }
     }
 
-    /**
-     * 分块可取消流复制，同时计算 SHA-256。
-     */
+    private fun sourceSizeHint(context: Context, sourceUri: Uri): Long {
+        val size = runCatching {
+            if (sourceUri.isContentScheme()) {
+                FileDoc.fromUri(sourceUri, false).size
+            } else {
+                sourceUri.path?.let(::File)?.length() ?: -1L
+            }
+        }.getOrDefault(-1L)
+        return if (size > 0L) size else -1L
+    }
+
     private suspend fun copyStreamCancellable(
         input: InputStream,
         out: OutputStream,
         stage: ImportStage,
-        onProgress: ImportProgressCallback? = null
+        totalHint: Long,
+        onProgress: ImportProgressCallback?,
+        reportIntermediate: Boolean,
+        emitStart: Boolean = true
     ): CopyResult {
+        val coroutineContext = currentCoroutineContext()
+        coroutineContext.ensureActive()
+        if (emitStart) {
+            onProgress?.invoke(stage, 0L, totalHint)
+        }
         val digest = MessageDigest.getInstance("SHA-256")
-        val buffer = ByteArray(8192)
+        val buffer = ByteArray(BUFFER_SIZE)
         var total = 0L
-        var read: Int
+        var lastReported = 0L
         while (true) {
-            currentCoroutineContext().ensureActive()
-            read = input.read(buffer)
+            coroutineContext.ensureActive()
+            val read = input.read(buffer)
             if (read < 0) break
-            if (read > 0) {
-                out.write(buffer, 0, read)
-                digest.update(buffer, 0, read)
-                total += read
-                onProgress?.invoke(stage, total, -1L)
+            if (read == 0) continue
+            coroutineContext.ensureActive()
+            out.write(buffer, 0, read)
+            digest.update(buffer, 0, read)
+            total += read
+            if (reportIntermediate && total - lastReported >= PROGRESS_STEP_BYTES) {
+                onProgress?.invoke(stage, total, totalHint)
+                lastReported = total
             }
         }
+        coroutineContext.ensureActive()
         out.flush()
+        if (total != lastReported || total == 0L) {
+            onProgress?.invoke(stage, total, totalHint)
+        }
         return CopyResult(total, digest.digest())
     }
 
-    /**
-     * 备份目标 DocumentFile 到临时目录并校验。目标不存在时返回 null；备份失败抛出异常。
-     */
     private suspend fun backupDocumentCancellable(
         context: Context,
         targetDocUri: Uri,
         tempDir: File,
-        onProgress: ImportProgressCallback? = null
-    ): BackupResult? {
-        val doc = DocumentFile.fromSingleUri(context, targetDocUri) ?: return null
-        if (!doc.exists()) return null
-        val backup = File(tempDir, "import_bak_${System.currentTimeMillis()}_${doc.name}")
-        val result = context.contentResolver.openInputStream(targetDocUri)?.use { input ->
-            FileOutputStream(backup).use { out ->
-                copyStreamCancellable(input, out, ImportStage.BACKING_UP, onProgress)
-            }
-        } ?: throw NoStackTraceException("无法打开目标文件输入流")
-        val expectedSize = doc.length()
-        if (expectedSize >= 0 && result.size != expectedSize) {
-            backup.delete()
-            throw NoStackTraceException("备份文件大小与目标不一致")
+        onProgress: ImportProgressCallback?
+    ): BackupResult {
+        val doc = DocumentFile.fromSingleUri(context, targetDocUri)
+            ?: throw NoStackTraceException("无法读取目标文件")
+        if (!doc.exists() || !doc.isFile) {
+            throw NoStackTraceException("目标文件不存在或不是普通文件")
         }
-        return BackupResult(backup, result.size, result.sha256)
+        val backupFile = createImportTempFile(tempDir, "import_bak_")
+        try {
+            val sizeHint = doc.length().takeIf { it > 0L } ?: -1L
+            val copyResult = context.contentResolver.openInputStream(targetDocUri)?.use { input ->
+                FileOutputStream(backupFile).use { out ->
+                    copyStreamCancellable(
+                        input = input,
+                        out = out,
+                        stage = ImportStage.BACKING_UP,
+                        totalHint = sizeHint,
+                        onProgress = onProgress,
+                        reportIntermediate = false
+                    )
+                }
+            } ?: throw NoStackTraceException("无法打开目标文件输入流")
+            if (sizeHint > 0L && copyResult.size != sizeHint) {
+                throw NoStackTraceException("备份文件大小与目标不一致")
+            }
+            verifyFileContentCancellable(
+                backupFile, copyResult.size, copyResult.sha256
+            )
+            return BackupResult(backupFile, copyResult.size, copyResult.sha256)
+        } catch (cause: Throwable) {
+            backupFile.delete()
+            throw cause
+        }
     }
 
-    /**
-     * 使用备份恢复目标 DocumentFile。回滚失败时保留备份并抛出异常。
-     */
-    private suspend fun restoreDocumentBackupCancellable(
-        context: Context,
-        backup: BackupResult,
-        targetDocUri: Uri
-    ) {
-        withContext(NonCancellable) {
-            runCatching {
-                context.contentResolver.openOutputStream(targetDocUri, "wt")?.use { out ->
-                    FileInputStream(backup.file).use { input ->
-                        copyStreamCancellable(input, out, ImportStage.ROLLING_BACK, null)
-                    }
-                } ?: throw NoStackTraceException("无法打开目标文件输出流")
-            }.onFailure { e ->
-                throw NoStackTraceException("回滚失败，备份保留在: ${backup.file.absolutePath}").apply {
-                    initCause(e)
+    private suspend fun backupFileCancellable(
+        targetFile: File,
+        tempDir: File,
+        onProgress: ImportProgressCallback?
+    ): BackupResult {
+        val backupFile = createImportTempFile(tempDir, "import_bak_")
+        try {
+            val expectedSize = targetFile.length()
+            val copyResult = FileInputStream(targetFile).use { input ->
+                FileOutputStream(backupFile).use { out ->
+                    copyStreamCancellable(
+                        input = input,
+                        out = out,
+                        stage = ImportStage.BACKING_UP,
+                        totalHint = expectedSize,
+                        onProgress = onProgress,
+                        reportIntermediate = false
+                    )
                 }
             }
+            if (copyResult.size != expectedSize) {
+                throw NoStackTraceException("备份文件大小与目标不一致")
+            }
+            verifyFileContentCancellable(
+                backupFile, copyResult.size, copyResult.sha256
+            )
+            return BackupResult(backupFile, copyResult.size, copyResult.sha256)
+        } catch (cause: Throwable) {
+            backupFile.delete()
+            throw cause
         }
     }
 
-    /**
-     * 重新读取目标 DocumentFile 并校验大小/SHA-256。
-     */
+    private suspend fun writeTempToDocumentCancellable(
+        context: Context,
+        tempFile: File,
+        targetDocUri: Uri,
+        onProgress: ImportProgressCallback?
+    ) {
+        val coroutineContext = currentCoroutineContext()
+        coroutineContext.ensureActive()
+        onProgress?.invoke(ImportStage.WRITING, 0L, tempFile.length())
+        coroutineContext.ensureActive()
+        context.contentResolver.openOutputStream(targetDocUri, "wt")?.use { out ->
+            FileInputStream(tempFile).use { input ->
+                copyStreamCancellable(
+                    input = input,
+                    out = out,
+                    stage = ImportStage.WRITING,
+                    totalHint = tempFile.length(),
+                    onProgress = onProgress,
+                    reportIntermediate = false,
+                    emitStart = false
+                )
+            }
+        } ?: throw NoStackTraceException("无法打开目标文件输出流")
+    }
+
+    private suspend fun writeTempToFileCancellable(
+        tempFile: File,
+        targetFile: File,
+        onProgress: ImportProgressCallback?
+    ) {
+        val coroutineContext = currentCoroutineContext()
+        coroutineContext.ensureActive()
+        onProgress?.invoke(ImportStage.WRITING, 0L, tempFile.length())
+        coroutineContext.ensureActive()
+        FileUtils.createFileWithReplace(targetFile.absolutePath)
+        coroutineContext.ensureActive()
+        FileInputStream(tempFile).use { input ->
+            FileOutputStream(targetFile).use { out ->
+                copyStreamCancellable(
+                    input = input,
+                    out = out,
+                    stage = ImportStage.WRITING,
+                    totalHint = tempFile.length(),
+                    onProgress = onProgress,
+                    reportIntermediate = false,
+                    emitStart = false
+                )
+            }
+        }
+    }
+
+    private suspend fun verifyDocumentWithProgress(
+        context: Context,
+        targetDocUri: Uri,
+        expected: CopyResult,
+        onProgress: ImportProgressCallback?
+    ) {
+        onProgress?.invoke(ImportStage.VERIFYING, 0L, expected.size)
+        verifyDocumentContentCancellable(
+            context, targetDocUri, expected.size, expected.sha256
+        )
+        onProgress?.invoke(ImportStage.VERIFYING, expected.size, expected.size)
+    }
+
+    private suspend fun verifyFileWithProgress(
+        targetFile: File,
+        expected: CopyResult,
+        onProgress: ImportProgressCallback?
+    ) {
+        onProgress?.invoke(ImportStage.VERIFYING, 0L, expected.size)
+        verifyFileContentCancellable(targetFile, expected.size, expected.sha256)
+        onProgress?.invoke(ImportStage.VERIFYING, expected.size, expected.size)
+    }
+
     private suspend fun verifyDocumentContentCancellable(
         context: Context,
         targetDocUri: Uri,
         expectedSize: Long,
         expectedSha256: ByteArray
     ) {
-        val result = context.contentResolver.openInputStream(targetDocUri)?.use { input ->
-            val digest = MessageDigest.getInstance("SHA-256")
-            val buffer = ByteArray(8192)
-            var total = 0L
-            var read: Int
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                read = input.read(buffer)
-                if (read < 0) break
-                if (read > 0) {
-                    digest.update(buffer, 0, read)
-                    total += read
-                }
-            }
-            CopyResult(total, digest.digest())
+        val result = context.contentResolver.openInputStream(targetDocUri)?.use {
+            digestInputCancellable(it)
         } ?: throw NoStackTraceException("无法打开目标文件输入流进行校验")
         if (result.size != expectedSize || !result.sha256.contentEquals(expectedSha256)) {
             throw NoStackTraceException("目标文件校验失败：大小或摘要不一致")
         }
     }
 
-    /**
-     * 将临时文件写入目标 DocumentFile。
-     */
-    private suspend fun writeTempToDocumentCancellable(
-        context: Context,
-        tempFile: File,
-        targetDocUri: Uri,
-        stage: ImportStage,
-        onProgress: ImportProgressCallback? = null
-    ) {
-        context.contentResolver.openOutputStream(targetDocUri, "wt")?.use { out ->
-            FileInputStream(tempFile).use { input ->
-                copyStreamCancellable(input, out, stage, onProgress)
-            }
-        } ?: throw NoStackTraceException("无法打开目标文件输出流")
-    }
-
-    /**
-     * 备份目标文件到临时目录。
-     */
-    private suspend fun backupFileCancellable(
-        targetFile: File,
-        tempDir: File,
-        onProgress: ImportProgressCallback? = null
-    ): BackupResult {
-        val backup = File(tempDir, "import_bak_${System.currentTimeMillis()}_${targetFile.name}")
-        val result = FileInputStream(targetFile).use { input ->
-            FileOutputStream(backup).use { out ->
-                copyStreamCancellable(input, out, ImportStage.BACKING_UP, onProgress)
-            }
-        }
-        if (result.size != targetFile.length()) {
-            backup.delete()
-            throw NoStackTraceException("备份文件大小与目标不一致")
-        }
-        return BackupResult(backup, result.size, result.sha256)
-    }
-
-    /**
-     * 使用备份恢复目标文件。回滚失败时保留备份并抛出异常。
-     */
-    private suspend fun restoreFileBackupCancellable(backup: BackupResult, targetFile: File) {
-        withContext(NonCancellable) {
-            runCatching {
-                FileUtils.createFileWithReplace(targetFile.absolutePath)
-                FileInputStream(backup.file).use { input ->
-                    FileOutputStream(targetFile).use { out ->
-                        copyStreamCancellable(input, out, ImportStage.ROLLING_BACK, null)
-                    }
-                }
-            }.onFailure { e ->
-                throw NoStackTraceException("回滚失败，备份保留在: ${backup.file.absolutePath}").apply {
-                    initCause(e)
-                }
-            }
-        }
-    }
-
-    /**
-     * 将临时文件写入目标文件。
-     */
-    private suspend fun writeTempToFileCancellable(
-        tempFile: File,
-        targetFile: File,
-        stage: ImportStage,
-        onProgress: ImportProgressCallback? = null
-    ) {
-        FileUtils.createFileWithReplace(targetFile.absolutePath)
-        FileInputStream(tempFile).use { input ->
-            FileOutputStream(targetFile).use { out ->
-                copyStreamCancellable(input, out, stage, onProgress)
-            }
-        }
-    }
-
-    /**
-     * 重新读取目标文件并校验大小/SHA-256。
-     */
     private suspend fun verifyFileContentCancellable(
         targetFile: File,
         expectedSize: Long,
         expectedSha256: ByteArray
     ) {
-        val result = FileInputStream(targetFile).use { input ->
-            val digest = MessageDigest.getInstance("SHA-256")
-            val buffer = ByteArray(8192)
-            var total = 0L
-            var read: Int
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                read = input.read(buffer)
-                if (read < 0) break
-                if (read > 0) {
-                    digest.update(buffer, 0, read)
-                    total += read
-                }
-            }
-            CopyResult(total, digest.digest())
+        val result = FileInputStream(targetFile).use {
+            digestInputCancellable(it)
         }
         if (result.size != expectedSize || !result.sha256.contentEquals(expectedSha256)) {
             throw NoStackTraceException("目标文件校验失败：大小或摘要不一致")
         }
     }
+
+    private suspend fun digestInputCancellable(input: InputStream): CopyResult {
+        val coroutineContext = currentCoroutineContext()
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            coroutineContext.ensureActive()
+            val read = input.read(buffer)
+            if (read < 0) break
+            if (read > 0) {
+                digest.update(buffer, 0, read)
+                total += read
+            }
+        }
+        return CopyResult(total, digest.digest())
+    }
+
+    private suspend fun rollbackDocument(
+        context: Context,
+        targetDocUri: Uri,
+        targetExisted: Boolean,
+        backup: BackupResult?,
+        onProgress: ImportProgressCallback?
+    ): Throwable? {
+        return runCatching {
+            runCatching {
+                onProgress?.invoke(ImportStage.ROLLING_BACK, 0L, backup?.size ?: -1L)
+            }
+            if (targetExisted) {
+                val requiredBackup = backup
+                    ?: return@runCatching
+                restoreDocumentBackup(context, requiredBackup, targetDocUri)
+                requiredBackup.file.delete()
+            } else {
+                deleteNewDocument(context, targetDocUri)
+            }
+            runCatching {
+                onProgress?.invoke(
+                    ImportStage.ROLLING_BACK,
+                    backup?.size ?: 0L,
+                    backup?.size ?: -1L
+                )
+            }
+        }.exceptionOrNull()
+    }
+
+    private suspend fun rollbackFile(
+        targetFile: File,
+        targetExisted: Boolean,
+        backup: BackupResult?,
+        onProgress: ImportProgressCallback?
+    ): Throwable? {
+        return runCatching {
+            runCatching {
+                onProgress?.invoke(ImportStage.ROLLING_BACK, 0L, backup?.size ?: -1L)
+            }
+            if (targetExisted) {
+                val requiredBackup = backup
+                    ?: return@runCatching
+                restoreFileBackup(requiredBackup, targetFile)
+                requiredBackup.file.delete()
+            } else {
+                deleteNewFile(targetFile)
+            }
+            runCatching {
+                onProgress?.invoke(
+                    ImportStage.ROLLING_BACK,
+                    backup?.size ?: 0L,
+                    backup?.size ?: -1L
+                )
+            }
+        }.exceptionOrNull()
+    }
+
+    private suspend fun restoreDocumentBackup(
+        context: Context,
+        backup: BackupResult,
+        targetDocUri: Uri
+    ) {
+        try {
+            context.contentResolver.openOutputStream(targetDocUri, "wt")?.use { out ->
+                FileInputStream(backup.file).use { input ->
+                    copyStreamCancellable(
+                        input = input,
+                        out = out,
+                        stage = ImportStage.ROLLING_BACK,
+                        totalHint = backup.size,
+                        onProgress = null,
+                        reportIntermediate = false
+                    )
+                }
+            } ?: throw NoStackTraceException("无法打开目标文件输出流")
+            verifyDocumentContentCancellable(
+                context, targetDocUri, backup.size, backup.sha256
+            )
+        } catch (cause: Throwable) {
+            throw rollbackException(backup.file, cause)
+        }
+    }
+
+    private suspend fun restoreFileBackup(
+        backup: BackupResult,
+        targetFile: File
+    ) {
+        try {
+            FileUtils.createFileWithReplace(targetFile.absolutePath)
+            FileInputStream(backup.file).use { input ->
+                FileOutputStream(targetFile).use { out ->
+                    copyStreamCancellable(
+                        input = input,
+                        out = out,
+                        stage = ImportStage.ROLLING_BACK,
+                        totalHint = backup.size,
+                        onProgress = null,
+                        reportIntermediate = false
+                    )
+                }
+            }
+            verifyFileContentCancellable(targetFile, backup.size, backup.sha256)
+        } catch (cause: Throwable) {
+            throw rollbackException(backup.file, cause)
+        }
+    }
+
+    private fun rollbackException(backupFile: File, cause: Throwable): Throwable {
+        return NoStackTraceException(
+            "回滚失败，备份保留在: ${backupFile.absolutePath}"
+        ).apply {
+            initCause(cause)
+        }
+    }
+
+    private fun deleteNewDocument(context: Context, targetDocUri: Uri) {
+        val targetDoc = DocumentFile.fromSingleUri(context, targetDocUri)
+            ?: throw NoStackTraceException("无法定位待清理的新目标文件")
+        val deleted = targetDoc.delete()
+        if (!deleted && targetDoc.exists()) {
+            throw NoStackTraceException("新目标文件删除失败: $targetDocUri")
+        }
+    }
+
+    private fun deleteNewFile(targetFile: File) {
+        if (targetFile.exists() && !targetFile.delete()) {
+            throw NoStackTraceException("新目标文件删除失败: ${targetFile.absolutePath}")
+        }
+    }
 }
 
 /**
- * 实际读取源文件至少一字节，确认 DocumentFile.length() 返回 0 是“真实空文件”
- * 还是“长度未知”。
- *
- * 只有成功读取到 EOF 才返回 false；权限和 I/O 异常原样向上传播。
+ * 只有成功读取到 EOF 才判定为空；权限和 I/O 异常原样向上传播。
  */
 @Throws(Exception::class)
 fun Uri.hasReadableContent(context: Context = appCtx): Boolean {

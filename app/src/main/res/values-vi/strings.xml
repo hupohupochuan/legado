@@ -635,6 +635,11 @@
     <string name="book_type">Loại:</string>
     <string name="to_backstage">Nền</string>
     <string name="importing">Đang nhập</string>
+    <string name="import_backing_up">Đang sao lưu</string>
+    <string name="import_writing">Đang ghi</string>
+    <string name="import_verifying">Đang xác minh</string>
+    <string name="import_rolling_back">Đang khôi phục tệp gốc</string>
+    <string name="import_cancelling">Đang hủy</string>
     <string name="exporting">Đang xuất</string>
     <string name="custom_page_key">Đặt nút lật trang</string>
     <string name="prev_page_key">Nút trang trước</string>
