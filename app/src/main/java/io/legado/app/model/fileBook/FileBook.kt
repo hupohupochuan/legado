@@ -40,6 +40,7 @@ import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
+import io.legado.app.utils.hasReadableContent
 import io.legado.app.utils.isContentScheme
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
@@ -181,8 +182,10 @@ object FileBook : BaseFileBook {
 
     fun importLocalFile(uri: Uri) = importLocalFile(FileDoc.fromUri(uri, false))
     fun importLocalFile(fileDoc: FileDoc): Book {
-        val (fileName, _, _, updateTime, _) = fileDoc.apply {
-            if (size == 0L) throw EmptyFileException("Unexpected empty File")
+        val (fileName, _, size, updateTime, _) = fileDoc.apply {
+            if (size == 0L && !uri.hasReadableContent()) {
+                throw EmptyFileException("Unexpected empty File")
+            }
         }
         val (name, author) = analyzeNameAuthor(fileName)
         var type = BookType.text or BookType.local

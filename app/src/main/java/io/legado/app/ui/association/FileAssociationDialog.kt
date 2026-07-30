@@ -2,8 +2,9 @@ package io.legado.app.ui.association
 
 import android.net.Uri
 import android.os.Bundle
-import android.provider.DocumentsContract
 import android.view.View
+import android.widget.ProgressBar
+import android.widget.TextView
 import androidx.core.net.toUri
 import androidx.core.os.BundleCompat
 import androidx.documentfile.provider.DocumentFile
@@ -27,20 +28,21 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
+import io.legado.app.utils.LocalBookFileImportHelper
 import io.legado.app.utils.canRead
 import io.legado.app.utils.checkWrite
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
-import io.legado.app.utils.readUri
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import java.io.File
-import java.io.FileOutputStream
 
 class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_view) {
 
@@ -51,14 +53,15 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
     }
 
     private val viewModel by viewModels<FileAssociationViewModel>()
+    private var importJob: Job? = null
     private val localBookTreeSelect by lazy {
         registerHandleFile { result ->
-        val uri = BundleCompat.getParcelable(arguments ?: return@registerHandleFile, "uri", Uri::class.java)
-            ?: return@registerHandleFile
-        result.uri?.let { treeUri ->
-            AppConfig.defaultBookTreeUri = treeUri.toString()
-            importBook(treeUri, uri)
-        }
+            val uri = BundleCompat.getParcelable(arguments ?: return@registerHandleFile, "uri", Uri::class.java)
+                ?: return@registerHandleFile
+            result.uri?.let { treeUri ->
+                AppConfig.defaultBookTreeUri = treeUri.toString()
+                importBook(treeUri, uri)
+            }
         }
     }
 
@@ -66,6 +69,13 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val uri = arguments?.let { BundleCompat.getParcelable(it, "uri", Uri::class.java) } ?: return dismiss()
+
+        view.findViewById<View>(R.id.tv_footer_left).setOnClickListener {
+            importJob?.cancel()
+            finishActivity()
+        }
+        view.findViewById<ProgressBar>(R.id.ck_progress).isIndeterminate = true
+        view.findViewById<TextView>(R.id.ck_progress_text).text = getString(R.string.importing)
 
         viewModel.importBookLiveData.observe(viewLifecycleOwner) {
             importBook(it)
@@ -206,8 +216,9 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
     }
 
     private fun importBook(treeUri: Uri?, uri: Uri) {
-        lifecycleScope.launch {
-            runCatching {
+        importJob?.cancel()
+        importJob = lifecycleScope.launch {
+            try {
                 withContext(IO) {
                     if (treeUri == null) {
                         viewModel.importBook(uri)
@@ -216,21 +227,30 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                         if (treeDoc?.checkWrite() != true) {
                             throw InvalidBooksDirException("请重新设置书籍保存位置")
                         }
-                        this@FileAssociationDialog.readUri(uri) { fileDoc, inputStream ->
-                            val name = getImportFileName(fileDoc, uri)
-                            var doc = treeDoc.findFile(name)
-                            if (doc == null) {
-                                doc = treeDoc.createFile(FileUtils.getMimeType(name), name)
-                                    ?: throw InvalidBooksDirException("请重新设置书籍保存位置")
-                            }
-                            if (!isSameDocument(uri, doc.uri)) {
-                                val outputStream = requireContext().contentResolver
-                                    .openOutputStream(doc.uri, "wt")
-                                    ?: throw InvalidBooksDirException("请重新设置书籍保存位置")
-                                outputStream
-                                    .use { oStream ->
-                                        inputStream.copyTo(oStream)
+                        val fileDoc = FileDoc.fromUri(uri, false)
+                        val name = getImportFileName(fileDoc, uri)
+                        var doc = treeDoc.findFile(name)
+                        if (doc == null) {
+                            doc = treeDoc.createFile(FileUtils.getMimeType(name), name)
+                                ?: throw InvalidBooksDirException("请重新设置书籍保存位置")
+                        }
+                        if (LocalBookFileImportHelper.isSameFile(requireContext(), uri, doc.uri)) {
+                            viewModel.importBook(doc.uri)
+                        } else {
+                            LocalBookFileImportHelper.copyToDocument(
+                                requireContext(), uri, doc.uri
+                            ) { copied, _ ->
+                                view?.post {
+                                    view?.findViewById<ProgressBar>(R.id.ck_progress)?.let {
+                                        if (it.isIndeterminate) {
+                                            it.isIndeterminate = false
+                                            it.max = 100
+                                        }
+                                        it.progress = if (fileDoc.size > 0) {
+                                            (copied * 100 / fileDoc.size).toInt()
+                                        } else it.progress
                                     }
+                                }
                             }
                             viewModel.importBook(doc.uri)
                         }
@@ -239,33 +259,49 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                         if (!treeFile.checkWrite()) {
                             throw InvalidBooksDirException("请重新设置书籍保存位置")
                         }
-                        this@FileAssociationDialog.readUri(uri) { fileDoc, inputStream ->
-                            val name = getImportFileName(fileDoc, uri)
-                            val file = treeFile.getFile(name)
-                            if (fileDoc.asFile()?.canonicalPath != file.canonicalPath) {
-                                FileOutputStream(file).use { oStream ->
-                                    inputStream.copyTo(oStream)
+                        val fileDoc = FileDoc.fromUri(uri, false)
+                        val name = getImportFileName(fileDoc, uri)
+                        val file = treeFile.getFile(name)
+                        if (LocalBookFileImportHelper.isSameFile(
+                                requireContext(), uri, Uri.fromFile(file)
+                            )
+                        ) {
+                            viewModel.importBook(Uri.fromFile(file))
+                        } else {
+                            LocalBookFileImportHelper.copyToFile(
+                                requireContext(), uri, file
+                            ) { copied, _ ->
+                                view?.post {
+                                    view?.findViewById<ProgressBar>(R.id.ck_progress)?.let {
+                                        if (it.isIndeterminate) {
+                                            it.isIndeterminate = false
+                                            it.max = 100
+                                        }
+                                        it.progress = if (fileDoc.size > 0) {
+                                            (copied * 100 / fileDoc.size).toInt()
+                                        } else it.progress
+                                    }
                                 }
-                                if (fileDoc.lastModified > 0) {
-                                    file.setLastModified(fileDoc.lastModified)
-                                }
+                            }
+                            if (fileDoc.lastModified > 0) {
+                                file.setLastModified(fileDoc.lastModified)
                             }
                             viewModel.importBook(Uri.fromFile(file))
                         }
                     }
                 }
-            }.onFailure {
-                if (it is InvalidBooksDirException) {
-                    localBookTreeSelect.launch {
-                        title = getString(R.string.select_book_folder)
-                        mode = HandleFileContract.DIR_SYS
-                    }
-                } else {
-                    val msg = "导入书籍失败\n${it.localizedMessage}"
-                    AppLog.put(msg, it)
-                    toastOnUi(msg)
-                    finishActivity()
+            } catch (_: CancellationException) {
+                // 用户取消，静默结束
+            } catch (e: InvalidBooksDirException) {
+                localBookTreeSelect.launch {
+                    title = getString(R.string.select_book_folder)
+                    mode = HandleFileContract.DIR_SYS
                 }
+            } catch (e: Exception) {
+                val msg = "导入书籍失败\n${e.localizedMessage}"
+                AppLog.put(msg, e)
+                toastOnUi(msg)
+                finishActivity()
             }
         }
     }
@@ -276,17 +312,5 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
         }.ifBlank {
             throw NoStackTraceException("未获取到文件名")
         }
-    }
-
-    private fun isSameDocument(left: Uri, right: Uri): Boolean {
-        if (left == right) {
-            return true
-        }
-        if (!left.isContentScheme() || !right.isContentScheme() || left.authority != right.authority) {
-            return false
-        }
-        return runCatching {
-            DocumentsContract.getDocumentId(left) == DocumentsContract.getDocumentId(right)
-        }.getOrDefault(false)
     }
 }

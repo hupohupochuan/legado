@@ -30,76 +30,107 @@ fun Uri.isContentScheme() = this.scheme == "content"
 fun Uri.isFileScheme() = this.scheme == "file"
 
 /**
- * 读取URI
+ * 读取URI。
+ *
+ * @param error 可选的错误回调。content scheme 下 [success] 抛出的异常会继续向上抛出，
+ *              不会被吞掉；只有打开流阶段的错误会通过 [error] 回调或继续向上抛出。
  */
 fun AppCompatActivity.readUri(
     uri: Uri?,
+    error: ((Throwable) -> Unit)? = null,
     success: (fileDoc: FileDoc, inputStream: InputStream) -> Unit
 ) {
     uri ?: return
-    try {
-        if (uri.isContentScheme()) {
+    if (uri.isContentScheme()) {
+        val fileDoc: FileDoc
+        val inputStream = try {
             val doc = DocumentFile.fromSingleUri(this, uri)
             doc ?: throw NoStackTraceException("未获取到文件")
-            val fileDoc = FileDoc.fromDocumentFile(doc)
-            contentResolver.openInputStream(uri)!!.use { inputStream ->
-                success.invoke(fileDoc, inputStream)
-            }
-        } else {
-            PermissionsCompat.Builder()
-                .addPermissions(*Permissions.Group.STORAGE)
-                .rationale(R.string.get_storage_per)
-                .onGranted {
+            fileDoc = FileDoc.fromDocumentFile(doc)
+            contentResolver.openInputStream(uri) ?: throw NoStackTraceException("未获取到文件")
+        } catch (e: Exception) {
+            e.printOnDebug()
+            AppLog.put("读取Uri出错\n$uri\n$e", e, true)
+            if (e is SecurityException) throw e
+            error?.invoke(e)
+            return
+        }
+        inputStream.use { success.invoke(fileDoc, it) }
+    } else {
+        PermissionsCompat.Builder()
+            .addPermissions(*Permissions.Group.STORAGE)
+            .rationale(R.string.get_storage_per)
+            .onGranted {
+                try {
                     RealPathUtil.getPath(this, uri)?.let { path ->
                         val file = File(path)
                         val fileDoc = FileDoc.fromFile(file)
                         FileInputStream(file).use { inputStream ->
                             success.invoke(fileDoc, inputStream)
                         }
-                    }
+                    } ?: error?.invoke(NoStackTraceException("未获取到文件真实地址"))
+                } catch (e: Exception) {
+                    if (e is SecurityException) throw e
+                    error?.invoke(e)
                 }
-                .request()
-        }
-    } catch (e: Exception) {
-        e.printOnDebug()
-        AppLog.put("读取Uri出错\n$uri\n$e", e, true)
-        if (e is SecurityException) {
-            throw e
-        }
+            }
+            .onDenied {
+                error?.invoke(NoStackTraceException("存储权限被拒绝"))
+            }
+            .request()
     }
 }
 
 /**
- * 读取URI
+ * 读取URI。
+ *
+ * @param error 可选的错误回调。content scheme 下 [success] 抛出的异常会继续向上抛出，
+ *              不会被吞掉；只有打开流阶段的错误会通过 [error] 回调或继续向上抛出。
  */
-fun Fragment.readUri(uri: Uri?, success: (fileDoc: FileDoc, inputStream: InputStream) -> Unit) {
+fun Fragment.readUri(
+    uri: Uri?,
+    error: ((Throwable) -> Unit)? = null,
+    success: (fileDoc: FileDoc, inputStream: InputStream) -> Unit
+) {
     uri ?: return
-    try {
-        if (uri.isContentScheme()) {
+    if (uri.isContentScheme()) {
+        val fileDoc: FileDoc
+        val inputStream = try {
             val doc = DocumentFile.fromSingleUri(requireContext(), uri)
             doc ?: throw NoStackTraceException("未获取到文件")
-            val fileDoc = FileDoc.fromDocumentFile(doc)
-            requireContext().contentResolver.openInputStream(uri)!!.use { inputStream ->
-                success.invoke(fileDoc, inputStream)
-            }
-        } else {
-            PermissionsCompat.Builder()
-                .addPermissions(*Permissions.Group.STORAGE)
-                .rationale(R.string.get_storage_per)
-                .onGranted {
+            fileDoc = FileDoc.fromDocumentFile(doc)
+            requireContext().contentResolver.openInputStream(uri)
+                ?: throw NoStackTraceException("未获取到文件")
+        } catch (e: Exception) {
+            e.printOnDebug()
+            AppLog.put("读取Uri出错\n$uri\n$e", e, true)
+            if (e is SecurityException) throw e
+            error?.invoke(e)
+            return
+        }
+        inputStream.use { success.invoke(fileDoc, it) }
+    } else {
+        PermissionsCompat.Builder()
+            .addPermissions(*Permissions.Group.STORAGE)
+            .rationale(R.string.get_storage_per)
+            .onGranted {
+                try {
                     RealPathUtil.getPath(requireContext(), uri)?.let { path ->
                         val file = File(path)
                         val fileDoc = FileDoc.fromFile(file)
                         FileInputStream(file).use { inputStream ->
                             success.invoke(fileDoc, inputStream)
                         }
-                    }
+                    } ?: error?.invoke(NoStackTraceException("未获取到文件真实地址"))
+                } catch (e: Exception) {
+                    if (e is SecurityException) throw e
+                    error?.invoke(e)
                 }
-                .request()
-        }
-    } catch (e: Exception) {
-        e.printOnDebug()
-        AppLog.put("读取Uri出错\n$uri\n$e", e, true)
+            }
+            .onDenied {
+                error?.invoke(NoStackTraceException("存储权限被拒绝"))
+            }
+            .request()
     }
 }
 
