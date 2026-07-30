@@ -36,12 +36,14 @@ private fun readTailBytes(stream: InputStream, maxLen: Int): ByteArray {
             if (total + read <= maxLen) {
                 System.arraycopy(buffer, 0, tail, total, read)
             } else {
-                if (read >= maxLen) {
-                    System.arraycopy(buffer, read - maxLen, tail, 0, maxLen)
+                val discard = total + read - maxLen
+                if (discard < total) {
+                    // tail 中保留最后 (total - discard) 字节，移到开头
+                    System.arraycopy(tail, discard, tail, 0, total - discard)
+                    System.arraycopy(buffer, 0, tail, total - discard, read)
                 } else {
-                    val keep = maxLen - read
-                    System.arraycopy(tail, total - keep, tail, 0, keep)
-                    System.arraycopy(buffer, 0, tail, keep, read)
+                    // 新读取的数据本身就超过 maxLen，直接取最后 maxLen 字节
+                    System.arraycopy(buffer, read - maxLen, tail, 0, maxLen)
                 }
             }
             total += read

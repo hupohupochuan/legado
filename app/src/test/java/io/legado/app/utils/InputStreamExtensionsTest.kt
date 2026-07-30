@@ -4,6 +4,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.InputStream
 
 class InputStreamExtensionsTest {
 
@@ -44,6 +45,37 @@ class InputStreamExtensionsTest {
             append("\"end\":true}")
         }
         ByteArrayInputStream(json.toByteArray()).use {
+            assertTrue(it.isJson())
+        }
+    }
+
+    @Test
+    fun isJson_detectsVeryLongJsonAcrossMultipleBuffers() {
+        // 超过多个 8192 缓冲区，验证尾部缓冲不越界且结果正确
+        val json = buildString {
+            append("{")
+            repeat(2000) { append("\"key$it\":\"value$it\",") }
+            append("\"end\":true}")
+        }
+        val bytes = json.toByteArray()
+        assertTrue(bytes.size > 8192 * 3)
+        ByteArrayInputStream(bytes).use {
+            assertTrue(it.isJson())
+        }
+    }
+
+    @Test
+    fun isJson_worksWhenAvailableAndSkipThrow() {
+        // 模拟某些 Provider 的 InputStream：available() 返回 0，skip() 抛异常
+        val bytes = "{\"a\":1}".toByteArray()
+        val stream = object : InputStream() {
+            private val delegate = ByteArrayInputStream(bytes)
+            override fun read(): Int = delegate.read()
+            override fun read(b: ByteArray, off: Int, len: Int): Int = delegate.read(b, off, len)
+            override fun available(): Int = 0
+            override fun skip(n: Long): Long = throw UnsupportedOperationException("skip not supported")
+        }
+        stream.use {
             assertTrue(it.isJson())
         }
     }

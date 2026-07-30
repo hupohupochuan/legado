@@ -239,17 +239,9 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                         } else {
                             LocalBookFileImportHelper.copyToDocument(
                                 requireContext(), uri, doc.uri
-                            ) { copied, _ ->
+                            ) { stage, copied, _ ->
                                 view?.post {
-                                    view?.findViewById<ProgressBar>(R.id.ck_progress)?.let {
-                                        if (it.isIndeterminate) {
-                                            it.isIndeterminate = false
-                                            it.max = 100
-                                        }
-                                        it.progress = if (fileDoc.size > 0) {
-                                            (copied * 100 / fileDoc.size).toInt()
-                                        } else it.progress
-                                    }
+                                    updateImportProgress(stage, copied, fileDoc.size)
                                 }
                             }
                             viewModel.importBook(doc.uri)
@@ -270,17 +262,9 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                         } else {
                             LocalBookFileImportHelper.copyToFile(
                                 requireContext(), uri, file
-                            ) { copied, _ ->
+                            ) { stage, copied, _ ->
                                 view?.post {
-                                    view?.findViewById<ProgressBar>(R.id.ck_progress)?.let {
-                                        if (it.isIndeterminate) {
-                                            it.isIndeterminate = false
-                                            it.max = 100
-                                        }
-                                        it.progress = if (fileDoc.size > 0) {
-                                            (copied * 100 / fileDoc.size).toInt()
-                                        } else it.progress
-                                    }
+                                    updateImportProgress(stage, copied, fileDoc.size)
                                 }
                             }
                             if (fileDoc.lastModified > 0) {
@@ -302,6 +286,43 @@ class FileAssociationDialog() : BaseDialogFragment(R.layout.dialog_progressbar_v
                 AppLog.put(msg, e)
                 toastOnUi(msg)
                 finishActivity()
+            }
+        }
+    }
+
+    private fun updateImportProgress(
+        stage: LocalBookFileImportHelper.ImportStage,
+        copied: Long,
+        totalSize: Long
+    ) {
+        val progressBar = view?.findViewById<ProgressBar>(R.id.ck_progress) ?: return
+        val progressText = view?.findViewById<TextView>(R.id.ck_progress_text) ?: return
+        when (stage) {
+            LocalBookFileImportHelper.ImportStage.STAGING -> {
+                progressText.text = "正在导入"
+                if (totalSize > 0) {
+                    progressBar.isIndeterminate = false
+                    progressBar.max = 100
+                    progressBar.progress = (copied * 100 / totalSize).toInt().coerceIn(0, 100)
+                } else {
+                    progressBar.isIndeterminate = true
+                }
+            }
+            LocalBookFileImportHelper.ImportStage.BACKING_UP -> {
+                progressText.text = "正在备份"
+                progressBar.isIndeterminate = true
+            }
+            LocalBookFileImportHelper.ImportStage.WRITING -> {
+                progressText.text = "正在写入"
+                progressBar.isIndeterminate = true
+            }
+            LocalBookFileImportHelper.ImportStage.VERIFYING -> {
+                progressText.text = "正在校验"
+                progressBar.isIndeterminate = true
+            }
+            LocalBookFileImportHelper.ImportStage.ROLLING_BACK -> {
+                progressText.text = "正在回滚"
+                progressBar.isIndeterminate = true
             }
         }
     }

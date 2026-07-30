@@ -3,11 +3,15 @@ package io.legado.app.utils
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.legado.app.constant.AppConst
 import io.legado.app.exception.EmptyFileException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -26,10 +30,9 @@ import java.security.MessageDigest
 /**
  * 本地书籍文件安全导入辅助类回归测试。
  *
- * 重点覆盖：
- * - 跨 scheme（file:// 与 content://）指向同一底层文件的识别
- * - 安全复制前后大小、SHA-256 一致
- * - 真实空文件与覆盖场景
+ * 覆盖：跨 scheme 同一文件识别、安全复制、空文件、取消回滚、并发临时文件。
+ * 注意：真实跨 authority（如 MediaStore vs ExternalStorageProvider）需要设备环境，
+ * 当前测试以 file:// + FileProvider 模拟同一物理文件。
  */
 @RunWith(AndroidJUnit4::class)
 class LocalBookFileImportHelperTest {
@@ -77,6 +80,19 @@ class LocalBookFileImportHelperTest {
     }
 
     @Test
+    fun isSameFile_returnsFalseForSameUriButMissingFile() {
+        val missing = File(testDir, "missing.txt")
+        val uri = Uri.fromFile(missing)
+        assertFalse(LocalBookFileImportHelper.isSameFile(context, uri, uri))
+    }
+
+    @Test
+    fun fileIdentity_skipsMissingFile() {
+        val missing = File(testDir, "missing.txt")
+        assertNull(LocalBookFileImportHelper.fileIdentity(context, Uri.fromFile(missing)))
+    }
+
+    @Test
     fun copyToFile_preservesSizeAndHash() = runBlocking {
         val content = "《测试》作者：测试者\n第一章\n正文内容".toByteArray()
         val src = File(testDir, "src.txt").apply { writeBytes(content) }
@@ -95,6 +111,7 @@ class LocalBookFileImportHelperTest {
         val src = File(testDir, "src_doc.txt").apply { writeBytes(content) }
         val dst = File(testDir, "dst_doc.txt")
 
+        // file:// 目标会回退到 copyToFile 逻辑，此处验证统一入口不报错
         val result = LocalBookFileImportHelper.copyToDocument(
             context,
             Uri.fromFile(src),
@@ -131,9 +148,79 @@ class LocalBookFileImportHelperTest {
     }
 
     @Test
+    fun copyToFile_rollbackOnFailure() = runBlocking {
+        val src = File(testDir, "src_fail.txt").apply { writeText("new") }
+        val dst = File(testDir, "dst_fail.txt").apply { writeText("original") }
+        val originalBytes = dst.readBytes()
+
+        // 通过把目标父目录设为只读制造写入失败
+        val originalWritable = testDir.canWrite()
+        testDir.setWritable(false)
+        try {
+            try {
+                LocalBookFileImportHelper.copyToFile(context, Uri.fromFile(src), dst)
+                fail("Expected IOException or SecurityException")
+            } catch (e: Exception) {
+                // expected
+            }
+        } finally {
+            testDir.setWritable(originalWritable)
+        }
+
+        // 目标应保持原内容
+        assertArrayEquals(originalBytes, dst.readBytes())
+    }
+
+    @Test
+    fun copyToFile_cancelDuringCopy_rollsBack() = runBlocking {
+        val largeContent = ByteArray(1024 * 1024) { it.toByte() }
+        val src = File(testDir, "src_cancel.txt").apply { writeBytes(largeContent) }
+        val dst = File(testDir, "dst_cancel.txt").apply { writeText("original") }
+        val originalBytes = dst.readBytes()
+
+        val job = async {
+            LocalBookFileImportHelper.copyToFile(context, Uri.fromFile(src), dst)
+        }
+        // 立即取消，让复制在写入目标前停止
+        job.cancelAndJoin()
+
+        try {
+            job.await()
+            fail("Expected CancellationException")
+        } catch (e: CancellationException) {
+            // expected
+        }
+
+        // 目标应保持原内容
+        assertArrayEquals(originalBytes, dst.readBytes())
+        // 临时文件应被清理
+        val leftovers = testDir.listFiles { file -> file.name.startsWith("import_tmp_") }
+        assertTrue("临时文件应被清理", leftovers.isNullOrEmpty())
+    }
+
+    @Test
+    fun copyToFile_concurrentTempFilesDoNotConflict() = runBlocking {
+        val content = "concurrent test".toByteArray()
+        val src = File(testDir, "src_concurrent.txt").apply { writeBytes(content) }
+        val results = (1..5).map { index ->
+            async {
+                val dst = File(testDir, "dst_concurrent_$index.txt")
+                LocalBookFileImportHelper.copyToFile(context, Uri.fromFile(src), dst)
+                dst
+            }
+        }
+        val targets = results.map { it.await() }
+        targets.forEach { dst ->
+            assertArrayEquals(content, dst.readBytes())
+        }
+        // 临时文件应被清理
+        val leftovers = testDir.listFiles { file -> file.name.startsWith("import_tmp_") }
+        assertTrue("临时文件应被清理", leftovers.isNullOrEmpty())
+    }
+
+    @Test
     fun hasReadableContent_detectsUnknownLengthButReadable() {
         val file = File(testDir, "unknown.txt").apply { writeText("not empty") }
-        // file:// 的 length 是精确的，此函数主要覆盖 DocumentFile.length 返回 0 的 content:// 场景
         assertTrue(Uri.fromFile(file).hasReadableContent(context))
     }
 
@@ -144,16 +231,14 @@ class LocalBookFileImportHelperTest {
     }
 
     @Test
-    fun fileIdentity_skipsMissingFile() {
+    fun hasReadableContent_throwsForMissingFile() {
         val missing = File(testDir, "missing.txt")
-        assertNull(LocalBookFileImportHelper.fileIdentity(context, Uri.fromFile(missing)))
-        assertFalse(
-            LocalBookFileImportHelper.isSameFile(
-                context,
-                Uri.fromFile(missing),
-                Uri.fromFile(missing)
-            )
-        )
+        try {
+            Uri.fromFile(missing).hasReadableContent(context)
+            fail("Expected exception for missing file")
+        } catch (e: Exception) {
+            // expected：权限和 I/O 异常应向上传播
+        }
     }
 
     @Suppress("SameParameterValue")
