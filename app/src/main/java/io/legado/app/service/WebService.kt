@@ -51,7 +51,9 @@ import java.io.IOException
 class WebService : BaseService() {
 
     companion object {
+        @Volatile
         var isRun = false
+        @Volatile
         var hostAddress = ""
         private const val TAG = "WebService"
         private const val RESTART_INTERVAL_MS = 3 * 60 * 60 * 1000L
@@ -67,6 +69,7 @@ class WebService : BaseService() {
         }
 
         fun stop(context: Context) {
+            notificationManager.cancel(NotificationId.WebService)
             context.stopService<WebService>()
         }
 
@@ -104,6 +107,8 @@ class WebService : BaseService() {
     private var foregroundNotificationStarted: Boolean = false
     @Volatile
     private var foregroundStartRejected: Boolean = false
+    @Volatile
+    private var isStopping: Boolean = false
     private val restartGuard = Any()
     private var restartCheckerJob: Job? = null
     private val networkChangedListener by lazy {
@@ -122,7 +127,7 @@ class WebService : BaseService() {
         upTile(true)
         networkChangedListener.register()
         networkChangedListener.onNetworkChanged = onNetworkChanged@{
-            if (foregroundStartRejected) return@onNetworkChanged
+            if (isStopping || foregroundStartRejected) return@onNetworkChanged
             val addressList = NetworkUtils.getLocalIPAddress()
             notificationList.clear()
             if (addressList.any()) {
@@ -139,7 +144,7 @@ class WebService : BaseService() {
                 notificationList.add(hostAddress)
             }
             startForegroundNotification()
-            if (foregroundStartRejected) return@onNetworkChanged
+            if (isStopping || foregroundStartRejected) return@onNetworkChanged
             postEvent(EventBus.WEB_SERVICE, hostAddress)
         }
         observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) {
@@ -161,37 +166,104 @@ class WebService : BaseService() {
     @SuppressLint("WakelockTimeout")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            IntentAction.stop -> stopSelf()
+            IntentAction.stop -> requestStop()
             "copyHostAddress" -> sendToClip(hostAddress)
-            "serve" -> if (useWakeLock) {
+            "serve" -> if (!isStopping && useWakeLock) {
                 wakeLock.acquire()
                 wifiLock?.acquire()
             }
 
-            else -> upWebServer()
+            else -> if (!isStopping) upWebServer()
         }
         return super.onStartCommand(intent, flags, startId)
     }
 
     override fun onDestroy() {
+        tearDown()
         super.onDestroy()
-        restartCheckerJob?.cancel()
-        restartCheckerJob = null
-        foregroundNotificationStarted = false
-        if (useWakeLock) {
-            wakeLock.release()
-            wifiLock?.release()
+    }
+
+    /**
+     * 统一停机入口：先 tearDown() 复位状态并移除通知，再 stopSelf()。
+     * 所有 WebService 内部停止请求均走此方法，避免 stopSelf() 后残留通知或后台回调重新启动 server。
+     *
+     * 锁安全：当从 upWebServer 的 IOException/无网络分支调用时，requestStop 进入 tearDown 会再次
+     * synchronized(restartGuard)；同一线程对 JVM monitor 是可重入的，因此不会自死锁。
+     */
+    private fun requestStop() {
+        tearDown()
+        stopSelf()
+    }
+
+    /**
+     * 统一停机逻辑：通知栏取消、设置开关、快捷磁贴、启动失败、Android 16 超时均走此路径。
+     * 在 restartGuard 临界区内提交 isStopping/isRun/isRestarting，与 upWebServer 的"提交成功"段互斥，
+     * 避免后台线程在 tearDown 之后再把 isRun 写回 true 并发布有效地址事件。
+     * 锁外执行网络注销、server 关闭和锁释放等可能阻塞或抛异常的清理；通知移除放入 finally，
+     * 保证即使其它清理步骤抛异常，ID 105 通知也一定被移除。幂等，重复调用安全。
+     *
+     * 清理步骤显式捕获 Exception（非 Throwable），不吞掉 OOM、ThreadDeath 等致命错误。
+     */
+    private fun tearDown() {
+        synchronized(restartGuard) {
+            if (isStopping) return
+            isStopping = true
+            isRun = false
+            isRestarting = false
         }
-        networkChangedListener.unRegister()
-        isRun = false
-        if (httpServer?.isAlive == true) {
-            httpServer?.stop()
+        try {
+            restartCheckerJob?.cancel()
+            restartCheckerJob = null
+            try { networkChangedListener.unRegister() } catch (e: Exception) {
+                LogUtils.e(TAG, "unRegister 失败: ${e.localizedMessage}")
+            }
+            stopServerSafely(httpServer, "httpServer")
+            stopServerSafely(webSocketServer, "webSocketServer")
+            if (useWakeLock) {
+                try { wakeLock.release() } catch (e: Exception) {
+                    LogUtils.e(TAG, "release wakeLock 失败: ${e.localizedMessage}")
+                }
+                try { wifiLock?.release() } catch (e: Exception) {
+                    LogUtils.e(TAG, "release wifiLock 失败: ${e.localizedMessage}")
+                }
+            }
+            try { postEvent(EventBus.WEB_SERVICE, "") } catch (e: Exception) {
+                LogUtils.e(TAG, "postEvent 失败: ${e.localizedMessage}")
+            }
+            try { upTile(false) } catch (e: Exception) {
+                LogUtils.e(TAG, "upTile 失败: ${e.localizedMessage}")
+            }
+        } finally {
+            try {
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            } catch (e: Exception) {
+                LogUtils.e(TAG, "stopForeground 失败: ${e.localizedMessage}")
+            }
+            try {
+                notificationManager.cancel(NotificationId.WebService)
+            } catch (e: Exception) {
+                LogUtils.e(TAG, "cancel 通知失败: ${e.localizedMessage}")
+            }
+            foregroundNotificationStarted = false
         }
-        if (webSocketServer?.isAlive == true) {
-            webSocketServer?.stop()
+    }
+
+    private fun stopServerSafely(server: HttpServer?, name: String) {
+        if (server?.isAlive != true) return
+        try {
+            server.stop()
+        } catch (e: Exception) {
+            LogUtils.e(TAG, "stop $name 失败: ${e.localizedMessage}")
         }
-        postEvent(EventBus.WEB_SERVICE, "")
-        upTile(false)
+    }
+
+    private fun stopServerSafely(server: WebSocketServer?, name: String) {
+        if (server?.isAlive != true) return
+        try {
+            server.stop()
+        } catch (e: Exception) {
+            LogUtils.e(TAG, "stop $name 失败: ${e.localizedMessage}")
+        }
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
@@ -200,7 +272,7 @@ class WebService : BaseService() {
     }
 
     private fun tryRestartOnChapterLoaded() {
-        if (!isRun || foregroundStartRejected) return
+        if (isStopping || !isRun || foregroundStartRejected) return
         val elapsed = System.currentTimeMillis() - startTimeMs
         if (elapsed < RESTART_INTERVAL_MS) return
         LogUtils.d(TAG) {
@@ -210,8 +282,9 @@ class WebService : BaseService() {
     }
 
     private fun upWebServer() {
+        if (isStopping) return
         synchronized(restartGuard) {
-            if (isRestarting) return
+            if (isRestarting || isStopping) return
             isRestarting = true
         }
         try {
@@ -238,21 +311,35 @@ class WebService : BaseService() {
                         )
                     })
                     hostAddress = notificationList.first()
-                    isRun = true
-                    startTimeMs = System.currentTimeMillis()
-                    postEvent(EventBus.WEB_SERVICE, hostAddress)
-                    startForegroundNotification()
-                    if (!foregroundStartRejected) {
-                        LogUtils.d(TAG) { "Web服务(重新)启动成功，重新开始计时" }
+                    // 提交段与 tearDown 共用同一临界区（restartGuard），保证 isRun/isStopping 写入和 isStopping 检查
+                    // 不会被 tearDown 拆开。若 tearDown 已抢先置 isStopping=true，本分支立即停掉刚启动的 server 并返回，
+                    // 避免"界面显示开启但端口已关闭"的竞态。
+                    synchronized(restartGuard) {
+                        if (isStopping) {
+                            try { httpServer?.stop() } catch (e: Exception) {
+                                LogUtils.e(TAG, "stop httpServer 失败: ${e.localizedMessage}")
+                            }
+                            try { webSocketServer?.stop() } catch (e: Exception) {
+                                LogUtils.e(TAG, "stop webSocketServer 失败: ${e.localizedMessage}")
+                            }
+                            return
+                        }
+                        isRun = true
+                        startTimeMs = System.currentTimeMillis()
+                        postEvent(EventBus.WEB_SERVICE, hostAddress)
+                        startForegroundNotification()
+                        if (!foregroundStartRejected) {
+                            LogUtils.d(TAG) { "Web服务(重新)启动成功，重新开始计时" }
+                        }
                     }
                 } catch (e: IOException) {
                     toastOnUi(e.localizedMessage ?: "")
                     e.printOnDebug()
-                    stopSelf()
+                    requestStop()
                 }
             } else {
                 toastOnUi("web service cant start, no ip address")
-                stopSelf()
+                requestStop()
             }
         } finally {
             isRestarting = false
@@ -271,7 +358,7 @@ class WebService : BaseService() {
      * 更新通知
      */
     override fun startForegroundNotification() {
-        if (foregroundStartRejected) return
+        if (isStopping || foregroundStartRejected) return
         val builder = NotificationCompat.Builder(this, AppConst.channelIdWeb)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setSmallIcon(R.drawable.ic_web_service_noti)
@@ -304,7 +391,7 @@ class WebService : BaseService() {
                 stopForForegroundRestriction(e, e.isDataSyncTimeLimit())
             } else {
                 AppLog.put("创建Web服务通知出错,${e.localizedMessage}", e, true)
-                stopSelf()
+                requestStop()
             }
         }
     }
@@ -312,7 +399,6 @@ class WebService : BaseService() {
     private fun stopForForegroundRestriction(error: Throwable?, timeLimit: Boolean) {
         if (foregroundStartRejected) return
         foregroundStartRejected = true
-        foregroundNotificationStarted = false
         appCtx.putPrefBoolean(PreferKey.webService, false)
         val message = if (timeLimit) {
             getString(R.string.web_service_data_sync_time_limit)
@@ -320,7 +406,7 @@ class WebService : BaseService() {
             getString(R.string.web_service_foreground_start_rejected)
         }
         AppLog.put(message, error, toast = true)
-        stopSelf()
+        requestStop()
     }
 
     private fun Throwable.isForegroundServiceStartNotAllowed(): Boolean {
