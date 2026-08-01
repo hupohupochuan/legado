@@ -1,8 +1,8 @@
 # [English](English.md) [中文](README.md)
 
-> Store links using an `io.legado.*` package name refer to upstream or historical distributions, not the personal build produced by this checkout. The current Release applicationId is `shutiao.reader.release`; those external store pages were not checked online in this documentation pass.
+> Repository status checked on 2026-08-01: [hupohupochuan/legado](https://github.com/hupohupochuan/legado), its Releases, the Yuque help/community pages, and the source-rule guide are reachable. The historical Google Play package page and external disclaimer returned 404, so downloads now point to this repository and the disclaimer uses the bundled document. The personal Release applicationId is `shutiao.reader.release`.
 
-[![icon_android](https://github.com/gedoor/gedoor.github.io/blob/master/static/img/legado/icon_android.png)](https://play.google.com/store/apps/details?id=io.legado.play.release)
+[![icon_android](https://github.com/gedoor/gedoor.github.io/blob/master/static/img/legado/icon_android.png)](https://github.com/hupohupochuan/legado/releases/latest)
 <a href="https://jb.gg/OpenSourceSupport" target="_blank">
 <img width="24" height="24" src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.svg?_gl=1*135yekd*_ga*OTY4Mjg4NDYzLjE2Mzk0NTE3MzQ.*_ga_9J976DJZ68*MTY2OTE2MzM5Ny4xMy4wLjE2NjkxNjMzOTcuNjAuMC4w&_ga=2.257292110.451256242.1669085120-968288463.1639451734" alt="idea"/>
 </a>
@@ -30,7 +30,7 @@ Legado is a free and open source novel reader for Android.
 * Switch between list and grid bookshelves and schedule checks for new chapters.
 * Read TXT, EPUB, UMD, PDF, MOBI, AZW/AZW3, and CBZ files; supported books can also be imported from ZIP, RAR, or 7Z containers.
 * Apply replacement rules to clean or rewrite chapter text.
-* Customize fonts, colors, backgrounds, spacing, bold text, simplified/traditional conversion, and page-turn modes.
+* Customize fonts, colors, backgrounds, spacing, bold text, simplified/traditional conversion, and native page-turn modes; the built-in Web reader also offers scrolling and book-style paging.
 * Use system TTS, HTTP TTS, or audio-book playback.
 * Back up and restore data locally or through WebDAV, including reading-progress synchronization.
 * Use the built-in LAN Web UI for bookshelf, reading, book-source, and replacement-rule management.
@@ -46,10 +46,6 @@ Legado is a free and open source novel reader for Android.
 #### Android
 
 * [Releases](https://github.com/hupohupochuan/legado/releases/latest)
-* [Google play - $1.99](https://play.google.com/store/apps/details?id=io.legado.play.release)
-* [Coolapk](https://www.coolapk.com/apk/io.legado.app.release)
-* [\#Beta](https://kunfei.lanzoui.com/b0f810h4b)
-* [IzzyOnDroid F-Droid Repository](https://apt.izzysoft.de/fdroid/index/apk/io.legado.app.release)
 
 
 #### IOS
@@ -80,7 +76,7 @@ https://www.yuque.com/legado/wiki/community
 
 # API [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-)
 
-* Legado 3.0 provides both a Web API and a Content Provider API. The Content Provider is available only to clients that request the matching permission and are signed with the same certificate; see the [API documentation](api.md).
+* Legado 3.0 provides both a Web API and a Content Provider API. The permission is `${applicationId}.permission.READ_WRITE` and changes with the target variant's final applicationId; clients must request that exact permission and use the same signing certificate. See the [API documentation](api.md).
 * One-click import by url recall reading, url format: legado://import/{path}?src={url}
 * Path Type: bookSource,rssSource,replaceRule,textTocRule,httpTTS,theme,readConfig,dictRule,addToBookshelf
 * Path type explanation: book source, compatibility alias for an RSS-type book source (`bookSourceType=5`), replacement rule, local TXT table-of-contents rule, online TTS engine, theme, reading layout, dictionary rule, [add to bookshelf](/app/src/main/java/io/legado/app/ui/association/AddToBookshelfDialog.kt)
@@ -93,7 +89,7 @@ https://www.yuque.com/legado/wiki/community
 
 ##### Disclaimers
 
-https://gedoor.github.io/Disclaimer
+[Repository disclaimer](/app/src/main/assets/disclaimer.md)
 
 ##### Legado 3.0
 

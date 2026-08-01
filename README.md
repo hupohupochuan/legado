@@ -1,9 +1,9 @@
 # [English](English.md) [中文](README.md)
-> 历史维护说明（原文信息，2026-07-15 本轮未联网复核）：原作者曾删库，最后一次可见更新为当年 5 月 30 日；当前维护者以自用和测试为主，持续修复问题与更新适配。
+> 仓库状态复核（2026-08-01）：当前维护仓库为 [hupohupochuan/legado](https://github.com/hupohupochuan/legado)，仓库及 Releases 已联网确认可访问；上游历史说明仅作背景，不代表当前发布状态。
 
-> 页面中的 `io.legado.*` 应用商店链接指向上游/历史发行包，不是当前仓库构建的个人版；当前 Release applicationId 为 `shutiao.reader.release`。本轮未联网核验这些外部商店页面是否仍可用。
+> 当前个人 Release applicationId 为 `shutiao.reader.release`。本轮联网确认语雀帮助/社区和书源规则页面可访问；历史 Google Play 包页与外部免责声明返回 404，因此下载入口改为当前仓库 Releases，免责声明改用仓库内置文档。
 
-[![icon_android](https://github.com/gedoor/gedoor.github.io/blob/master/static/img/legado/icon_android.png)](https://play.google.com/store/apps/details?id=io.legado.play.release)
+[![icon_android](https://github.com/gedoor/gedoor.github.io/blob/master/static/img/legado/icon_android.png)](https://github.com/hupohupochuan/legado/releases/latest)
 <a href="https://jb.gg/OpenSourceSupport" target="_blank">
 <img width="24" height="24" src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.svg?_gl=1*135yekd*_ga*OTY4Mjg4NDYzLjE2Mzk0NTE3MzQ.*_ga_9J976DJZ68*MTY2OTE2MzM5Ny4xMy4wLjE2NjkxNjMzOTcuNjAuMC4w&_ga=2.257292110.451256242.1669085120-968288463.1639451734" alt="idea"/>
 </a>
@@ -34,7 +34,7 @@ Legado is a free and open source novel reader for Android.
 5.支持替换净化，去除广告替换内容很方便。<br>
 6.支持本地 TXT、EPUB、UMD、PDF、MOBI、AZW/AZW3、CBZ 阅读，并可从 ZIP、RAR、7Z 容器导入受支持书籍。<br>
 7.支持高度自定义阅读界面，切换字体、颜色、背景、行距、段距、加粗、简繁转换等。<br>
-8.支持多种翻页模式，覆盖、仿真、滑动、滚动等。<br>
+8.原生阅读支持覆盖、仿真、滑动、滚动等翻页模式；内置 Web 阅读页可选连续滚动或书本翻页。<br>
 9.软件开源，持续优化，无广告。
 </details>
 
@@ -52,7 +52,7 @@ https://www.yuque.com/legado/wiki/community
 </a>
 
 # API [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-)
-* 阅读3.0 提供了2种方式的API：`Web方式`和`Content Provider方式`。Content Provider 仅允许声明对应权限且使用同一签名证书的应用访问，具体调用方式见 [API 文档](api.md)。
+* 阅读3.0 提供了2种方式的API：`Web方式`和`Content Provider方式`。Content Provider 权限名为 `${applicationId}.permission.READ_WRITE`，会随目标 Debug/Release 等变体的最终 applicationId 变化；调用方必须声明目标变体权限并与该 App 使用同一签名证书，具体调用方式见 [API 文档](api.md)。
 * 可通过url唤起阅读进行一键导入,url格式: legado://import/{path}?src={url}
 * path类型: bookSource,rssSource,replaceRule,textTocRule,httpTTS,theme,readConfig,dictRule,[addToBookshelf](/app/src/main/java/io/legado/app/ui/association/AddToBookshelfDialog.kt)
 * path类型解释: 书源,订阅源兼容别名(已合并到书源，使用 `bookSourceType=5`),替换规则,本地 TXT 小说目录规则,在线朗读引擎,主题,阅读排版,字典规则,添加到书架
@@ -63,7 +63,7 @@ https://www.yuque.com/legado/wiki/community
 
 # Other-其他 [![](https://img.shields.io/badge/-Other-F5F5F5.svg)](#Other-其他-)
 ##### 免责声明
-https://gedoor.github.io/Disclaimer
+[本仓库内置免责声明](/app/src/main/assets/disclaimer.md)
 
 ##### 阅读3.0
 * [书源规则](https://mgz0227.github.io/The-tutorial-of-Legado/)

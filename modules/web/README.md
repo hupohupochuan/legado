@@ -1,6 +1,6 @@
 # 阅读 Web 端
 
-本目录是 Vue 3 单页应用，统一包含欢迎页、书架、阅读页、书源编辑和替换规则编辑。唯一生产入口是 `modules/web/index.html` → `src/main.ts`；旧的 `src/pages/bookshelf`、`src/pages/source` 独立入口已于 2026-07-15 删除。Android App 实际加载 `app/src/main/assets/web/index.html`。
+本目录是 Vue 3 单页应用，统一包含欢迎页、书架、连续滚动/书本翻页阅读页、书源编辑和替换规则编辑。唯一生产入口是 `modules/web/index.html` → `src/main.ts`；旧的 `src/pages/bookshelf`、`src/pages/source` 独立入口已于 2026-07-15 删除。Android App 实际加载 `app/src/main/assets/web/index.html`。
 
 ## Hash 路由
 
@@ -34,4 +34,6 @@ cmp -s modules/web/dist/favicon.ico app/src/main/assets/web/favicon.ico
 scripts/check-web-assets-sync.sh
 ```
 
-本地 `pnpm build` 最后的 `scripts/sync.js` 只会在 GitHub Actions 环境复制产物，因此本地仍须手动同步和比较两个文件。代码检查和格式化分别使用 `pnpm lint:fix` 与 `pnpm format`。
+构建启用了 `vite-plugin-singlefile`，业务 JS/CSS 会内联进 `dist/index.html`，独立产物只有 `index.html` 与 `favicon.ico`。本地 `pnpm build` 最后的 `scripts/sync.js` 只会在 GitHub Actions 环境复制产物，因此本地仍须手动同步和比较这两个文件。代码检查和格式化分别使用 `pnpm lint:fix` 与 `pnpm format`。
+
+*Last updated: 2026-08-01*
