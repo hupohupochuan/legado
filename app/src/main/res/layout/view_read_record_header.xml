@@ -192,6 +192,60 @@
 
     </androidx.cardview.widget.CardView>
 
+    <!-- 未开启阅读记录提示卡：放在屏幕中央偏上，替代热力图 -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cv_enable_record"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="12dp"
+        android:layout_marginRight="12dp"
+        android:layout_marginBottom="12dp"
+        android:visibility="gone"
+        app:cardCornerRadius="10dp"
+        app:cardElevation="1dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="32dp">
+
+            <ImageView
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:contentDescription="@string/read_record"
+                android:src="@drawable/ic_history"
+                app:tint="@color/secondaryText" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/read_record_not_enabled_title"
+                android:textColor="@color/primaryText"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:text="@string/read_record_not_enabled_desc"
+                android:textColor="@color/secondaryText"
+                android:textSize="13sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_enable_record"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="@string/enable_record" />
+
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
     <!-- 月度热力图卡 -->
     <androidx.cardview.widget.CardView
         android:id="@+id/cv_heatmap"

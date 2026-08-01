@@ -211,6 +211,12 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         val bgColor = bottomBackground
         header.cvStats.setCardBackgroundColor(bgColor)
         header.cvHeatmap.setCardBackgroundColor(bgColor)
+        header.cvEnableRecord.setCardBackgroundColor(bgColor)
+        header.btnEnableRecord.setOnClickListener {
+            AppConfig.enableReadRecord = true
+            updateRecordEnableState(header)
+            initData()
+        }
         header.ivPrevMonth.setOnClickListener { stepMonth(-1) }
         header.ivNextMonth.setOnClickListener {
             if (!isAtCurrentMonth()) stepMonth(1)
@@ -235,6 +241,13 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 noButton()
             }
         }
+        updateRecordEnableState(header)
+    }
+
+    private fun updateRecordEnableState(header: ViewReadRecordHeaderBinding) {
+        val enabled = AppConfig.enableReadRecord
+        header.cvEnableRecord.visibility = if (enabled) View.GONE else View.VISIBLE
+        header.cvHeatmap.visibility = if (enabled) View.VISIBLE else View.GONE
     }
 
     private fun isAtCurrentMonth(): Boolean {

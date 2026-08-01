@@ -982,6 +982,8 @@
     <string name="book_change_source">Đổi nguồn cả sách</string>
     <string name="sort_by_time">Sắp xếp theo thời gian</string>
     <string name="enable_record">Bật ghi</string>
+    <string name="read_record_not_enabled_title">Chưa bật lịch sử đọc</string>
+    <string name="read_record_not_enabled_desc">Bật để ghi lại thời gian đọc hàng ngày và hiển thị bản đồ nhiệt hàng tháng.</string>
     <string name="copy_all">Sao chép tất cả</string>
     <string name="auto_complete">Tự động hoàn thành</string>
     <string name="sort_by_size">Sắp xếp theo kích thước</string>
