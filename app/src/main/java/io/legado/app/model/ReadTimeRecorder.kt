@@ -15,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
@@ -206,11 +207,12 @@ object ReadTimeRecorder {
      * 供 Web 端上报阅读时长：直接按自然日拆分写入 readRecord。
      * 调用方已在前端完成计时，此处只做校验和落盘。
      */
-    fun recordWebSession(bookName: String, startSec: Long, endSec: Long) {
-        if (!AppConfig.enableReadRecord) return
-        if (endSec - startSec < 5) return
-        Coroutine.async {
+    suspend fun recordWebSession(bookName: String, startSec: Long, endSec: Long): Boolean {
+        if (bookName.isBlank() || !WebReadTimeSession.isValidRange(startSec, endSec)) return false
+        return withContext(Dispatchers.IO) {
+            if (!AppConfig.enableReadRecord) return@withContext false
             flushSessions(bookName, startSec, endSec)
+            true
         }
     }
 

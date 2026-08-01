@@ -24,6 +24,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 
 # 提交生产改动前
+pnpm run test:read-time
 pnpm run type-check
 pnpm run build-only
 cd ../..
@@ -34,6 +35,6 @@ cmp -s modules/web/dist/favicon.ico app/src/main/assets/web/favicon.ico
 scripts/check-web-assets-sync.sh
 ```
 
-构建启用了 `vite-plugin-singlefile`，业务 JS/CSS 会内联进 `dist/index.html`，独立产物只有 `index.html` 与 `favicon.ico`。本地 `pnpm build` 最后的 `scripts/sync.js` 只会在 GitHub Actions 环境复制产物，因此本地仍须手动同步和比较这两个文件。代码检查和格式化分别使用 `pnpm lint:fix` 与 `pnpm format`。
+构建启用了 `vite-plugin-singlefile`，业务 JS/CSS 会内联进 `dist/index.html`，独立产物只有 `index.html` 与 `favicon.ico`。本地 `pnpm build` 最后的 `scripts/sync.js` 只会在 GitHub Actions 环境复制产物，因此本地仍须手动同步和比较这两个文件。`pnpm run test:read-time` 覆盖 Web 阅读时长的切章、空闲和清理状态；代码检查和格式化分别使用 `pnpm lint:fix` 与 `pnpm format`。
 
-*Last updated: 2026-08-01*
+*Last updated: 2026-08-02*

@@ -1,6 +1,6 @@
 # 阅读 API
 
-> 当前代码核对日期：2026-07-15。路由权威来源为 `web/HttpServer.kt`、`web/WebSocketServer.kt` 和 `api/ReaderProvider.kt`。
+> 当前代码核对日期：2026-08-02。路由权威来源为 `web/HttpServer.kt`、`web/WebSocketServer.kt` 和 `api/ReaderProvider.kt`。
 >
 > RSS 已并入 `BookSource`。Web 服务不再提供 RSS 专用 HTTP/WebSocket 接口；RSS 类型书源使用 `bookSourceType=5` 调用统一书源接口。
 
@@ -86,6 +86,15 @@ Body = { "bookUrl": "..." }
 ```
 
 响应 `data` 包含 `progress`、`remoteApplied` 和可能为 `null` 的 `warning`。只有章节范围有效且远端位置更靠前时才会应用远端进度。
+
+Web 阅读页切章时可上报上一章的经过时长：
+
+```text
+POST /saveReadTime
+Body = { "bookName": "书名", "durationMs": 120000 }
+```
+
+`durationMs` 必须是 5 秒至 24 小时的整数毫秒值；服务端不接收浏览器结束时间，而是用手机端当前时间确定自然日并按跨天边界拆分。App 未开启“阅读记录”时请求失败。
 
 ### Web 阅读配置与诊断日志
 

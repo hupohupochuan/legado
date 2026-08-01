@@ -72,7 +72,6 @@ export type BookContentSearchErrorMessage = {
 export type SaveReadTimePayload = {
   bookName: string
   durationMs: number
-  timestamp: number
 }
 
 export type BookContentSearchHandlers = {
@@ -343,7 +342,8 @@ const addLocalBook = async (file: File) => {
   return { data: (await response.json()) as LegadoApiResponse<unknown> }
 }
 
-const getSources = () => ajax.get<LegadoApiResponse<BookSource[]>>('getBookSources')
+const getSources = () =>
+  ajax.get<LegadoApiResponse<BookSource[]>>('getBookSources')
 
 const saveSource = (data: Source) =>
   ajax.post<LegadoApiResponse<unknown>>('saveBookSource', data)

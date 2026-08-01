@@ -1026,6 +1026,7 @@ const toPreChapter = () => {
 
 let canJump = true
 const handleKeyPress = (event: KeyboardEvent) => {
+  readTimeTracker.updateActiveTime()
   // 书本翻页是固定分页，垂直方向键既不能触发滚动，也不应复用滚动模式的
   // 顶部/底部提示。使用运行时模式判断，分页失败回退滚动后可自动恢复翻屏。
   if (
@@ -1083,6 +1084,7 @@ const handleKeyPress = (event: KeyboardEvent) => {
 }
 
 const ignoreKeyPress = (event: KeyboardEvent) => {
+  readTimeTracker.updateActiveTime()
   if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
     event.preventDefault()
     event.stopPropagation()
@@ -1123,9 +1125,9 @@ onMounted(async () => {
       window.addEventListener('keydown', ignoreKeyPress)
       document.addEventListener('visibilitychange', onVisibilityChange)
       window.addEventListener('pagehide', onPageHide)
-      window.addEventListener('scroll', onUserActive)
+      window.addEventListener('scroll', onUserActive, { passive: true })
       window.addEventListener('click', onUserActive)
-      window.addEventListener('touchstart', onUserActive)
+      window.addEventListener('touchstart', onUserActive, { passive: true })
       scrollObserver = new IntersectionObserver(onReachBottom, {
         rootMargin: '-100% 0% 20% 0%',
       })
