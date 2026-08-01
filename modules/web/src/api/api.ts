@@ -69,6 +69,12 @@ export type BookContentSearchErrorMessage = {
   message: string
 }
 
+export type SaveReadTimePayload = {
+  bookName: string
+  durationMs: number
+  timestamp: number
+}
+
 export type BookContentSearchHandlers = {
   onStart?: (message: BookContentSearchStartMessage) => void
   onResults?: (message: BookContentSearchResultsMessage) => void
@@ -138,6 +144,9 @@ const saveBookProgressWithBeacon = (bookProgress: WebBookProgress) => {
     JSON.stringify(bookProgress),
   )
 }
+
+const saveReadTime = (payload: SaveReadTimePayload) =>
+  ajax.post<LegadoApiResponse<unknown>>('saveReadTime', payload)
 
 const syncBookProgress = (bookUrl: string) =>
   ajax.post<LegadoApiResponse<SyncBookProgressResult>>('syncBookProgress', {
@@ -410,6 +419,7 @@ export default {
   saveReadConfig,
   saveBookProgress,
   saveBookProgressWithBeacon,
+  saveReadTime,
   syncBookProgress,
   getGroups,
   getBookShelf,

@@ -187,6 +187,7 @@ object ReadTimeRecorder {
      * 保证热力图每天统计准确。
      */
     private fun flushSessions(bookName: String, startSec: Long, endSec: Long) {
+        if (!AppConfig.enableReadRecord) return
         var curStart = startSec
         while (curStart < endSec) {
             val day = ReadRecord.dayKey(curStart)
@@ -198,6 +199,18 @@ object ReadTimeRecorder {
                 )
             }
             curStart = curEnd
+        }
+    }
+
+    /**
+     * 供 Web 端上报阅读时长：直接按自然日拆分写入 readRecord。
+     * 调用方已在前端完成计时，此处只做校验和落盘。
+     */
+    fun recordWebSession(bookName: String, startSec: Long, endSec: Long) {
+        if (!AppConfig.enableReadRecord) return
+        if (endSec - startSec < 5) return
+        Coroutine.async {
+            flushSessions(bookName, startSec, endSec)
         }
     }
 

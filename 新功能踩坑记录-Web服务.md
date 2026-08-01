@@ -643,4 +643,39 @@
   4. `onBookRequestNextChapter/PrevChapter` 改为先 `switchBookChapter`，命中即返回，未命中才回退到原 `getContent` 走网络加载遮罩。
 - **回归点**：默认滚动模式预取/加载逻辑零改动；书本模式首次进入章节（无缓存）仍走一次正常遮罩加载；相邻章预取完成后向前/向后翻跨章即时切换无遮罩；`chapterData` 最多保留 3 章避免内存增长；预取缓存不在书本模式响应式触发时被清空。
 
+## 10. Web 阅读页阅读时长记录
+
+- 记录日期: 2026-08-01
+- 验证日期: 2026-08-01（`pnpm run type-check`、`pnpm run build-only`、`vue-tsc`、Web assets 同步、`scripts/check-debug.sh` 通过；浏览器/真机阅读计时回归待执行）
+- 适用环境: Web 服务阅读页、阅读记录热力图、跨天统计
+- 相关文件:
+  - Web 前端: `modules/web/src/utils/readTimeTracker.ts`、`modules/web/src/views/BookChapter.vue`、`modules/web/src/api/api.ts`
+  - Web 后端: `app/src/main/java/io/legado/app/web/HttpServer.kt`、`app/src/main/java/io/legado/app/api/controller/ReadTimeController.kt`
+  - 原生复用: `app/src/main/java/io/legado/app/model/ReadTimeRecorder.kt`
+  - 生产产物: `app/src/main/assets/web/index.html`
+
+**设计结论**:
+- Web 端只做"感知和上报"，不做持久化计时状态：进入章节开始计时，切章时把上一章时长发到后端，由后端统一写入 `readRecord`。
+- 开关统一受手机端 `AppConfig.enableReadRecord` 控制，后端 `ReadTimeController.saveReadTime` 保存前再校验；Web 端无需独立开关。
+- 防挂机：章节内 10 分钟无交互（滚动/点击/触摸/按键）时，本章计时作废。
+- 防抖动：不足 5 秒的章节不计入；后端复用 `ReadTimeRecorder.recordWebSession` 及跨天拆分逻辑。
+- 省电：不发心跳、不常驻连接，仅在切章产生一次 HTTP POST；页面可见性恢复时只更新活跃时间。
+- 不上报未切章：页面关闭、切后台、直接离开均不提交当前未完成的章节，避免跨章/跨书边界争议。
+- 多设备/多标签：同一时刻多 Web 会话会分别写入，可能重复；一期以"用户通常只看一个屏"为前提，不额外做设备/标签去重。
+
+**实现约束**:
+- `readTimeTracker` 维护当前书名、章节开始时间、最后活跃时间；`watch(chapterIndex)` 监听切章，`chapterIndex` 变化即提交上一章并开始新章。
+- 事件监听限制在 `scroll` / `click` / `touchstart` / `keydown` / `keyup` / `visibilitychange=visible`，仅更新 `lastActiveTime`，不触发网络请求。
+- 后端 `ReadTimeController.saveReadTime` 接收 `{bookName, durationMs, timestamp}`，计算 `startSec = endSec - durationMs / 1000`，调用 `ReadTimeRecorder.recordWebSession` 按自然日拆分写入。
+- 新增 `/saveReadTime` POST 路由注册到 `HttpServer.handlePost`；响应只返回成功/失败，不暴露数据库细节。
+- Web 修改后必须重新执行 `pnpm run build` 并手动同步 `dist/index.html` 到 `app/src/main/assets/web/index.html`，再做字节一致性校验。
+
+**回归点**:
+- Web 端开启一本书阅读，每切一章，手机端阅读记录当日新增对应时长。
+- 同一章内 10 分钟无操作后切章，该章时长不写入。
+- 不足 5 秒的章（快速划过）不计入。
+- 手机端关闭阅读记录开关后，Web 端切章不再新增记录。
+- 跨天阅读（如 23:50 切章到 00:10 切章）按切章时间拆分两天，每天热力图不超 24 小时。
+- 页面关闭/切后台/直接返回书架不触发未切章的异常写入。
+
 *Last updated: 2026-08-01*

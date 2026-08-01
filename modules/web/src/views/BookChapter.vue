@@ -200,6 +200,7 @@ import API, {
 import { useLoading } from '@/hooks/loading'
 import { isNullOrBlank } from '@/utils/utils'
 import { finishReaderPerf, startReaderPerf } from '@/utils/readerPerformance'
+import { readTimeTracker } from '@/utils/readTimeTracker'
 import { toast } from '@/utils/toast'
 import { msgbox } from '@/utils/toast'
 import BookContentSearch from '@/components/BookContentSearch.vue'
@@ -962,6 +963,12 @@ watchEffect(() => {
   document.title = catalog.value[chapterIndex.value]?.title || document.title
 })
 
+watch(chapterIndex, (newIndex, oldIndex) => {
+  if (newIndex !== oldIndex && store.readingBook.bookUrl) {
+    readTimeTracker.changeChapter(store.readingBook.name)
+  }
+})
+
 const saveReadingBookProgressToBrowser = (index: number, pos: number) => {
   chapterIndex.value = index
   chapterPos.value = pos
@@ -969,15 +976,23 @@ const saveReadingBookProgressToBrowser = (index: number, pos: number) => {
 
 const onVisibilityChange = () => {
   const _bookProgress = bookProgress.value
-  if (document.visibilityState == 'hidden' && _bookProgress) {
-    flushReadingBookPersist()
-    void store.saveBookProgress(true)
+  if (document.visibilityState == 'hidden') {
+    if (_bookProgress) {
+      flushReadingBookPersist()
+      void store.saveBookProgress(true)
+    }
+  } else if (document.visibilityState == 'visible') {
+    readTimeTracker.updateActiveTime()
   }
 }
 
 const onPageHide = () => {
   flushReadingBookPersist()
   void store.saveBookProgress(true, true)
+}
+
+const onUserActive = () => {
+  readTimeTracker.updateActiveTime()
 }
 
 const toNextChapter = () => {
@@ -1102,11 +1117,15 @@ onMounted(async () => {
   loadingWrapper(
     store.loadWebCatalog(book).then(chapters => {
       store.setReadingBook(book)
+      readTimeTracker.startChapter(book.name)
       getContent(chapterIndex, true, chapterPos)
       window.addEventListener('keyup', handleKeyPress)
       window.addEventListener('keydown', ignoreKeyPress)
       document.addEventListener('visibilitychange', onVisibilityChange)
       window.addEventListener('pagehide', onPageHide)
+      window.addEventListener('scroll', onUserActive)
+      window.addEventListener('click', onUserActive)
+      window.addEventListener('touchstart', onUserActive)
       scrollObserver = new IntersectionObserver(onReachBottom, {
         rootMargin: '-100% 0% 20% 0%',
       })
@@ -1129,6 +1148,10 @@ onUnmounted(() => {
   window.removeEventListener('resize', onResize)
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('pagehide', onPageHide)
+  window.removeEventListener('scroll', onUserActive)
+  window.removeEventListener('click', onUserActive)
+  window.removeEventListener('touchstart', onUserActive)
+  readTimeTracker.clear()
   readSettingsVisible.value = false
   popCataVisible.value = false
   scrollObserver?.disconnect()
