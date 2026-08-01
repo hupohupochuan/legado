@@ -1011,6 +1011,16 @@ const toPreChapter = () => {
 
 let canJump = true
 const handleKeyPress = (event: KeyboardEvent) => {
+  // 书本翻页是固定分页，垂直方向键既不能触发滚动，也不应复用滚动模式的
+  // 顶部/底部提示。使用运行时模式判断，分页失败回退滚动后可自动恢复翻屏。
+  if (
+    activeBookMode.value &&
+    (event.key === 'ArrowUp' || event.key === 'ArrowDown')
+  ) {
+    event.stopPropagation()
+    event.preventDefault()
+    return
+  }
   if (!canJump) return
   switch (event.key) {
     case 'ArrowLeft':
