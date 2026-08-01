@@ -88,13 +88,13 @@ class MonthHeatMapView @JvmOverloads constructor(
         val isBackgroundDark = !context.isDarkTheme
         val l = if (isBackgroundDark) {
             // 深色背景：0 (最深) -> 5 (最亮)。下限从 0.2 提升到 0.3
-            0.3f + level * 0.08f // 0.3 -> 0.7
+            0.32f + level * 0.09f // 0.32 -> 0.77
         } else {
             // 浅色背景：0 (最浅) -> 5 (最深)。下限从 0.3 提升到 0.42
-            0.92f - level * 0.1f // 0.92 -> 0.42
+            0.84f - level * 0.11f // 0.84 -> 0.29
         }
-        // 添加透明度，色阶越低越透明，增加层次感
-        val alpha = if (level == 0) 35 else 80 + level * 35 // 0:35, 1:115 ... 5:255
+        // 低色阶透明度更高，使低阅读量也能明显辨识
+        val alpha = if (level == 0) 35 else 110 + level * 29 // 0:35, 1:139 ... 5:255
         tmpHsl[2] = l.coerceIn(0f, 1f)
         return ColorUtils.setAlphaComponent(ColorUtils.HSLToColor(tmpHsl), alpha)
     }

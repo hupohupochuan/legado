@@ -15,7 +15,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Calendar
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.min
 
 /**
  * 阅读时长记录器: 以"开始 / 结束"为唯一触发点统一管理读时长落盘.
@@ -176,14 +178,35 @@ object ReadTimeRecorder {
         val endSec = System.currentTimeMillis() / 1000
         if (endSec - startSec < 5) return
         Coroutine.async {
-            appDb.readRecordDao.insertSession(
-                ReadRecord(
-                    bookName,
-                    ReadRecord.dayKey(),
-                    startSec,
-                    endSec
-                )
-            )
+            flushSessions(bookName, startSec, endSec)
         }
+    }
+
+    /**
+     * 将跨天 session 按自然日拆分写入，避免全部时长落在结束日，
+     * 保证热力图每天统计准确。
+     */
+    private fun flushSessions(bookName: String, startSec: Long, endSec: Long) {
+        var curStart = startSec
+        while (curStart < endSec) {
+            val day = ReadRecord.dayKey(curStart)
+            val nextDayStart = dayNextStartSec(day)
+            val curEnd = min(endSec, nextDayStart)
+            if (curEnd - curStart >= 5) {
+                appDb.readRecordDao.insertSession(
+                    ReadRecord(bookName, day, curStart, curEnd)
+                )
+            }
+            curStart = curEnd
+        }
+    }
+
+    /** 返回本地日期 day 的次日 00:00:00 对应秒时间戳 */
+    private fun dayNextStartSec(day: Int): Long {
+        val cal = Calendar.getInstance()
+        cal.clear()
+        cal.set(day / 10000, (day / 100) % 100 - 1, day % 100)
+        cal.add(Calendar.DAY_OF_MONTH, 1)
+        return cal.timeInMillis / 1000
     }
 }

@@ -115,6 +115,13 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         initData()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // 从阅读页或后台返回后，阅读记录可能已更新，丢弃缓存重新加载
+        allRecords = null
+        initData()
+    }
+
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.book_read_record, menu)
         return super.onCompatCreateOptionsMenu(menu)
