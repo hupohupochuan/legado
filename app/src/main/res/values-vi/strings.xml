@@ -588,6 +588,8 @@
     <string name="brightness_auto">Độ sáng tự động %s</string>
     <string name="read_aloud_by_page">Đọc theo trang</string>
     <string name="speak_engine">Công cụ đọc</string>
+    <string name="tts_use_for_current_book">Chỉ sách này</string>
+    <string name="tts_use_globally">Dùng toàn cục</string>
     <string name="bg_image">Ảnh nền</string>
     <string name="bg_color">Màu nền</string>
     <string name="text_color">Màu chữ</string>

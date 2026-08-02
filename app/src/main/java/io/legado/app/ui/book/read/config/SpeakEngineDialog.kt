@@ -22,7 +22,7 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemHttpTtsBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.help.tts.TtsEngineSelection
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.okButton
@@ -35,10 +35,8 @@ import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.gone
 import io.legado.app.utils.isAbsUrl
-import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess
@@ -100,11 +98,10 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                 labelSys.visible()
                 cbName.text = "系统默认"
                 cbName.tag = ""
-                cbName.isChecked = ttsEngine == null || ttsEngine!!.isJsonObject()
-                        && GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
-                    .getOrNull()?.value.isNullOrEmpty()
+                cbName.isChecked = ttsEngine == null ||
+                    TtsEngineSelection.fromJson(ttsEngine)?.value == ""
                 cbName.setOnClickListener {
-                    upTts(GSON.toJson(SelectItem("系统默认", "")))
+                    upTts(TtsEngineSelection("系统默认", "").toJson())
                 }
             }
         }
@@ -117,15 +114,14 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                     labelSys.visible()
                     cbName.text = engine.label
                     cbName.tag = engine.name
-                    cbName.isChecked = GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
-                        .getOrNull()?.value == cbName.tag
+                    cbName.isChecked = TtsEngineSelection.fromJson(ttsEngine)?.value == cbName.tag
                     cbName.setOnClickListener {
-                        upTts(GSON.toJson(SelectItem(engine.label, engine.name)))
+                        upTts(TtsEngineSelection(engine.label, engine.name).toJson())
                     }
                 }
             }
         }
-        tvFooterLeft.setText(R.string.book)
+        tvFooterLeft.setText(R.string.tts_use_for_current_book)
         tvFooterLeft.visible()
         tvFooterLeft.setOnClickListener {
             ReadBook.book?.setTtsEngine(ttsEngine)
@@ -133,7 +129,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
             ReadAloud.upReadAloudClass()
             dismissAllowingStateLoss()
         }
-        tvOk.setText(R.string.general)
+        tvOk.setText(R.string.tts_use_globally)
         tvOk.visible()
         tvOk.setOnClickListener {
             ReadBook.book?.setTtsEngine(null)
@@ -216,11 +212,11 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
 
     private fun upTts(tts: String) {
         ttsEngine = tts
+        val selectedSystemEngine = TtsEngineSelection.fromJson(tts)?.value
         sysTtsViews.forEach {
-            it.isChecked = GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
-                .getOrNull()?.value == it.tag
+            it.isChecked = selectedSystemEngine == it.tag
         }
-        adapter.notifyItemRangeChanged(adapter.getHeaderCount(), adapter.itemCount)
+        adapter.notifyItemRangeChanged(adapter.getHeaderCount(), adapter.getActualItemCount())
     }
 
     inner class Adapter(context: Context) :

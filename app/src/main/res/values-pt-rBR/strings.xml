@@ -592,6 +592,8 @@
     <string name="brightness_auto">Brilho autom. %s</string>
     <string name="read_aloud_by_page">Ler páginas em voz alta</string>
     <string name="speak_engine">Mecanismo de voz</string>
+    <string name="tts_use_for_current_book">Apenas este livro</string>
+    <string name="tts_use_globally">Usar globalmente</string>
     <string name="bg_image">Imagens de fundo</string>
     <string name="bg_color">Cor de fundo</string>
     <string name="text_color">Cor de texto</string>

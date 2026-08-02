@@ -610,6 +610,8 @@
     <string name="brightness_auto">自动亮度 %s</string>
     <string name="read_aloud_by_page">按页朗读</string>
     <string name="speak_engine">朗读引擎</string>
+    <string name="tts_use_for_current_book">仅用于本书</string>
+    <string name="tts_use_globally">设为全局</string>
     <string name="bg_image">背景图片</string>
     <string name="bg_color">背景颜色</string>
     <string name="text_color">文字颜色</string>

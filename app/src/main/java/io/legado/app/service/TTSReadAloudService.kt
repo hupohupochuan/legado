@@ -11,12 +11,10 @@ import io.legado.app.help.MediaHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.tts.TextToSpeechEngine
-import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.help.tts.TtsEngineSelection
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
-import io.legado.app.utils.GSON
 import io.legado.app.utils.LogUtils
-import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.delay
@@ -53,8 +51,7 @@ class TTSReadAloudService : BaseReadAloudService() {
     @Synchronized
     private fun initEngine() {
         engine?.shutdown()
-        val engineName = GSON.fromJsonObject<SelectItem<String>>(ReadAloud.ttsEngine)
-            .getOrNull()?.value
+        val engineName = TtsEngineSelection.fromJson(ReadAloud.ttsEngine)?.value
         LogUtils.d(TAG, "initEngine name:$engineName")
         engine = TextToSpeechEngine(engineName).apply {
             progressListener = TTSUtteranceListener()
