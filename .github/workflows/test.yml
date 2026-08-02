@@ -51,6 +51,8 @@ jobs:
   build:
     needs: prepare
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       product: app
       VERSION: ${{ needs.prepare.outputs.version }}

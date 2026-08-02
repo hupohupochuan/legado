@@ -2,9 +2,9 @@
 
 > 最新修订: 2026-08-02 CST
 > 最近三次修订:
+> - 2026-08-02 CST: 补齐 GitHub Actions 测试版发布权限，避免 APK 编译成功后因 Release API 403 中断。
 > - 2026-08-02 CST: 收口 [Web 阅读时长上报](新功能踩坑记录-Web服务.md#10-web-阅读页阅读时长记录)的空闲判定与输入边界，统一由手机端时间确定落盘日期。
 > - 2026-08-01 CST: 同步 [WebService 停机红线（适配 0.5）](适配踩坑记录.md#05-webservice-关闭后前台通知残留)，拆分新功能记录，补齐 Web 构建与文档同步检查入口。
-> - 2026-07-30 CST: 收口 [文件关联安全导入与取消回滚（适配 0.4）](适配踩坑记录.md#04-文件关联导入同文件自覆盖截断与空文件误判)，禁止恢复直接覆盖目标的旧路径。
 
 > 本文件是第一入口；同时按 `AGENTS.md` 要求读完其余三个必读文档，再按具体任务打开 `AI编辑必看/` 子文件。
 
@@ -52,6 +52,7 @@
 - 不要只改 `modules/web/src` 而不同步 `app/src/main/assets/web`。
 - Web 阅读时长空闲超过 10 分钟后，本章作废状态必须保持到切章，恢复可见或再次交互不能清除；浏览器只上报 5 秒至 24 小时的章节经过时长，结束时间和自然日归属由手机端确定。
 - 不要恢复 AGP 旧 `applicationVariants`；APK 输出命名走 `androidComponents`。
+- `.github/workflows/test.yml` 的发布 job 必须保留最小的 `contents: write` 权限；APK 编译后的 beta Release 创建、更新和追加产物都依赖该权限。
 - compileSdk 从 `libs.versions.compileSdk` 读取，不要恢复跨项目隐式查找根项目 `ext` 属性；Android 模块使用 AGP 内置 Kotlin，不要重新应用 `kotlin-android`。
 - UI 协程必须优先传入 `lifecycleScope`/`viewModelScope`/现有组件 scope；`Coroutine.async` 默认 scope 只用于明确需要存活到进程结束的任务。取消异常不得进入普通错误回调。
 - 在线书导出只允许读取已经落盘的章节缓存；导出前必须明确选择“要求完整”或“仅已有缓存”，缓存缺失或导出中途丢失时不得写入 `null` 等占位正文。
