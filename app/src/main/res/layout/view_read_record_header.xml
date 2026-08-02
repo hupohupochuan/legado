@@ -236,11 +236,13 @@
                 android:textColor="@color/secondaryText"
                 android:textSize="13sp" />
 
-            <com.google.android.material.button.MaterialButton
+            <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btn_enable_record"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
+                android:backgroundTint="@color/accent"
+                android:minWidth="96dp"
                 android:text="@string/enable_record" />
 
         </LinearLayout>

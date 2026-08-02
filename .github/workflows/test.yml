@@ -82,6 +82,9 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Check AppCompat Layout Compatibility
+        run: ./gradlew :app:testAppDebugUnitTest --tests io.legado.app.ui.AppThemeLayoutCompatibilityTest --no-daemon
+
       - name: Build Release (原包名)
         run: |
           echo "统一版本号"
