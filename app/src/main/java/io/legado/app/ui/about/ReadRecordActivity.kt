@@ -128,7 +128,6 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
     }
 
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menu.findItem(R.id.menu_enable_record)?.isChecked = AppConfig.enableReadRecord
         when (sortMode) {
             1 -> menu.findItem(R.id.menu_sort_read_long)?.isChecked = true
             2 -> menu.findItem(R.id.menu_sort_read_time)?.isChecked = true
@@ -158,10 +157,6 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 item.isChecked = true
                 binding.recyclerView.invalidateItemDecorations()
                 initData()
-            }
-
-            R.id.menu_enable_record -> {
-                AppConfig.enableReadRecord = !item.isChecked
             }
 
             R.id.menu_clear_all -> {
