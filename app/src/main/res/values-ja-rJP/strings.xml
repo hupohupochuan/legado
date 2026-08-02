@@ -986,9 +986,8 @@
     <string name="chapter_change_source">单章换源</string>
     <string name="book_change_source">整书换源</string>
     <string name="sort_by_time">时间排序</string>
-    <string name="enable_record">开启记录</string>
-    <string name="read_record_not_enabled_title">読書記録がオフです</string>
-    <string name="read_record_not_enabled_desc">オンにすると、毎日の読書時間を記録し、月間ヒートマップを表示します。</string>
+    <string name="enable_record">記録を有効にする</string>
+    <string name="read_record_switch_desc">毎日の読書時間を記録し、月間ヒートマップに表示します。</string>
     <string name="copy_all">拷贝所有</string>
     <string name="auto_complete">自动补全</string>
     <string name="sort_by_size">大小排序</string>

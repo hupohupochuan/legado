@@ -1024,8 +1024,7 @@
     <string name="book_change_source">Change the source of the whole book</string>
     <string name="sort_by_time">Sort by time</string>
     <string name="enable_record">Enable record</string>
-    <string name="read_record_not_enabled_title">Read record not enabled</string>
-    <string name="read_record_not_enabled_desc">Enable it to track daily reading time and display the monthly heatmap.</string>
+    <string name="read_record_switch_desc">Track daily reading time and display it in the monthly heatmap.</string>
     <string name="copy_all">Copy all</string>
     <string name="auto_complete">Automatic completion</string>
     <string name="sort_by_size">Sort by size</string>

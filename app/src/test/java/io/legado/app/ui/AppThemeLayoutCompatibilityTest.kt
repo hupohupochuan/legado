@@ -36,21 +36,26 @@ class AppThemeLayoutCompatibilityTest {
     }
 
     @Test
-    fun readRecordEnableActionLivesInPageHeaderNotOverflowMenu() {
+    fun readRecordToggleLivesInPageHeaderNotOverflowMenu() {
         val menu = File(appDir, "src/main/res/menu/book_read_record.xml").readText()
         val header = File(appDir, "src/main/res/layout/view_read_record_header.xml").readText()
+        val switchCard = Regex(
+            """<androidx\.cardview\.widget\.CardView\b[^>]*android:id="@\+id/cv_enable_record"[^>]*>"""
+        ).find(header)?.value
 
         assertFalse(
-            "The reading-record enable action belongs in the page header, not the overflow menu",
+            "The reading-record toggle belongs in the page header, not the overflow menu",
             menu.contains("menu_enable_record") || menu.contains("@string/enable_record")
         )
         assertTrue(
-            "The reading-record page must keep its disabled-state prompt card",
-            header.contains("@+id/cv_enable_record")
+            "The reading-record switch card must always be visible",
+            switchCard != null && !switchCard.contains("android:visibility=\"gone\"")
         )
         assertTrue(
-            "The reading-record page must keep its visible enable button",
-            header.contains("@+id/btn_enable_record")
+            "The reading-record page must expose a two-way AppCompat switch",
+            header.contains("<androidx.appcompat.widget.SwitchCompat") &&
+                header.contains("@+id/sw_enable_record") &&
+                !header.contains("@+id/btn_enable_record")
         )
     }
 }

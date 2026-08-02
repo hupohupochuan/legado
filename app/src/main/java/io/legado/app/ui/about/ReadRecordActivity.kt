@@ -207,9 +207,14 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         header.cvStats.setCardBackgroundColor(bgColor)
         header.cvHeatmap.setCardBackgroundColor(bgColor)
         header.cvEnableRecord.setCardBackgroundColor(bgColor)
-        header.btnEnableRecord.setOnClickListener {
-            AppConfig.enableReadRecord = true
+        header.swEnableRecord.isChecked = AppConfig.enableReadRecord
+        header.swEnableRecord.setOnCheckedChangeListener { _, isChecked ->
+            if (AppConfig.enableReadRecord == isChecked) return@setOnCheckedChangeListener
+            AppConfig.enableReadRecord = isChecked
+            if (!isChecked) filterDay = 0
+            allRecords = null
             updateRecordEnableState(header)
+            refreshHeatmap()
             initData()
         }
         header.ivPrevMonth.setOnClickListener { stepMonth(-1) }
@@ -241,7 +246,9 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
 
     private fun updateRecordEnableState(header: ViewReadRecordHeaderBinding) {
         val enabled = AppConfig.enableReadRecord
-        header.cvEnableRecord.visibility = if (enabled) View.GONE else View.VISIBLE
+        if (header.swEnableRecord.isChecked != enabled) {
+            header.swEnableRecord.isChecked = enabled
+        }
         header.cvHeatmap.visibility = if (enabled) View.VISIBLE else View.GONE
     }
 

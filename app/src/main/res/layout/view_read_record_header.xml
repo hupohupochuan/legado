@@ -192,7 +192,7 @@
 
     </androidx.cardview.widget.CardView>
 
-    <!-- 未开启阅读记录提示卡：放在屏幕中央偏上，替代热力图 -->
+    <!-- 阅读记录双向开关：始终显示在主页面，关闭时仅隐藏下方热力图 -->
     <androidx.cardview.widget.CardView
         android:id="@+id/cv_enable_record"
         android:layout_width="match_parent"
@@ -200,50 +200,55 @@
         android:layout_marginLeft="12dp"
         android:layout_marginRight="12dp"
         android:layout_marginBottom="12dp"
-        android:visibility="gone"
         app:cardCornerRadius="10dp"
         app:cardElevation="1dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:padding="32dp">
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="20dp">
 
             <ImageView
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="16dp"
                 android:contentDescription="@string/read_record"
                 android:src="@drawable/ic_history"
                 app:tint="@color/secondaryText" />
 
-            <TextView
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="@string/read_record_not_enabled_title"
-                android:textColor="@color/primaryText"
-                android:textSize="16sp"
-                android:textStyle="bold" />
+                android:layout_weight="1"
+                android:orientation="vertical">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:gravity="center"
-                android:text="@string/read_record_not_enabled_desc"
-                android:textColor="@color/secondaryText"
-                android:textSize="13sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/read_record"
+                    android:textColor="@color/primaryText"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
 
-            <androidx.appcompat.widget.AppCompatButton
-                android:id="@+id/btn_enable_record"
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/read_record_switch_desc"
+                    android:textColor="@color/secondaryText"
+                    android:textSize="13sp" />
+
+            </LinearLayout>
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/sw_enable_record"
+                style="@style/Widget.AppCompat.CompoundButton.Switch"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
-                android:backgroundTint="@color/accent"
-                android:minWidth="96dp"
-                android:text="@string/enable_record" />
+                android:layout_marginStart="12dp"
+                android:contentDescription="@string/enable_record" />
 
         </LinearLayout>
     </androidx.cardview.widget.CardView>

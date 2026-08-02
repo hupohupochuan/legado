@@ -1019,8 +1019,7 @@
     <string name="book_change_source">整书换源</string>
     <string name="sort_by_time">时间排序</string>
     <string name="enable_record">开启记录</string>
-    <string name="read_record_not_enabled_title">阅读记录未开启</string>
-    <string name="read_record_not_enabled_desc">开启后将统计每日阅读时长并展示月度热力图。</string>
+    <string name="read_record_switch_desc">统计每日阅读时长，并在月度热力图中展示。</string>
     <string name="copy_all">拷贝所有</string>
     <string name="auto_complete">自动补全</string>
     <string name="sort_by_size">大小排序</string>
