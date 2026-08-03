@@ -1,8 +1,8 @@
 # 新功能踩坑记录 - Web 服务
 
 > 返回主题索引: [新功能踩坑记录.md](新功能踩坑记录.md)
-> 当前复核状态（2026-08-02）：Web 前端仍以 `modules/web/index.html` → `src/main.ts` 为唯一生产入口，APK 加载 `app/src/main/assets/web/index.html`；书本翻页现行实现以 `BookPageReader.vue` 的固定 `clip-path`/平移动画和后续修复为准。WebService 停机与通知移除的最新运行时约束另见 [适配踩坑记录.md 0.5](适配踩坑记录.md#05-webservice-关闭后前台通知残留)。
-> 验证边界：本次为代码/文档复核，未重跑历史浏览器和真机手测；修改 Web 运行时后仍须执行类型检查、生产构建、两个产物同步和字节比较。
+> 当前复核状态（2026-08-03）：Web 前端仍以 `modules/web/index.html` → `src/main.ts` 为唯一生产入口，网页传书统一为 `/#/uploadBook`，旧 `/uploadBook/index.html` 仅兼容跳转；APK 加载 `app/src/main/assets/web/index.html`。书本翻页现行实现以 `BookPageReader.vue` 的固定 `clip-path`/平移动画和后续修复为准。WebService 停机与通知移除的最新运行时约束另见 [适配踩坑记录.md 0.5](适配踩坑记录.md#05-webservice-关闭后前台通知残留)。
+> 验证边界：网页传书已在本轮完成模拟接口与 Headless Chrome 回归，但未连接真实手机；其余历史浏览器和真机结果未重跑。修改 Web 运行时后仍须执行类型检查、生产构建、两个产物同步和字节比较。
 
 ---
 
@@ -154,20 +154,23 @@
 
 ---
 
-## Web 服务补齐（书架本地上传 / 刷新目录 / 替换规则管理）
+## Web 服务补齐与网页传书收口
 
 ### 1. 功能范围
 
-- 书架页新增"导入本地书"按钮，接入后端 `addLocalBook` 接口。
+- 欢迎页和书架统一进入 `/#/uploadBook`，支持多文件选择/拖放、逐个上传、进度、失败原因和重试；历史 `/uploadBook/index.html` 只保留无业务逻辑的兼容跳转。
+- 网页传书接入后端 `addLocalBook` 接口；TXT、EPUB、UMD、PDF、MOBI、AZW3、AZW、CBZ 可直接上传，ZIP、RAR、7Z 由手机端在含受支持书籍时解包导入。
 - 阅读页目录弹窗新增"刷新"按钮，接入后端 `refreshToc` 接口。
 - 新增 `#/replaceRule` 替换规则管理页面，接入后端 `getReplaceRules` / `saveReplaceRule` / `deleteReplaceRule` / `testReplaceRule` 四个接口。
 - RSS 源编辑本次未做：后端 `HttpServer.kt` 无 RSS 专用接口，数据库层 `rssSources` 已迁移合并到 `bookSources`（`bookSourceType=5`），README 中 `#/rssSource` 已删除。
 
 ### 2. 关键实现点
 
-- `addLocalBook` 必须走原生 `fetch` + `FormData`，**不能**复用 `ajax` 实例：
+- `addLocalBook` 必须走原生 `XMLHttpRequest` + `FormData`（或等价的原生 fetch/FormData），**不能**复用会注入 JSON 请求头的 `ajax` 实例：
   - `src/api/axios.ts` 的 `_request` 默认注入 `Content-Type: application/json`；
   - multipart 上传需要浏览器自动生成 `boundary`，手动设置 `multipart/form-data` 会缺失 boundary 导致 NanoHTTPD 解析失败。
+- `HttpServer.buildResponse()` 对 `ReturnData` 业务失败仍返回 HTTP 200；上传端必须校验响应结构并以 `isSuccess` 为最终结果，失败展示 `errorMsg`。旧页只检查状态码，导致保存目录失效或导入异常时仍画绿色成功，这是本轮故障根因。
+- 多文件串行上传，避免手机端同时执行多次保存、摘要和解析；每项独立保留进度/结果，失败项可重试，成功前不得显示“已导入手机书架”。
 - `refreshToc` 后端实现为 `runBlocking { WebBook.getChapterListAwait(...) }`，网络书源刷新可能耗时数秒，前端按钮需置 `disabled`/loading 态，避免重复点击。
 - 替换规则新建时 `order` 初始化为 `-2147483648`（对应后端 `Int.MIN_VALUE`），后端 `ReplaceRuleController.saveRule` 会自动分配新排序。
 - 替换规则测试接口接收 `{ rule, text }`，返回替换后的文本；前端测试区直接展示结果字符串，不渲染富文本。
@@ -180,12 +183,13 @@
   - `modules/web/dist/index.html` → `app/src/main/assets/web/index.html`
   - `modules/web/dist/favicon.ico` → `app/src/main/assets/web/favicon.ico`
 - 未同步则 APK 内 Web UI 不生效。
+- `/uploadBook/index.html` 兼容跳转是 Android asset 中的独立小文件，Vite 不重建它；不得把上传业务复制回该文件。
 
 ### 4. 时间有效性
 
-- 记录日期: 2026-06-28
-- 验证日期: 2026-07-14（替换规则空 `pattern` early return 定向 JVM 测试、`scripts/check-debug.sh` 通过；Web 前端仍沿用 2026-06-28 的构建验证）。
-- 适用环境: Vue 3.5 + Vite 5 + Pinia，web 模块 node>=20/pnpm>=9。
+- 记录日期: 2026-06-28；网页传书收口: 2026-08-03
+- 验证日期: 2026-08-03（Vue 类型检查、ESLint、Prettier、既有阅读时长 6 项测试、Vite 生产构建、桌面/390px Headless Chrome 路由渲染、旧 URL 跳转、HTTP 200 业务失败不误报/重试后成功的浏览器级模拟接口回归、APK Web asset 字节同步、`scripts/check-debug.sh`、Debug APK 组装及包内两个 Web 文件反查通过；连接真实手机上传待验证）。
+- 适用环境: Vue 3.5.39 + Vite 8.1.4 + Pinia 3.0.4，Google Chrome Headless，web 模块 node>=20/pnpm>=9。
 - 复核条件: 升级 NanoHTTPD、修改 `HttpServer.kt` 路由、调整 `ReplaceRule` 实体字段、修改 web 构建流程时需重新验证。
 
 ---
@@ -678,4 +682,4 @@
 - 跨天阅读（如 23:50 进入、00:10 切章）以手机端收到请求的时间为结束点拆分两天；伪造客户端时间戳或超过 24 小时的单次时长不能写入。
 - 页面关闭/切后台/直接返回书架不触发未切章的异常写入。
 
-*Last updated: 2026-08-02*
+*Last updated: 2026-08-03*

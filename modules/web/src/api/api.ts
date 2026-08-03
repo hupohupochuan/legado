@@ -328,19 +328,54 @@ const saveBook = (book: BaseBook) =>
 const deleteBook = (book: BaseBook) =>
   ajax.post<LegadoApiResponse<unknown>>('deleteBook', book)
 
-const addLocalBook = async (file: File) => {
-  const formData = new FormData()
-  formData.append('fileName', file.name)
-  formData.append('fileData', file)
-  const response = await fetch(
-    new URL('addLocalBook', legado_http_entry_point).toString(),
-    { method: 'POST', body: formData },
+const isLegadoApiResponse = (
+  value: unknown,
+): value is LegadoApiResponse<unknown> => {
+  if (typeof value !== 'object' || value === null) return false
+  const response = value as Record<string, unknown>
+  return (
+    typeof response.isSuccess === 'boolean' &&
+    typeof response.errorMsg === 'string'
   )
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`)
-  }
-  return { data: (await response.json()) as LegadoApiResponse<unknown> }
 }
+
+const addLocalBook = (
+  file: File,
+  onProgress?: (loaded: number, total: number) => void,
+) =>
+  new Promise<{ data: LegadoApiResponse<unknown> }>((resolve, reject) => {
+    const formData = new FormData()
+    formData.append('fileName', file.name)
+    formData.append('fileData', file)
+
+    const request = new XMLHttpRequest()
+    request.open(
+      'POST',
+      new URL('addLocalBook', legado_http_entry_point).toString(),
+    )
+    request.responseType = 'json'
+    request.upload.addEventListener('progress', event => {
+      if (event.lengthComputable) onProgress?.(event.loaded, event.total)
+    })
+    request.addEventListener('error', () => {
+      reject(new Error('网络异常，与手机断开联系'))
+    })
+    request.addEventListener('abort', () => {
+      reject(new Error('上传已取消'))
+    })
+    request.addEventListener('load', () => {
+      if (request.status < 200 || request.status >= 300) {
+        reject(new Error(`HTTP ${request.status}`))
+        return
+      }
+      if (!isLegadoApiResponse(request.response)) {
+        reject(new Error('手机端返回内容格式错误'))
+        return
+      }
+      resolve({ data: request.response })
+    })
+    request.send(formData)
+  })
 
 const getSources = () =>
   ajax.get<LegadoApiResponse<BookSource[]>>('getBookSources')

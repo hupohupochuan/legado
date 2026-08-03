@@ -69,7 +69,7 @@ https://www.yuque.com/legado/wiki/community
 * [书源规则](https://mgz0227.github.io/The-tutorial-of-Legado/)
 * [更新日志](/app/src/main/assets/updateLog.md)
 * [帮助文档](/app/src/main/assets/web/help/md/appHelp.md)
-* [内置 Web 端（书架、阅读页、书源与替换规则）](/modules/web/README.md)
+* [内置 Web 端（书架、网页传书、阅读页、书源与替换规则）](/modules/web/README.md)
 
 ##### 支持开发
 如果这个项目对你有帮助，可以通过 PayPal 自愿支持后续维护。

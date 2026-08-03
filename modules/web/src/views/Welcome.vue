@@ -4,9 +4,21 @@
       <h1 class="welcome-title">昨日邻家乞新火，晓窗分与读书灯</h1>
       <p class="welcome-subtitle">Legado Web</p>
       <nav class="welcome-nav">
-        <a class="welcome-btn" @click="goTo('/shelf')" href="javascript:void(0)">书架</a>
-        <a class="welcome-btn" @click="goTo('/bookSource')" href="javascript:void(0)">书源</a>
-        <a class="welcome-btn" href="./uploadBook/index.html">传书</a>
+        <a class="welcome-btn" @click="goTo('/shelf')" href="javascript:void(0)"
+          >书架</a
+        >
+        <a
+          class="welcome-btn"
+          @click="goTo('/bookSource')"
+          href="javascript:void(0)"
+          >书源</a
+        >
+        <a
+          class="welcome-btn"
+          @click="goTo('/uploadBook')"
+          href="javascript:void(0)"
+          >传书</a
+        >
       </nav>
     </div>
   </div>

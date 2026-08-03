@@ -56,6 +56,8 @@ field fileName = 带扩展名的文件名
 file  fileData = 文件内容
 ```
 
+该接口使用 `ReturnData` 表达业务结果；保存目录失效、文件解析失败等情况也可能返回 HTTP 200。调用方必须继续解析 JSON，只有 `isSuccess=true` 才表示已经导入手机书架；失败时应展示 `errorMsg`。multipart 的 `Content-Type` 必须由浏览器/客户端随 boundary 自动生成，不要手写一个没有 boundary 的固定值。
+
 ### 阅读进度
 
 普通保存先更新手机 Room，再由手机端调度 WebDAV 上传；`flush=true` 用于切章、隐藏或离开页面时立即补交当前进度。
