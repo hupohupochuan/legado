@@ -7,6 +7,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.help.IntentData
+import io.legado.app.help.book.isLocal
 import io.legado.app.model.ReadBook
 
 class BookInfoEditViewModel(application: Application) : BaseViewModel(application) {
@@ -21,16 +22,17 @@ class BookInfoEditViewModel(application: Application) : BaseViewModel(applicatio
             if (ReadBook.book?.bookUrl == book.bookUrl) {
                 ReadBook.book = book
             }
-            if (bookUrl!=null&&bookUrl != book.bookUrl){
-                appDb.bookDao.delete(book)
-                book.bookUrl = bookUrl
-                appDb.bookDao.insert(book)
-            }else appDb.bookDao.update(book)
+            if (bookUrl != null && bookUrl != book.bookUrl) {
+                appDb.bookDao.relocate(book, bookUrl, null)
+            } else {
+                if (!book.isLocal) book.localFileKey = null
+                appDb.bookDao.update(book)
+            }
         }.onSuccess {
             success?.invoke()
         }.onError {
             if (it is SQLiteConstraintException) {
-                AppLog.put("书籍信息保存失败，存在相同书名作者书籍\n$it", it, true)
+                AppLog.put("书籍信息保存失败，目标文件或书籍地址已存在\n$it", it, true)
             } else {
                 AppLog.put("书籍信息保存失败\n$it", it, true)
             }

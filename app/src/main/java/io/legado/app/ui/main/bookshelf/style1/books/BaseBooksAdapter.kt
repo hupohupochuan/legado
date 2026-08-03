@@ -8,6 +8,7 @@ import androidx.viewbinding.ViewBinding
 import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
+import io.legado.app.ui.main.bookshelf.hasSameBookshelfIdentity
 
 abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
     DiffRecyclerAdapter<Book, VB>(context) {
@@ -18,8 +19,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         object : DiffUtil.ItemCallback<Book>() {
 
             override fun areItemsTheSame(oldItem: Book, newItem: Book): Boolean {
-                return oldItem.name == newItem.name
-                    && oldItem.author == newItem.author
+                return oldItem.hasSameBookshelfIdentity(newItem)
             }
 
             override fun areContentsTheSame(oldItem: Book, newItem: Book): Boolean {

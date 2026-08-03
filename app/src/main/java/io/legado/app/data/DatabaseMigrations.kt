@@ -22,7 +22,7 @@ object DatabaseMigrations {
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_76_77, migration_79_80, migration_80_81, migration_81_82,
-            migration_82_83
+            migration_82_83, migration_83_84
         )
     }
 
@@ -679,6 +679,24 @@ object DatabaseMigrations {
                     arrayOf<Any>(row.bookName, day, row.readTime, ms)
                 )
             }
+        }
+    }
+
+    /**
+     * 本地书使用“URI/路径 + 内容 SHA-1”的 localFileKey；同名同作者只用于检索，不能触发替换。
+     */
+    private val migration_83_84 = object : Migration(83, 84) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `books` ADD COLUMN `localFileKey` TEXT")
+            db.execSQL("DROP INDEX IF EXISTS `index_books_name_author`")
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_books_name_author` " +
+                    "ON `books` (`name`, `author`)"
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_books_localFileKey` " +
+                    "ON `books` (`localFileKey`)"
+            )
         }
     }
 

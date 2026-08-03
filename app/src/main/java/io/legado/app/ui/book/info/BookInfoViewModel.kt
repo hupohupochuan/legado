@@ -23,8 +23,11 @@ import io.legado.app.lib.webdav.ObjectNotFoundException
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.FileBook.WebFile
+import io.legado.app.model.fileBook.LocalBookIdentity
 import io.legado.app.utils.ArchiveUtils
+import io.legado.app.utils.FileDoc
 import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.openInputStream
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 
@@ -78,8 +81,13 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
             }
             if (remoteBook.lastModify > book.lastCheckTime) {
                 val uri = bookWebDav.downloadRemoteBook(remoteBook)
-                book.bookUrl = if (uri.isContentScheme()) uri.toString() else uri.path!!
+                val fileDoc = FileDoc.fromUri(uri, false)
+                val newBookUrl = if (uri.isContentScheme()) uri.toString() else uri.path!!
+                val localFileKey = fileDoc.openInputStream().getOrThrow().use {
+                    LocalBookIdentity.create(newBookUrl, it)
+                }
                 book.lastCheckTime = remoteBook.lastModify
+                appDb.bookDao.relocate(book, newBookUrl, localFileKey)
             }
         }
     }

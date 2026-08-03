@@ -14,6 +14,7 @@ import androidx.core.view.updateLayoutParams
 import io.legado.app.R
 import io.legado.app.base.BaseReadActivity
 import io.legado.app.constant.AppConst.charsets
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityBookReadBinding
 import io.legado.app.databinding.DialogDownloadChoiceBinding
@@ -72,8 +73,7 @@ abstract class BaseReadBookActivity :
         it.uri?.let { uri ->
             ReadBook.book?.let { book ->
                 FileDoc.fromUri(uri, true).find(book.originName)?.let { doc ->
-                    book.bookUrl = doc.uri.toString()
-                    book.save()
+                    appDb.bookDao.relocate(book, doc.uri.toString(), null)
                     viewModel.loadChapterList(book)
                 } ?: ReadBook.upMsg("找不到文件")
             }

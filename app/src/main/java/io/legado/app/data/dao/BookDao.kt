@@ -80,13 +80,33 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE `name` in (:names)")
     fun findByName(vararg names: String): List<Book>
 
-    @Query("select * from books where originName = :fileName")
+    // 仅供压缩包/WebDAV 兼容入口；普通本地文件必须按精确 bookUrl 查找。
+    @Query(
+        "SELECT * FROM books WHERE originName = :fileName " +
+            "ORDER BY durChapterTime DESC, bookUrl ASC LIMIT 1"
+    )
     fun getBookByFileName(fileName: String): Book?
 
     @Query("SELECT * FROM books WHERE bookUrl = :bookUrl")
     fun getBook(bookUrl: String): Book?
 
-    @Query("SELECT * FROM books WHERE name = :name and author = :author")
+    @Query("SELECT * FROM books WHERE localFileKey = :localFileKey LIMIT 1")
+    fun getBookByLocalFileKey(localFileKey: String): Book?
+
+    @Query(
+        "SELECT * FROM books WHERE name = :name and author = :author " +
+            "AND (type & ${BookType.local}) = 0 " +
+            "AND origin != '${BookType.localTag}' " +
+            "AND origin NOT LIKE '${BookType.webDavTag}%' " +
+            "ORDER BY durChapterTime DESC, bookUrl ASC LIMIT 1"
+    )
+    fun getOnlineBook(name: String, author: String): Book?
+
+    // 兼容缺少 bookUrl 的旧入口；同名书存在多本时只回退到最近阅读的一本。
+    @Query(
+        "SELECT * FROM books WHERE name = :name and author = :author " +
+            "ORDER BY durChapterTime DESC, bookUrl ASC LIMIT 1"
+    )
     fun getBook(name: String, author: String): Book?
 
     @Query("""select distinct bs.* from books, book_sources bs 
@@ -143,8 +163,13 @@ interface BookDao {
     @Query("select exists(select 1 from books where bookUrl = :bookUrl)")
     fun has(bookUrl: String): Boolean
 
-    @Query("select exists(select 1 from books where name = :name and author = :author)")
-    fun has(name: String, author: String): Boolean
+    @Query(
+        "select exists(select 1 from books where name = :name and author = :author " +
+            "AND (type & ${BookType.local}) = 0 " +
+            "AND origin != '${BookType.localTag}' " +
+            "AND origin NOT LIKE '${BookType.webDavTag}%')"
+    )
+    fun hasOnline(name: String, author: String): Boolean
 
     @Query(
         """select exists(select 1 from books where type & ${BookType.local} > 0 
@@ -160,6 +185,34 @@ interface BookDao {
 
     @Delete
     fun delete(vararg book: Book)
+
+    /**
+     * 搬迁持久化书籍的主键。目标行已由文件导入创建时保留其章节，
+     * 再用当前书籍状态覆盖目标行；旧主键在同一事务内删除。
+     */
+    @Transaction
+    fun relocate(book: Book, newBookUrl: String, newLocalFileKey: String?) {
+        if (book.bookUrl == newBookUrl) {
+            if (newLocalFileKey != null) {
+                book.localFileKey = newLocalFileKey
+            }
+            update(book)
+            return
+        }
+        val oldBook = book.copy()
+        val relocatedBook = book.copy(
+            bookUrl = newBookUrl,
+            localFileKey = newLocalFileKey
+        )
+        if (has(newBookUrl)) {
+            update(relocatedBook)
+        } else {
+            insert(relocatedBook)
+        }
+        delete(oldBook)
+        book.bookUrl = newBookUrl
+        book.localFileKey = newLocalFileKey
+    }
 
     @Transaction
     fun replace(oldBook: Book, newBook: Book) {

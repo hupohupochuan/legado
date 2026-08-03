@@ -136,10 +136,11 @@ fun Book.getLocalUri(): Uri {
         } else {
             val fileDoc = treeFileDoc.find(originName, 5, 100)
             if (fileDoc != null) {
-                localUriCache[bookUrl] = fileDoc.uri
-                //更新bookUrl 重启不用再找一遍
-                bookUrl = fileDoc.toString()
-                save()
+                val oldBookUrl = bookUrl
+                val newBookUrl = fileDoc.toString()
+                appDb.bookDao.relocate(this, newBookUrl, null)
+                localUriCache.remove(oldBookUrl)
+                localUriCache[newBookUrl] = fileDoc.uri
                 return fileDoc.uri
             }
         }
@@ -155,9 +156,11 @@ fun Book.getLocalUri(): Uri {
         val treeFileDoc = FileDoc.fromUri(treeUri, true)
         val fileDoc = treeFileDoc.find(originName, 5, 100)
         if (fileDoc != null) {
-            localUriCache[bookUrl] = fileDoc.uri
-            bookUrl = fileDoc.toString()
-            save()
+            val oldBookUrl = bookUrl
+            val newBookUrl = fileDoc.toString()
+            appDb.bookDao.relocate(this, newBookUrl, null)
+            localUriCache.remove(oldBookUrl)
+            localUriCache[newBookUrl] = fileDoc.uri
             return fileDoc.uri
         }
     }

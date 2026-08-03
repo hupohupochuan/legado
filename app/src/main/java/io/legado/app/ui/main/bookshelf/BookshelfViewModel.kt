@@ -54,16 +54,24 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                 if (bookUrl.isEmpty()) continue
                 try {
                     getBookInfoByUrlAwait(bookUrl).let {
-                        val dbBook = appDb.bookDao.getBook(it.name, it.author)
+                        val dbBook = appDb.bookDao.getOnlineBook(it.name, it.author)
                         val toc =
                             WebBook.getChapterListAwait(
                                 (IntentData.source as? BookSource)!!,
                                 it
                             )
                                 .getOrThrow()
-                        if (dbBook != null) dbBook.migrateTo(it, toc)
-                        else it.order = appDb.bookDao.minOrder - 1
-                        appDb.bookDao.insert(it)
+                        if (dbBook != null) {
+                            dbBook.migrateTo(it, toc)
+                            if (dbBook.bookUrl != it.bookUrl) {
+                                appDb.bookDao.replace(dbBook, it)
+                            } else {
+                                appDb.bookDao.insert(it)
+                            }
+                        } else {
+                            it.order = appDb.bookDao.minOrder - 1
+                            appDb.bookDao.insert(it)
+                        }
                         appDb.bookChapterDao.insert(*toc.toTypedArray())
                         successCount++
                         addBookProgressLiveData.postValue(successCount)
@@ -125,7 +133,7 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
             val author = bookInfo["author"] as String
             val origin = bookInfo["origin"] as String?
             val bookUrl = bookInfo["bookUrl"] as String?
-            if (name.isEmpty() || appDb.bookDao.has(name, author)) return@forEach
+            if (name.isEmpty() || appDb.bookDao.hasOnline(name, author)) return@forEach
             semaphore.withPermit {
                 (if (origin != null && bookUrl != null) {
                     val book = Book(bookUrl)

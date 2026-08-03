@@ -133,7 +133,8 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         inBookshelf = !book.isNotShelf
         curBook = book
         if (inBookshelf && isSearchBook) book =
-            appDb.bookDao.getBook(book.bookUrl) ?: appDb.bookDao.getBook(book.name, book.author)
+            appDb.bookDao.getBook(book.bookUrl)
+                ?: appDb.bookDao.getOnlineBook(book.name, book.author)
                 ?: book
         if (book.isRss) {
             book.tocUrl = book.bookUrl
@@ -194,9 +195,8 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             try {
                 getBookInfoAwait(bookSource, book, canReName)
                 if (isSearchBook) {
-                    val dbBook = appDb.bookDao.getBook(book.bookUrl) ?: appDb.bookDao.getBook(
-                        book.name, book.author
-                    )
+                    val dbBook = appDb.bookDao.getBook(book.bookUrl)
+                        ?: appDb.bookDao.getOnlineBook(book.name, book.author)
                     if (dbBook != null && dbBook.origin == book.origin) {
                         /**
                          * book 来自搜索时(inBookshelf == false)，搜索的书名不存在于书架，但是加载详情后，书名更新，存在同名书籍
@@ -451,12 +451,22 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 if (book.order == 0) {
                     book.order = appDb.bookDao.minOrder - 1
                 }
-                appDb.bookDao.getBook(book.name, book.author)?.let {
+                val dbBook = if (book.isLocal) {
+                    null
+                } else {
+                    appDb.bookDao.getOnlineBook(book.name, book.author)
+                }
+                dbBook?.let {
                     book.durChapterIndex = it.durChapterIndex
                     book.durChapterPos = it.durChapterPos
                     book.durChapterTitle = it.durChapterTitle
                 }
-                book.save()
+                if (dbBook != null && dbBook.bookUrl != book.bookUrl) {
+                    book.removeType(BookType.notShelf)
+                    appDb.bookDao.replace(dbBook, book)
+                } else {
+                    book.save()
+                }
             }
             chapterListData.value?.let {
                 appDb.bookChapterDao.insert(*it.toTypedArray())

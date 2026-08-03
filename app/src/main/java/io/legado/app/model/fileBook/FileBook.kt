@@ -42,6 +42,7 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
 import io.legado.app.utils.hasReadableContent
 import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.openInputStream
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
@@ -130,7 +131,8 @@ object FileBook : BaseFileBook {
     private fun importBook(
         book: Book
     ): Book {
-        val dbBook = appDb.bookDao.getBook(book.bookUrl)
+        val dbBook = book.localFileKey?.let(appDb.bookDao::getBookByLocalFileKey)
+            ?: appDb.bookDao.getBook(book.bookUrl)
         return if (dbBook == null) {
             book.apply {
                 upBookInfo(this)
@@ -143,6 +145,7 @@ object FileBook : BaseFileBook {
                 this.author = book.author
                 this.originName = book.originName
                 this.origin = book.origin
+                this.localFileKey = book.localFileKey
                 if (book.originName.endsWith(".txt", true)) {
                     this.charset = null
                     this.tocUrl = ""
@@ -202,16 +205,21 @@ object FileBook : BaseFileBook {
 
             else -> {}
         }
+        val bookUrl = fileDoc.uri.toString()
+        val localFileKey = fileDoc.openInputStream().getOrThrow().use {
+            LocalBookIdentity.create(bookUrl, it)
+        }
         return importBook(
             Book(
-                bookUrl = fileDoc.uri.toString(),
+                bookUrl = bookUrl,
                 name = name,
                 author = author,
                 originName = fileName,
                 latestChapterTime = updateTime,
                 order = appDb.bookDao.minOrder - 1,
-                origin = fileDoc.uri.toString(),
-                type = type
+                origin = bookUrl,
+                type = type,
+                localFileKey = localFileKey
             )
         )
     }
@@ -411,16 +419,23 @@ object FileBook : BaseFileBook {
         if (webDavUrl.isNullOrBlank()) throw NoStackTraceException("Book file is not webDav File")
         val fileName = if (book.isArchive) book.archiveName else book.originName
         val fileUri = runBlocking { saveBookFile(webDavUrl, fileName) }
+        val newBookUrl: String
+        val newLocalFileKey: String?
         if (book.isArchive) {
             val newBook = importFromArchive(fileUri, book.originName) { name ->
                 name.contains(book.originName)
             }.firstOrNull() ?: throw NoStackTraceException("Archive contains no matching book file")
             book.origin = newBook.origin
-            book.bookUrl = newBook.bookUrl
+            newBookUrl = newBook.bookUrl
+            newLocalFileKey = newBook.localFileKey
         } else {
-            book.bookUrl = FileDoc.fromUri(fileUri, false).toString()
+            val fileDoc = FileDoc.fromUri(fileUri, false)
+            newBookUrl = fileDoc.toString()
+            newLocalFileKey = fileDoc.openInputStream().getOrThrow().use {
+                LocalBookIdentity.create(newBookUrl, it)
+            }
         }
-        book.save()
+        appDb.bookDao.relocate(book, newBookUrl, newLocalFileKey)
         return true
     }
 

@@ -33,10 +33,13 @@ import java.time.LocalDate
 @TypeConverters(Book.Converters::class)
 @Entity(
     tableName = "books",
-    indices = [Index(value = ["name", "author"], unique = true)]
+    indices = [
+        Index(value = ["name", "author"]),
+        Index(value = ["localFileKey"], unique = true)
+    ]
 )
 data class Book(
-    // 详情页Url(本地书源存储完整文件路径)
+    // 文件访问定位与兼容主键；本地文件内容身份另见 localFileKey
     @PrimaryKey
     @ColumnInfo(defaultValue = "")
     override var bookUrl: String = "",
@@ -117,7 +120,9 @@ data class Book(
     var readConfig: ReadConfig? = null,
     //同步时间
     @ColumnInfo(defaultValue = "0")
-    var syncTime: Long = 0L
+    var syncTime: Long = 0L,
+    // 本地文件身份：SHA1(URI/路径 + 内容 SHA1)；在线书和待重新导入的旧记录可为空
+    var localFileKey: String? = null
 ) : Parcelable, BaseBook {
 
     override fun equals(other: Any?): Boolean {
