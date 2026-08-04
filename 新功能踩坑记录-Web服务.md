@@ -1,8 +1,8 @@
 # 新功能踩坑记录 - Web 服务
 
 > 返回主题索引: [新功能踩坑记录.md](新功能踩坑记录.md)
-> 当前复核状态（2026-08-03）：Web 前端仍以 `modules/web/index.html` → `src/main.ts` 为唯一生产入口，网页传书统一为 `/#/uploadBook`，旧 `/uploadBook/index.html` 仅兼容跳转；APK 加载 `app/src/main/assets/web/index.html`。书本翻页现行实现以 `BookPageReader.vue` 的固定 `clip-path`/平移动画和后续修复为准。WebService 停机与通知移除的最新运行时约束另见 [适配踩坑记录.md 0.5](适配踩坑记录.md#05-webservice-关闭后前台通知残留)。
-> 验证边界：网页传书已在本轮完成模拟接口与 Headless Chrome 回归，但未连接真实手机；其余历史浏览器和真机结果未重跑。修改 Web 运行时后仍须执行类型检查、生产构建、两个产物同步和字节比较。
+> 当前复核状态（2026-08-04）：Web 前端仍以 `modules/web/index.html` → `src/main.ts` 为唯一生产入口，网页传书统一为 `/#/uploadBook`，旧 `/uploadBook/index.html` 仅兼容跳转；APK 加载 `app/src/main/assets/web/index.html`。书本翻页现行实现以 `BookPageReader.vue` 的固定 `clip-path`/平移动画和后续修复为准。WebService 停机与通知移除的最新运行时约束另见 [适配踩坑记录.md 0.5](适配踩坑记录.md#05-webservice-关闭后前台通知残留)。
+> 验证边界：网页传书已完成模拟接口与 Headless Chrome 回归但未连接真实手机；全文搜索并行化已在 Android 17/API 37 x86_64 模拟器通过真实 WebService WebSocket 回归，但未复测实体浏览器视觉交互和在线缓存书。其余历史浏览器和真机结果未重跑。修改 Web 运行时后仍须执行类型检查、生产构建、两个产物同步和字节比较。
 
 ---
 
@@ -682,4 +682,35 @@
 - 跨天阅读（如 23:50 进入、00:10 切章）以手机端收到请求的时间为结束点拆分两天；伪造客户端时间戳或超过 24 小时的单次时长不能写入。
 - 页面关闭/切后台/直接返回书架不触发未切章的异常写入。
 
-*Last updated: 2026-08-03*
+## 11. Web 阅读页全文搜索章节并行化
+
+- 记录日期: 2026-08-04
+- 复核日期: 2026-08-04（`BookContentSearcherTest` 26 项、Debug APK 组装、Android 17/API 37 x86_64 模拟器真实 WebService WebSocket 边界与性能回归通过；实体浏览器视觉交互、在线缓存书和实体机待验证）
+- 适用环境: Web 阅读页全文搜索（`BookContentSearch.vue` → WebSocket → `BookContentSearchService`）
+- 相关文件:
+  - 编排: `app/src/main/java/io/legado/app/help/book/BookContentSearcher.kt`（`BookContentSearchService.search`）、`app/src/main/java/io/legado/app/web/socket/BookContentSearchWebSocket.kt`
+  - 线程安全: `app/src/main/java/io/legado/app/help/book/ContentProcessor.kt`
+  - 单测: `app/src/test/java/io/legado/app/help/book/BookContentSearcherTest.kt`
+  - Web 前端契约不变: `modules/web/src/components/BookContentSearch.vue`（零改动，无需同步 assets）
+
+**设计结论**:
+- 原实现按章节串行读+净化+匹配，长书耗时≈各章之和。现改为固定 worker 消费章节任务、完成结果写入带章节位置的 Channel，协调端用索引缓冲按 `chapterIndex` 有序上报；调度窗口限制为并发数的两倍，前序章节完成后立即滑动补位，不再等待固定分块全部结束，也不会在单个慢章前堆积整本书结果。严格结果顺序仍意味着后章结果可能暂存在窗口内等待慢前章，文档不得再宣称完全不受慢章影响。
+- 并发度 = `min(searchConcurrency, 可搜索章节数, MAX_SEARCH_CONCURRENCY=16).coerceAtLeast(1)`；`BookContentSearchWebSocket` 注入 `AppConfig.threadCount`。即便用户把 threadCount 调到 999，并行也限到 16，避免同时打开过多文件句柄/同步锁竞争导致 IO 抖动与内存峰值。
+- 保留全部可观察契约：结果按章有序流式上报、每章一次 `onProgress`、任一章异常会通过结构化并发取消其余任务并由 WebSocket 报“搜索失败”。达到 `maxResults=500` 本身不再提前跳过后续章节；协调端继续按章确认，只有发现第 501 条或单章搜索明确还有更多结果时才置 `truncated=true` 并取消剩余任务，正好 500 条且后续无命中则扫描完整本书并返回 `false`。Web 前端契约不变，无需改 `modules/web/src` 或同步 assets。
+- 提速主要落在在线书（每章独立缓存文件 `file.readText()`，并行无锁）收益最大；本地书因各格式 handler（`TextFile`/`EpubFile`/`PdfFile`/`UmdFile`/`MobiFile`/`CbzFile`）的 `getContent`/zip 读取多带 `@Synchronized`/`synchronized(pfd)`，IO 仍串行，仅 CPU（ContentProcessor 正则、匹配）并行 → 中等收益。
+- 线程安全：`ContentProcessor.processors` 使用 `ConcurrentHashMap.compute` 原子复用或创建同一本书的处理器，避免并发“查询—创建—写入”产生多个实例；替换规则继续使用 `CopyOnWriteArrayList`，动态增删的重复标题缓存改为 `ConcurrentHashMap.newKeySet()`，搜索读取与阅读页切换设置可以并发执行。
+- 模拟器合成大文本为 22 MB、433 个可搜索章节、无命中关键词，各配置跑 5 轮：单线程中位数 `1043.22 ms`，16 线程中位数 `639.11 ms`，约 `1.63x`、耗时下降 `38.7%`。该数字只代表本轮 Android 模拟器本地 TXT 路径，不外推为实体机、EPUB 或在线缓存书的固定收益。
+
+**实现约束**:
+- 构造默认 `searchConcurrency = DEFAULT_SEARCH_CONCURRENCY = 16`（纯 JVM 常量，不触碰 `AppConfig`），保证纯 JVM 单测不触发 Android 依赖加载；生产路径必须由 `BookContentSearchWebSocket` 显式注入 `AppConfig.threadCount`。
+- `search()` 内不得直接调用 `ContentProcessor.get(...)`：会让纯 JVM 单测加载依赖 Android 的 `ContentProcessor` 触发 `ClassNotFoundException`；并发安全已由 `ConcurrentHashMap` 兜底。
+- worker 只负责独立章节读取、净化和匹配，不读写全局命中状态；`matchCount`、`truncated`、批次结果和进度只允许协调协程修改，避免用原子变量近似计算每章剩余额度。
+- 任务与结果 Channel、索引缓冲必须保持有界；当前窗口为 `min(可搜索章节数, concurrency * 2)`。结果上报必须以章节在排序后列表中的位置重排，不能依赖 worker 完成顺序。
+- 单章搜索最多保留全局 `resultLimit` 条；协调端达到上限后仍须检查后续章节是否存在额外命中，不能仅因 `matchCount == resultLimit` 就把未搜索章节计入 `scannedChapters` 或返回 `truncated=false`。
+
+**回归点**:
+- `BookContentSearcherTest`：真实固定线程池下并发数不超过配置、慢章未完成时窗口继续补位、乱序完成仍按章有序、`searchConcurrency=1` 等价旧串行、上限内截断、正好达到上限后有/无额外命中的两条边界、取消后无 `onResults/onComplete`、本地书全章读取。
+- 模拟器：64 章合成书实际含 501 个 `needle`，整书搜索只返回前 500 条且在扫描到第 41 章确认额外命中后返回 `truncated=true`；单独搜索第 41 章仍可找到该结果。结果顺序、进度和无命中全书完成均通过真实 `/searchBookContent` WebSocket 检查。
+- 待验证：实体浏览器确认 500 条提示和点击跳转；在线缓存长书及本地 EPUB 对比；实体机性能、取消和内存峰值。
+
+*Last updated: 2026-08-04*

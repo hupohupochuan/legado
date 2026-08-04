@@ -4,8 +4,12 @@ import androidx.annotation.Keep
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 
 /**
  * Web 阅读页全文搜索结果。
@@ -308,6 +312,12 @@ interface BookContentSearchListener {
  * 文件名命中的章节。这里没有 WebBook 依赖，因此缓存未命中时不会走书源网络请求。
  */
 class BookContentSearchService(
+    /**
+     * 单次搜索章节并行度。Web 端通过 [BookContentSearchWebSocket] 注入 [AppConfig.threadCount]；
+     * 纯 JVM 单测可用固定常量避免触碰 Android 依赖。实际并行度还会被
+     * [MAX_SEARCH_CONCURRENCY] 与可搜索章节数封顶。
+     */
+    private val searchConcurrency: Int = DEFAULT_SEARCH_CONCURRENCY,
     private val findBook: suspend (String) -> Book? = { bookUrl ->
         appDb.bookDao.getBook(bookUrl)
     },
@@ -385,55 +395,106 @@ class BookContentSearchService(
             BookContentSearcher.RESULT_BATCH_SIZE
         )
 
-        for (chapter in searchableChapters) {
-            context.ensureActive()
-            // 非普通本地书只能走“仅缓存”入口。不能在快照后再次调用通用 getContent，
-            // 否则 WebDAV 缓存恰好被清理时会回退 FileBook 并发起网络读取。
-            val rawContent = if (localBook) {
-                readLocalChapterContent(book, chapter)
-            } else {
-                readCachedChapterContent(book, chapter)
-            }
-            context.ensureActive()
-            if (rawContent != null) {
-                val processedContent = processChapterContent(book, chapter, rawContent)
-                context.ensureActive()
-                val chapterSearch = BookContentSearcher.search(
-                    content = processedContent,
-                    query = query,
-                    maxResults = resultLimit - matchCount
-                )
-                for (match in chapterSearch.matches) {
-                    context.ensureActive()
-                    pendingResults.add(
-                        WebBookContentSearchResult(
-                            chapterIndex = chapter.index,
-                            chapterTitle = chapter.title,
-                            chapterPos = match.chapterPos,
-                            queryIndexInChapter = match.queryIndexInChapter,
-                            queryIndexInSnippet = match.queryIndexInSnippet,
-                            snippet = match.snippet
+        val concurrency = minOf(searchConcurrency, searchableChapters.size, MAX_SEARCH_CONCURRENCY)
+            .coerceAtLeast(1)
+
+        if (searchableChapters.isNotEmpty()) coroutineScope {
+            // 只允许有限数量的章节领先于当前上报位置，既持续补位，又避免慢章前堆积整本书结果。
+            val windowSize = minOf(
+                searchableChapters.size,
+                concurrency * SEARCH_WINDOW_MULTIPLIER
+            )
+            val taskChannel = Channel<Int>(windowSize)
+            val outputChannel = Channel<IndexedChapterSearchOutput>(windowSize)
+            val workers = List(concurrency) {
+                launch {
+                    for (position in taskChannel) {
+                        val chapter = searchableChapters[position]
+                        outputChannel.send(
+                            IndexedChapterSearchOutput(
+                                position = position,
+                                output = searchChapter(
+                                    book = book,
+                                    chapter = chapter,
+                                    localBook = localBook,
+                                    query = query,
+                                    resultLimit = resultLimit
+                                )
+                            )
                         )
-                    )
-                    matchCount++
-                    if (pendingResults.size == BookContentSearcher.RESULT_BATCH_SIZE) {
-                        listener.onResults(pendingResults.toList())
-                        pendingResults.clear()
                     }
                 }
-                truncated = chapterSearch.truncated || matchCount >= resultLimit
             }
 
-            scannedChapters++
-            context.ensureActive()
-            listener.onProgress(
-                BookContentSearchProgress(
-                    scannedChapters = scannedChapters,
-                    searchableChapters = searchableChapters.size,
-                    matchCount = matchCount
-                )
-            )
-            if (truncated) break
+            var nextToSchedule = 0
+            var nextToReport = 0
+            val completedByPosition = HashMap<Int, ChapterSearchOutput?>(windowSize)
+
+            suspend fun fillWindow() {
+                while (
+                    nextToSchedule < searchableChapters.size &&
+                    nextToSchedule - nextToReport < windowSize
+                ) {
+                    taskChannel.send(nextToSchedule)
+                    nextToSchedule++
+                }
+                if (nextToSchedule >= searchableChapters.size) {
+                    taskChannel.close()
+                }
+            }
+
+            try {
+                fillWindow()
+                while (nextToReport < searchableChapters.size && !truncated) {
+                    context.ensureActive()
+                    val completed = outputChannel.receive()
+                    completedByPosition[completed.position] = completed.output
+
+                    while (completedByPosition.containsKey(nextToReport) && !truncated) {
+                        val output = completedByPosition.remove(nextToReport)
+                        if (output != null) {
+                            for (result in output.results) {
+                                context.ensureActive()
+                                if (matchCount >= resultLimit) {
+                                    // 已达到上限后又确认存在一条结果，才算真正截断。
+                                    truncated = true
+                                    break
+                                }
+                                pendingResults.add(result)
+                                matchCount++
+                                if (pendingResults.size >= BookContentSearcher.RESULT_BATCH_SIZE) {
+                                    listener.onResults(pendingResults.toList())
+                                    pendingResults.clear()
+                                }
+                            }
+                            if (output.chapterTruncated) {
+                                truncated = true
+                            }
+                        }
+
+                        scannedChapters++
+                        nextToReport++
+                        context.ensureActive()
+                        listener.onProgress(
+                            BookContentSearchProgress(
+                                scannedChapters = scannedChapters,
+                                searchableChapters = searchableChapters.size,
+                                matchCount = matchCount
+                            )
+                        )
+                    }
+
+                    if (!truncated) {
+                        fillWindow()
+                    }
+                }
+            } finally {
+                taskChannel.cancel()
+                outputChannel.cancel()
+                if (truncated) {
+                    workers.forEach { it.cancel() }
+                }
+            }
         }
 
         context.ensureActive()
@@ -449,5 +510,73 @@ class BookContentSearchService(
                 truncated = truncated
             )
         )
+    }
+
+    private suspend fun searchChapter(
+        book: Book,
+        chapter: BookChapter,
+        localBook: Boolean,
+        query: String,
+        resultLimit: Int
+    ): ChapterSearchOutput? {
+        val context = currentCoroutineContext()
+        context.ensureActive()
+        // 非普通本地书只能走“仅缓存”入口。不能在快照后再次调用通用 getContent，
+        // 否则 WebDAV 缓存恰好被清理时会回退 FileBook 并发起网络读取。
+        val rawContent = if (localBook) {
+            readLocalChapterContent(book, chapter)
+        } else {
+            readCachedChapterContent(book, chapter)
+        }
+        context.ensureActive()
+        if (rawContent == null) return null
+
+        val processedContent = processChapterContent(book, chapter, rawContent)
+        context.ensureActive()
+        val chapterSearch = BookContentSearcher.search(
+            content = processedContent,
+            query = query,
+            maxResults = resultLimit
+        )
+        val results = ArrayList<WebBookContentSearchResult>(chapterSearch.matches.size)
+        for (match in chapterSearch.matches) {
+            context.ensureActive()
+            results.add(
+                WebBookContentSearchResult(
+                    chapterIndex = chapter.index,
+                    chapterTitle = chapter.title,
+                    chapterPos = match.chapterPos,
+                    queryIndexInChapter = match.queryIndexInChapter,
+                    queryIndexInSnippet = match.queryIndexInSnippet,
+                    snippet = match.snippet
+                )
+            )
+        }
+        return ChapterSearchOutput(results, chapterSearch.truncated)
+    }
+
+    private data class ChapterSearchOutput(
+        val results: ArrayList<WebBookContentSearchResult>,
+        val chapterTruncated: Boolean
+    )
+
+    private data class IndexedChapterSearchOutput(
+        val position: Int,
+        val output: ChapterSearchOutput?
+    )
+
+    companion object {
+        /**
+         * 纯 JVM 默认并行度，避免单测触碰 [AppConfig]。生产路径由 WebSocket 注入用户配置。
+         */
+        const val DEFAULT_SEARCH_CONCURRENCY = 16
+
+        /**
+         * 并行度硬上限。即便用户把 threadCount 调到 999，也限制并行的章节读取数，
+         * 避免同时打开过多文件句柄/同步锁竞争引发的 IO 抖动与内存峰值。
+         */
+        const val MAX_SEARCH_CONCURRENCY = 16
+
+        private const val SEARCH_WINDOW_MULTIPLIER = 2
     }
 }

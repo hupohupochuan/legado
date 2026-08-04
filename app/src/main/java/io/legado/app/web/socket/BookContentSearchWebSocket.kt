@@ -10,6 +10,7 @@ import io.legado.app.help.book.BookContentSearchService
 import io.legado.app.help.book.BookContentSearchStart
 import io.legado.app.help.book.BookContentSearcher
 import io.legado.app.help.book.WebBookContentSearchResult
+import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import kotlinx.coroutines.CancellationException
@@ -74,7 +75,9 @@ private data class BookContentSearchErrorMessage(
 /** Web 阅读页手机端全文搜索 WebSocket。 */
 class BookContentSearchWebSocket(
     handshakeRequest: NanoHTTPD.IHTTPSession,
-    private val searchService: BookContentSearchService = BookContentSearchService()
+    private val searchService: BookContentSearchService = BookContentSearchService(
+        searchConcurrency = AppConfig.threadCount
+    )
 ) : NanoWSD.WebSocket(handshakeRequest) {
 
     private val socketScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
