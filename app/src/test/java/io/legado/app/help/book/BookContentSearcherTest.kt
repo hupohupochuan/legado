@@ -1,5 +1,6 @@
 package io.legado.app.help.book
 
+import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import kotlinx.coroutines.CancellationException
@@ -264,6 +265,53 @@ class BookContentSearcherTest {
         assertEquals(0, listener.start?.searchableChapters)
         assertFalse(listener.start?.isLocalBook ?: true)
         assertEquals(1, listener.complete?.skippedUncachedChapters)
+    }
+
+    @Test
+    fun webDavLinkedLocalBookSearchesOriginalFileWithoutRemoteFallback() = runBlocking {
+        val chapters = listOf(chapter(0), chapter(1))
+        val reads = ConcurrentHashMap.newKeySet<Int>()
+        var cacheSnapshotCalls = 0
+        val listener = RecordingListener()
+        val remoteOrigin = BookType.webDavTag + "https://example.invalid/book.txt"
+        val book = Book(
+            bookUrl = "content://books/book.txt",
+            name = "已上传的本地书",
+            originName = "book.txt",
+            origin = remoteOrigin,
+            type = BookType.text or BookType.local
+        )
+        val service = BookContentSearchService(
+            findBook = { book },
+            findChapters = { chapters },
+            getCachedChapterNames = {
+                cacheSnapshotCalls++
+                emptySet()
+            },
+            readLocalChapterContent = { localOnlyBook, chapter ->
+                // 搜索期间即使本地文件失效，也不能凭 WebDAV origin 回源下载。
+                assertEquals(BookType.localTag, localOnlyBook.origin)
+                assertEquals(book.bookUrl, localOnlyBook.bookUrl)
+                reads.add(chapter.index)
+                "本章有词"
+            },
+            readCachedChapterContent = { _, _ -> error("本地文件书不应走仅缓存读取") },
+            processChapterContent = { originalBook, _, raw ->
+                // 替换规则等正文处理仍保留原始 WebDAV 来源语义。
+                assertEquals(remoteOrigin, originalBook.origin)
+                raw
+            },
+            chapterFileName = { chapter -> "chapter-${chapter.index}" }
+        )
+
+        service.search(book.bookUrl, "词", listener = listener)
+
+        assertEquals(0, cacheSnapshotCalls)
+        assertEquals(setOf(0, 1), reads)
+        assertEquals(listOf(0, 1), listener.items.map { it.chapterIndex })
+        assertTrue(listener.start?.isLocalBook == true)
+        assertEquals(0, listener.complete?.skippedUncachedChapters)
+        assertEquals(remoteOrigin, book.origin)
     }
 
     @Test

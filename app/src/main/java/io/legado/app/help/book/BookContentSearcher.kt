@@ -1,6 +1,7 @@
 package io.legado.app.help.book
 
 import androidx.annotation.Keep
+import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -339,10 +340,11 @@ class BookContentSearchService(
                 .getContent(book, chapter, content, includeTitle = false)
                 .toString()
         },
-    // WebDAV 来源虽然沿用 isLocal 的历史分类，但 FileBook 在本地文件缺失时会
-    // 回源下载。全文搜索必须保持离线，因此这类书按“仅已有章节缓存”处理。
+    // origin 只表示来源/同步关系：普通本地书上传 WebDAV 后也会变成 webDav::，
+    // 但 bookUrl 仍指向手机文件。正文读取能力必须看实际定位字段 bookUrl；只有
+    // bookUrl 本身是 webDav:: 时才是远程文件，需要限制为仅搜索已有章节缓存。
     private val isLocalBook: (Book) -> Boolean = { book ->
-        book.isLocal && !book.isWebDavBook
+        book.isLocal && !book.bookUrl.startsWith(BookType.webDavTag)
     },
     private val chapterFileName: (BookChapter) -> String = { chapter -> chapter.getFileName() }
 ) {
@@ -521,10 +523,17 @@ class BookContentSearchService(
     ): ChapterSearchOutput? {
         val context = currentCoroutineContext()
         context.ensureActive()
-        // 非普通本地书只能走“仅缓存”入口。不能在快照后再次调用通用 getContent，
+        // 远程定位的书只能走“仅缓存”入口。不能在快照后再次调用通用 getContent，
         // 否则 WebDAV 缓存恰好被清理时会回退 FileBook 并发起网络读取。
+        // 对“本地 bookUrl + WebDAV origin”的书传入去掉远程来源的只读副本；这样
+        // 本地文件在搜索期间失效时也只会读取失败，不会由 BaseFileBook 回源下载。
         val rawContent = if (localBook) {
-            readLocalChapterContent(book, chapter)
+            val localOnlyBook = if (book.isWebDavBook) {
+                book.copy(origin = BookType.localTag)
+            } else {
+                book
+            }
+            readLocalChapterContent(localOnlyBook, chapter)
         } else {
             readCachedChapterContent(book, chapter)
         }

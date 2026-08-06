@@ -1,10 +1,10 @@
 # AI 编辑必看架构图
 
-> 最新修订: 2026-08-03 CST
+> 最新修订: 2026-08-07 CST
 > 最近三次修订:
+> - 2026-08-07 CST: Web 全文搜索按 `bookUrl` 的实际正文定位区分本地与远程；本地书上传 WebDAV 后仍搜索原文件，且搜索失败不得回源下载。
 > - 2026-08-03 CST: 网页传书收回 Vue 单入口，旧 `/uploadBook/index.html` 仅保留兼容跳转；上传结果必须检查手机端 `isSuccess`，不能把 HTTP 200 当成业务成功。
 > - 2026-08-03 CST: 本地书改用“文件 URI/路径 + 内容 SHA-1”身份区分，解除书名与作者的唯一约束，允许同名同作者的不同文件并存。
-> - 2026-08-02 CST: 修复 Release/R8 擦除 TTS 选择泛型后无法选择已安装系统朗读引擎的问题，并补齐 HTTP TTS 列表刷新边界。
 
 > 本文件是第一入口；同时按 `AGENTS.md` 要求读完其余三个必读文档，再按具体任务打开 `AI编辑必看/` 子文件。
 
@@ -50,6 +50,7 @@
 - 不要把 WebDAV 账号、密码、Authorization、URL query/fragment 写入日志。
 - 不要把本地 SAF 路径跨设备自动替换；`content://.../tree/...` 失效时必须提示用户重新授权。
 - 本地书不得以书名、作者或文件名作为唯一身份；`bookUrl` 保留可读 URI/路径，`localFileKey` 使用 `SHA1(URI/路径 + 内容 SHA1)`。文件列表的“已在书架”和点击打开必须先按精确 URI 定位，不得回退到同文件名后改写另一本书的路径。
+- Web 全文搜索判断正文能否从手机原文件读取时必须看 `bookUrl`，不能只看 `origin`：上传 WebDAV 会把本地书 `origin` 改成 `webDav::`，但不会移走本地 `bookUrl`。只有实际远程定位或在线书才限制为已有缓存；本地文件读取失败时仍不得借 `origin` 回源下载。
 - 不要只改 `modules/web/src` 而不同步 `app/src/main/assets/web`。
 - 网页传书必须用浏览器原生 `FormData` 交给浏览器生成 multipart boundary，并检查 `ReturnData.isSuccess`；`addLocalBook` 的业务失败同样返回 HTTP 200。`app/src/main/assets/web/uploadBook/index.html` 只允许作为旧地址到 `/#/uploadBook` 的兼容跳转，不得恢复第二套上传实现。
 - Web 阅读时长空闲超过 10 分钟后，本章作废状态必须保持到切章，恢复可见或再次交互不能清除；浏览器只上报 5 秒至 24 小时的章节经过时长，结束时间和自然日归属由手机端确定。
@@ -103,4 +104,4 @@ scripts/build-signed-release.sh
 
 脚本会强制使用 `app/gradle.properties` 中的个人签名配置和 `RELEASE_CERT_SHA256`，完成 Release/R8、五个 ABI APK、证书/包名/版本校验，再把同一批 APK、`.idsig`、metadata 原子同步到 `app/app/release/`。`app/gradle.properties` 与 keystore 必须仅所有者可读写（脚本接受 `400` 或 `600`，通常使用 `600`）。Android 64 位真机优先安装 `app/app/release/legado_arm64.apk`；不得直接复制单个 APK，也不得在签名配置缺失时接受 Gradle 的 Debug 签名回退。
 
-*文档版本: 2026-08-03*
+*文档版本: 2026-08-07*

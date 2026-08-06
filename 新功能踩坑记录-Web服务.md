@@ -1,8 +1,8 @@
 # 新功能踩坑记录 - Web 服务
 
 > 返回主题索引: [新功能踩坑记录.md](新功能踩坑记录.md)
-> 当前复核状态（2026-08-04）：Web 前端仍以 `modules/web/index.html` → `src/main.ts` 为唯一生产入口，网页传书统一为 `/#/uploadBook`，旧 `/uploadBook/index.html` 仅兼容跳转；APK 加载 `app/src/main/assets/web/index.html`。书本翻页现行实现以 `BookPageReader.vue` 的固定 `clip-path`/平移动画和后续修复为准。WebService 停机与通知移除的最新运行时约束另见 [适配踩坑记录.md 0.5](适配踩坑记录.md#05-webservice-关闭后前台通知残留)。
-> 验证边界：网页传书已完成模拟接口与 Headless Chrome 回归但未连接真实手机；全文搜索并行化已在 Android 17/API 37 x86_64 模拟器通过真实 WebService WebSocket 回归，但未复测实体浏览器视觉交互和在线缓存书。其余历史浏览器和真机结果未重跑。修改 Web 运行时后仍须执行类型检查、生产构建、两个产物同步和字节比较。
+> 当前复核状态（2026-08-07）：Web 前端仍以 `modules/web/index.html` → `src/main.ts` 为唯一生产入口，网页传书统一为 `/#/uploadBook`，旧 `/uploadBook/index.html` 仅兼容跳转；全文搜索已修复 WebDAV 关联本地书被误判为仅缓存书的问题。WebService 停机与通知移除的最新运行时约束另见 [适配踩坑记录.md 0.5](适配踩坑记录.md#05-webservice-关闭后前台通知残留)。
+> 验证边界：2026-08-07 来源判定修复通过 27 项定向 JVM 测试和 `scripts/check-debug.sh`，未修改 Web 前端；2026-08-04 的 Android 17/API 37 x86_64 模拟器真实 WebService WebSocket 回归未自动续期，实体浏览器、本地 TXT/EPUB 和在线缓存书仍待复测。修改 Web 运行时后仍须执行类型检查、生产构建、两个产物同步和字节比较。
 
 ---
 
@@ -685,7 +685,7 @@
 ## 11. Web 阅读页全文搜索章节并行化
 
 - 记录日期: 2026-08-04
-- 复核日期: 2026-08-04（`BookContentSearcherTest` 26 项、Debug APK 组装、Android 17/API 37 x86_64 模拟器真实 WebService WebSocket 边界与性能回归通过；实体浏览器视觉交互、在线缓存书和实体机待验证）
+- 复核日期: 2026-08-07（`BookContentSearcherTest` 27 项及 `scripts/check-debug.sh` 通过，新增 WebDAV 关联本地书来源边界；2026-08-04 的 Debug APK 与模拟器 WebSocket 结果未自动续期）
 - 适用环境: Web 阅读页全文搜索（`BookContentSearch.vue` → WebSocket → `BookContentSearchService`）
 - 相关文件:
   - 编排: `app/src/main/java/io/legado/app/help/book/BookContentSearcher.kt`（`BookContentSearchService.search`）、`app/src/main/java/io/legado/app/web/socket/BookContentSearchWebSocket.kt`
@@ -697,6 +697,7 @@
 - 原实现按章节串行读+净化+匹配，长书耗时≈各章之和。现改为固定 worker 消费章节任务、完成结果写入带章节位置的 Channel，协调端用索引缓冲按 `chapterIndex` 有序上报；调度窗口限制为并发数的两倍，前序章节完成后立即滑动补位，不再等待固定分块全部结束，也不会在单个慢章前堆积整本书结果。严格结果顺序仍意味着后章结果可能暂存在窗口内等待慢前章，文档不得再宣称完全不受慢章影响。
 - 并发度 = `min(searchConcurrency, 可搜索章节数, MAX_SEARCH_CONCURRENCY=16).coerceAtLeast(1)`；`BookContentSearchWebSocket` 注入 `AppConfig.threadCount`。即便用户把 threadCount 调到 999，并行也限到 16，避免同时打开过多文件句柄/同步锁竞争导致 IO 抖动与内存峰值。
 - 保留全部可观察契约：结果按章有序流式上报、每章一次 `onProgress`、任一章异常会通过结构化并发取消其余任务并由 WebSocket 报“搜索失败”。达到 `maxResults=500` 本身不再提前跳过后续章节；协调端继续按章确认，只有发现第 501 条或单章搜索明确还有更多结果时才置 `truncated=true` 并取消剩余任务，正好 500 条且后续无命中则扫描完整本书并返回 `false`。Web 前端契约不变，无需改 `modules/web/src` 或同步 assets。
+- WebDAV 的 `origin` 只表示来源/同步关系，不能直接代表正文是远程文件：本地书上传后仍保留本地 `bookUrl`，搜索应扫描全部章节；只有在线书或 `bookUrl` 本身为 `webDav::` 的远程书才走缓存快照。WebDAV 关联本地书读取时使用禁用远程回源的副本，文件失效只能读取失败，不能因搜索触发下载。
 - 提速主要落在在线书（每章独立缓存文件 `file.readText()`，并行无锁）收益最大；本地书因各格式 handler（`TextFile`/`EpubFile`/`PdfFile`/`UmdFile`/`MobiFile`/`CbzFile`）的 `getContent`/zip 读取多带 `@Synchronized`/`synchronized(pfd)`，IO 仍串行，仅 CPU（ContentProcessor 正则、匹配）并行 → 中等收益。
 - 线程安全：`ContentProcessor.processors` 使用 `ConcurrentHashMap.compute` 原子复用或创建同一本书的处理器，避免并发“查询—创建—写入”产生多个实例；替换规则继续使用 `CopyOnWriteArrayList`，动态增删的重复标题缓存改为 `ConcurrentHashMap.newKeySet()`，搜索读取与阅读页切换设置可以并发执行。
 - 模拟器合成大文本为 22 MB、433 个可搜索章节、无命中关键词，各配置跑 5 轮：单线程中位数 `1043.22 ms`，16 线程中位数 `639.11 ms`，约 `1.63x`、耗时下降 `38.7%`。该数字只代表本轮 Android 模拟器本地 TXT 路径，不外推为实体机、EPUB 或在线缓存书的固定收益。
@@ -709,8 +710,8 @@
 - 单章搜索最多保留全局 `resultLimit` 条；协调端达到上限后仍须检查后续章节是否存在额外命中，不能仅因 `matchCount == resultLimit` 就把未搜索章节计入 `scannedChapters` 或返回 `truncated=false`。
 
 **回归点**:
-- `BookContentSearcherTest`：真实固定线程池下并发数不超过配置、慢章未完成时窗口继续补位、乱序完成仍按章有序、`searchConcurrency=1` 等价旧串行、上限内截断、正好达到上限后有/无额外命中的两条边界、取消后无 `onResults/onComplete`、本地书全章读取。
+- `BookContentSearcherTest`：真实固定线程池下并发数不超过配置、慢章未完成时窗口继续补位、乱序完成仍按章有序、`searchConcurrency=1` 等价旧串行、上限内截断、正好达到上限后有/无额外命中的两条边界、取消后无 `onResults/onComplete`、普通本地书和 WebDAV 关联本地书全章读取、实际远程 WebDAV 书仅缓存读取。
 - 模拟器：64 章合成书实际含 501 个 `needle`，整书搜索只返回前 500 条且在扫描到第 41 章确认额外命中后返回 `truncated=true`；单独搜索第 41 章仍可找到该结果。结果顺序、进度和无命中全书完成均通过真实 `/searchBookContent` WebSocket 检查。
 - 待验证：实体浏览器确认 500 条提示和点击跳转；在线缓存长书及本地 EPUB 对比；实体机性能、取消和内存峰值。
 
-*Last updated: 2026-08-04*
+*Last updated: 2026-08-07*
