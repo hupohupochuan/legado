@@ -142,9 +142,10 @@ Message = { "key": "搜索关键词" }
 ```text
 URL = ws://127.0.0.1:1123/searchBookContent
 Message = { "bookUrl": "...", "query": "关键词", "maxResults": 500 }
+Continue = { "bookUrl": "...", "query": "关键词", "maxResults": 500, "cursor": "..." }
 ```
 
-`query` 最长 100 字符，`maxResults` 会限制在 1～500。服务端以 `type` 区分 `start`、`results`、`progress`、`complete`、`error` 消息；新请求会取消同一连接上的旧搜索。
+`query` 最长 100 字符，`maxResults` 是单批结果数并限制在 1～500，不再是整本书的总结果上限。若 `complete.hasMore=true`，调用方可把同一条消息中的不透明 `nextCursor` 原样放入下一次请求，从第 501、1001 条等位置继续；不得解析或改写游标。`complete` 同时返回当前批次的 `resultStart`、`resultEnd`，旧版兼容字段 `truncated` 与 `hasMore` 含义一致。服务端以 `type` 区分 `start`、`results`、`progress`、`complete`、`error` 消息；新请求会取消同一连接上的旧搜索。
 
 ## Content Provider
 

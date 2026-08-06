@@ -87,6 +87,42 @@ class BookContentSearcherTest {
     }
 
     @Test
+    fun exactResultLimitWithoutAnotherMatchIsNotTruncated() = runBlocking {
+        val result = BookContentSearcher.search("词 词", "词", maxResults = 2)
+
+        assertEquals(2, result.matches.size)
+        assertEquals(null, result.nextFromIndex)
+        assertFalse(result.truncated)
+    }
+
+    @Test
+    fun matcherCursorContinuesAtFirstOmittedMatchWithoutDuplicates() = runBlocking {
+        val content = "词<img src='x'>词 词 词 词"
+        val expectedIndexes = BookContentSearcher.search(content, "词").matches
+            .map { it.queryIndexInChapter }
+
+        val first = BookContentSearcher.search(content, "词", maxResults = 2)
+        val second = BookContentSearcher.search(
+            content,
+            "词",
+            maxResults = 2,
+            fromIndex = checkNotNull(first.nextFromIndex)
+        )
+        val third = BookContentSearcher.search(
+            content,
+            "词",
+            maxResults = 2,
+            fromIndex = checkNotNull(second.nextFromIndex)
+        )
+
+        assertEquals(
+            expectedIndexes,
+            (first.matches + second.matches + third.matches).map { it.queryIndexInChapter }
+        )
+        assertEquals(null, third.nextFromIndex)
+    }
+
+    @Test
     fun snippetNeverCrossesContentBoundary() = runBlocking {
         val content = "关键词${"中".repeat(50)}关键词"
         val result = BookContentSearcher.search(content, "关键词")
@@ -615,6 +651,81 @@ class BookContentSearcherTest {
         assertEquals(25, listener.complete?.matchCount)
         assertEquals(4, listener.complete?.scannedChapters)
         assertFalse(listener.complete?.truncated ?: true)
+    }
+
+    @Test
+    fun serviceCursorContinuesAcrossChapterBoundaryWithoutRepeatingResults() = runBlocking {
+        val chapters = List(3) { chapter(it) }
+        val contents = mapOf(
+            0 to List(3) { "词" }.joinToString(" "),
+            1 to List(3) { "词" }.joinToString(" "),
+            2 to "最后一词"
+        )
+        val service = service(
+            local = true,
+            chapters = chapters,
+            contents = contents,
+            searchConcurrency = 3
+        )
+        val first = RecordingListener()
+        val second = RecordingListener()
+
+        service.search("book", "词", maxResults = 4, listener = first)
+        service.search(
+            bookUrl = "book",
+            query = "词",
+            maxResults = 4,
+            cursor = checkNotNull(first.complete?.nextCursor),
+            listener = second
+        )
+
+        assertEquals(4, first.items.size)
+        assertEquals(listOf(0, 0, 0, 1), first.items.map { it.chapterIndex })
+        assertEquals(0, first.complete?.resultOffset)
+        assertTrue(first.complete?.truncated ?: false)
+        assertEquals(4, second.start?.resultOffset)
+        assertEquals(listOf(1, 1, 2), second.items.map { it.chapterIndex })
+        assertEquals(4, second.complete?.resultOffset)
+        assertEquals(3, second.complete?.matchCount)
+        assertEquals(null, second.complete?.nextCursor)
+        assertFalse(second.complete?.truncated ?: true)
+
+        val combinedKeys = (first.items + second.items).map {
+            it.chapterIndex to it.queryIndexInChapter
+        }
+        assertEquals(7, combinedKeys.size)
+        assertEquals(7, combinedKeys.distinct().size)
+    }
+
+    @Test
+    fun cursorIsRejectedWhenSearchableChapterSnapshotChanges() = runBlocking {
+        val chapters = List(2) { chapter(it) }
+        val first = RecordingListener()
+        service(
+            local = true,
+            chapters = chapters,
+            contents = chapters.associate { it.index to "词 词" }
+        ).search("book", "词", maxResults = 1, listener = first)
+        val cursor = checkNotNull(first.complete?.nextCursor)
+        val changedService = service(
+            local = true,
+            chapters = listOf(chapter(1)),
+            contents = mapOf(1 to "词")
+        )
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            runBlocking {
+                changedService.search(
+                    bookUrl = "book",
+                    query = "词",
+                    maxResults = 1,
+                    cursor = cursor,
+                    listener = RecordingListener()
+                )
+            }
+        }
+
+        assertEquals("搜索位置已失效，请重新搜索", error.message)
     }
 
     private fun service(

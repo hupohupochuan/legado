@@ -4,6 +4,7 @@ import androidx.annotation.Keep
 import fi.iki.elonen.NanoHTTPD
 import fi.iki.elonen.NanoWSD
 import io.legado.app.help.book.BookContentSearchComplete
+import io.legado.app.help.book.BookContentSearchCursor
 import io.legado.app.help.book.BookContentSearchListener
 import io.legado.app.help.book.BookContentSearchProgress
 import io.legado.app.help.book.BookContentSearchService
@@ -27,12 +28,14 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import java.security.MessageDigest
 
 @Keep
 private data class BookContentSearchRequest(
     val bookUrl: String? = null,
     val query: String? = null,
-    val maxResults: Int? = null
+    val maxResults: Int? = null,
+    val cursor: String? = null
 )
 
 @Keep
@@ -40,7 +43,8 @@ private data class BookContentSearchStartMessage(
     val type: String = "start",
     val totalChapters: Int,
     val searchableChapters: Int,
-    val isLocalBook: Boolean
+    val isLocalBook: Boolean,
+    val resultOffset: Int
 )
 
 @Keep
@@ -63,7 +67,11 @@ private data class BookContentSearchCompleteMessage(
     val scannedChapters: Int,
     val matchCount: Int,
     val skippedUncachedChapters: Int,
-    val truncated: Boolean
+    val truncated: Boolean,
+    val hasMore: Boolean,
+    val nextCursor: String?,
+    val resultStart: Int,
+    val resultEnd: Int
 )
 
 @Keep
@@ -173,30 +181,46 @@ class BookContentSearchWebSocket(
             }
             val maxResults = (request.maxResults ?: BookContentSearcher.MAX_RESULTS)
                 .coerceIn(1, BookContentSearcher.MAX_RESULTS)
+            val cursor = request.cursor?.takeIf { it.isNotBlank() }?.let {
+                decodeCursor(it, bookUrl, query)
+            }
 
             searchService.search(
                 bookUrl = bookUrl,
                 query = query,
                 maxResults = maxResults,
-                listener = socketListener(requestId)
+                cursor = cursor,
+                listener = socketListener(requestId, bookUrl, query)
             )
         } catch (exception: CancellationException) {
             throw exception
-        } catch (_: Exception) {
+        } catch (exception: Exception) {
             if (isCurrentRequest(requestId)) {
-                sendError(requestId, "搜索失败")
+                val message = if (exception is IllegalArgumentException &&
+                    exception.message?.startsWith("搜索位置") == true
+                ) {
+                    "搜索位置已失效，请重新搜索"
+                } else {
+                    "搜索失败"
+                }
+                sendError(requestId, message)
             }
         }
     }
 
-    private fun socketListener(requestId: Long) = object : BookContentSearchListener {
+    private fun socketListener(
+        requestId: Long,
+        bookUrl: String,
+        query: String
+    ) = object : BookContentSearchListener {
         override suspend fun onStart(start: BookContentSearchStart) {
             sendEnvelope(
                 requestId,
                 BookContentSearchStartMessage(
                     totalChapters = start.totalChapters,
                     searchableChapters = start.searchableChapters,
-                    isLocalBook = start.isLocalBook
+                    isLocalBook = start.isLocalBook,
+                    resultOffset = start.resultOffset
                 )
             )
         }
@@ -217,13 +241,22 @@ class BookContentSearchWebSocket(
         }
 
         override suspend fun onComplete(complete: BookContentSearchComplete) {
+            val nextCursor = complete.nextCursor?.let { encodeCursor(it, bookUrl, query) }
             sendEnvelope(
                 requestId,
                 BookContentSearchCompleteMessage(
                     scannedChapters = complete.scannedChapters,
                     matchCount = complete.matchCount,
                     skippedUncachedChapters = complete.skippedUncachedChapters,
-                    truncated = complete.truncated
+                    truncated = complete.truncated,
+                    hasMore = nextCursor != null,
+                    nextCursor = nextCursor,
+                    resultStart = if (complete.matchCount == 0) {
+                        0
+                    } else {
+                        complete.resultOffset + 1
+                    },
+                    resultEnd = complete.resultOffset + complete.matchCount
                 )
             )
         }
@@ -280,8 +313,66 @@ class BookContentSearchWebSocket(
 
     private companion object {
         const val MAX_QUERY_LENGTH = 100
+        const val CURSOR_VERSION = "v1"
+        const val MAX_CURSOR_LENGTH = 256
         // WebService 的 accepted socket 读超时为 15 秒，必须更频繁地 ping/pong 续活。
         const val PING_INTERVAL_MILLIS = 10_000L
         val PING_PAYLOAD = "ping".toByteArray()
+        val HEX_CHARS = "0123456789abcdef".toCharArray()
+
+        fun encodeCursor(
+            cursor: BookContentSearchCursor,
+            bookUrl: String,
+            query: String
+        ): String {
+            val payload = listOf(
+                CURSOR_VERSION,
+                cursor.chapterPosition,
+                cursor.chapterIndex,
+                cursor.fromIndex,
+                cursor.resultOffset
+            ).joinToString(".")
+            return "$payload.${cursorChecksum(payload, bookUrl, query)}"
+        }
+
+        fun decodeCursor(
+            encoded: String,
+            bookUrl: String,
+            query: String
+        ): BookContentSearchCursor {
+            require(encoded.length <= MAX_CURSOR_LENGTH) { "搜索位置已失效" }
+            val parts = encoded.split('.')
+            require(parts.size == 6 && parts[0] == CURSOR_VERSION) { "搜索位置已失效" }
+            val chapterPosition = parts[1].toIntOrNull()
+            val chapterIndex = parts[2].toIntOrNull()
+            val fromIndex = parts[3].toIntOrNull()
+            val resultOffset = parts[4].toIntOrNull()
+            require(
+                chapterPosition != null && chapterPosition >= 0 &&
+                    chapterIndex != null && chapterIndex >= 0 &&
+                    fromIndex != null && fromIndex >= 0 &&
+                    resultOffset != null && resultOffset >= 0
+            ) { "搜索位置已失效" }
+            val payload = parts.take(5).joinToString(".")
+            require(parts[5] == cursorChecksum(payload, bookUrl, query)) { "搜索位置已失效" }
+            return BookContentSearchCursor(
+                chapterPosition = chapterPosition,
+                chapterIndex = chapterIndex,
+                fromIndex = fromIndex,
+                resultOffset = resultOffset
+            )
+        }
+
+        private fun cursorChecksum(payload: String, bookUrl: String, query: String): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest("$bookUrl\u0000$query\u0000$payload".toByteArray(Charsets.UTF_8))
+            val result = CharArray(digest.size * 2)
+            digest.forEachIndexed { index, byte ->
+                val value = byte.toInt() and 0xff
+                result[index * 2] = HEX_CHARS[value ushr 4]
+                result[index * 2 + 1] = HEX_CHARS[value and 0x0f]
+            }
+            return String(result)
+        }
     }
 }

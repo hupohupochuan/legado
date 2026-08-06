@@ -34,6 +34,8 @@ export type BookContentSearchRequest = {
   bookUrl: string
   query: string
   maxResults?: number
+  /** Opaque continuation position returned by a previous complete message. */
+  cursor?: string
 }
 
 export type BookContentSearchStartMessage = {
@@ -42,6 +44,8 @@ export type BookContentSearchStartMessage = {
   searchableChapters: number
   /** Newer servers include this so the UI can explain cache-only online search. */
   isLocalBook?: boolean
+  /** Number of matches returned by earlier result pages. */
+  resultOffset?: number
 }
 
 export type BookContentSearchResultsMessage = {
@@ -62,6 +66,11 @@ export type BookContentSearchCompleteMessage = {
   matchCount: number
   skippedUncachedChapters: number
   truncated: boolean
+  /** Newer servers expose cursor pagination while retaining truncated for compatibility. */
+  hasMore?: boolean
+  nextCursor?: string | null
+  resultStart?: number
+  resultEnd?: number
 }
 
 export type BookContentSearchErrorMessage = {

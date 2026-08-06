@@ -31,18 +31,33 @@ data class WebBookContentSearchResult(
 data class BookContentTextMatch(
     val chapterPos: Int,
     val queryIndexInChapter: Int,
+    val queryIndexInNormalizedChapter: Int,
     val queryIndexInSnippet: Int,
     val snippet: String
 )
 
 data class BookContentTextSearchResult(
     val matches: List<BookContentTextMatch>,
+    val nextFromIndex: Int?
+) {
     val truncated: Boolean
+        get() = nextFromIndex != null
+}
+
+/**
+ * 下一批搜索的手机端内部位置。WebSocket 只向浏览器暴露校验后的不透明字符串。
+ */
+data class BookContentSearchCursor(
+    val chapterPosition: Int,
+    val chapterIndex: Int,
+    val fromIndex: Int,
+    val resultOffset: Int
 )
 
 /** 纯文本匹配器，不依赖 Room、文件系统或 Android UI。 */
 object BookContentSearcher {
 
+    /** 单批结果上限；总结果通过续搜游标分批访问。 */
     const val MAX_RESULTS = 500
     const val RESULT_BATCH_SIZE = 20
     private const val SNIPPET_CONTEXT_LENGTH = 20
@@ -56,30 +71,39 @@ object BookContentSearcher {
     /**
      * 在已经过 ContentProcessor 处理的章节正文中做普通字面量搜索。
      *
-     * 搜索结果按正文位置稳定排序；匹配不重叠。达到 [maxResults] 后立即停止，
-     * 并用 truncated 标记调用方不应继续扫描后续正文或章节。
+     * 搜索结果按正文位置稳定排序；匹配不重叠。返回 [maxResults] 条后再探测首条
+     * 未返回结果，并通过 nextFromIndex 让下一批从该命中精确继续。
      */
     suspend fun search(
         content: String,
         query: String,
-        maxResults: Int = MAX_RESULTS
+        maxResults: Int = MAX_RESULTS,
+        fromIndex: Int = 0
     ): BookContentTextSearchResult {
         require(query.isNotBlank()) { "搜索关键词不能为空" }
         require(maxResults > 0) { "搜索结果上限必须大于 0" }
+        require(fromIndex >= 0) { "搜索起始位置不能小于 0" }
 
         val context = currentCoroutineContext()
         context.ensureActive()
         val normalizedContent = normalizeImages(content)
         val searchableText = normalizedContent.text
+        require(fromIndex <= searchableText.length) { "搜索起始位置已经失效" }
         val paragraphs = buildParagraphPositions(searchableText)
         val matches = ArrayList<BookContentTextMatch>(minOf(maxResults, 32))
-        var fromIndex = 0
-        var truncated = false
+        var searchFromIndex = fromIndex
+        var nextFromIndex: Int? = null
 
-        while (fromIndex <= searchableText.length - query.length) {
+        while (searchFromIndex <= searchableText.length - query.length) {
             context.ensureActive()
-            val normalizedQueryIndex = searchableText.indexOf(query, fromIndex)
+            val normalizedQueryIndex = searchableText.indexOf(query, searchFromIndex)
             if (normalizedQueryIndex < 0) break
+
+            if (matches.size >= maxResults) {
+                // 只有实际找到首条未返回结果，才报告还有下一批。
+                nextFromIndex = normalizedQueryIndex
+                break
+            }
 
             val snippetStart = safeSnippetStart(
                 searchableText,
@@ -96,18 +120,15 @@ object BookContentSearcher {
                 BookContentTextMatch(
                     chapterPos = findChapterPos(paragraphs, normalizedQueryIndex),
                     queryIndexInChapter = normalizedContent.rawIndexAt(normalizedQueryIndex),
+                    queryIndexInNormalizedChapter = normalizedQueryIndex,
                     queryIndexInSnippet = normalizedQueryIndex - snippetStart,
                     snippet = searchableText.substring(snippetStart, snippetEnd)
                 )
             )
-            if (matches.size >= maxResults) {
-                truncated = true
-                break
-            }
-            fromIndex = normalizedQueryIndex + query.length
+            searchFromIndex = normalizedQueryIndex + query.length
         }
 
-        return BookContentTextSearchResult(matches, truncated)
+        return BookContentTextSearchResult(matches, nextFromIndex)
     }
 
     // JavaScript、Kotlin 字符串索引都使用 UTF-16 坐标，但摘要边界不能落在
@@ -280,7 +301,8 @@ object BookContentSearcher {
 data class BookContentSearchStart(
     val totalChapters: Int,
     val searchableChapters: Int,
-    val isLocalBook: Boolean
+    val isLocalBook: Boolean,
+    val resultOffset: Int
 )
 
 data class BookContentSearchProgress(
@@ -293,7 +315,9 @@ data class BookContentSearchComplete(
     val scannedChapters: Int,
     val matchCount: Int,
     val skippedUncachedChapters: Int,
-    val truncated: Boolean
+    val truncated: Boolean,
+    val resultOffset: Int,
+    val nextCursor: BookContentSearchCursor?
 )
 
 interface BookContentSearchListener {
@@ -353,6 +377,7 @@ class BookContentSearchService(
         bookUrl: String,
         query: String,
         maxResults: Int = BookContentSearcher.MAX_RESULTS,
+        cursor: BookContentSearchCursor? = null,
         listener: BookContentSearchListener
     ) {
         require(bookUrl.isNotBlank()) { "书籍地址不能为空" }
@@ -381,29 +406,42 @@ class BookContentSearchService(
         } else {
             chapters.size - searchableChapters.size
         }
+        val startPosition = cursor?.chapterPosition ?: 0
+        if (cursor != null) {
+            require(startPosition in searchableChapters.indices) { "搜索位置已失效，请重新搜索" }
+            require(searchableChapters[startPosition].index == cursor.chapterIndex) {
+                "搜索位置已失效，请重新搜索"
+            }
+            require(cursor.fromIndex >= 0 && cursor.resultOffset >= 0) {
+                "搜索位置已失效，请重新搜索"
+            }
+        }
+        val resultOffset = cursor?.resultOffset ?: 0
 
         listener.onStart(
             BookContentSearchStart(
                 totalChapters = chapters.size,
                 searchableChapters = searchableChapters.size,
-                isLocalBook = localBook
+                isLocalBook = localBook,
+                resultOffset = resultOffset
             )
         )
 
-        var scannedChapters = 0
+        var scannedChapters = startPosition
         var matchCount = 0
-        var truncated = false
+        var nextCursor: BookContentSearchCursor? = null
         val pendingResults = ArrayList<WebBookContentSearchResult>(
             BookContentSearcher.RESULT_BATCH_SIZE
         )
 
-        val concurrency = minOf(searchConcurrency, searchableChapters.size, MAX_SEARCH_CONCURRENCY)
+        val remainingChapterCount = searchableChapters.size - startPosition
+        val concurrency = minOf(searchConcurrency, remainingChapterCount, MAX_SEARCH_CONCURRENCY)
             .coerceAtLeast(1)
 
-        if (searchableChapters.isNotEmpty()) coroutineScope {
+        if (remainingChapterCount > 0) coroutineScope {
             // 只允许有限数量的章节领先于当前上报位置，既持续补位，又避免慢章前堆积整本书结果。
             val windowSize = minOf(
-                searchableChapters.size,
+                remainingChapterCount,
                 concurrency * SEARCH_WINDOW_MULTIPLIER
             )
             val taskChannel = Channel<Int>(windowSize)
@@ -420,7 +458,12 @@ class BookContentSearchService(
                                     chapter = chapter,
                                     localBook = localBook,
                                     query = query,
-                                    resultLimit = resultLimit
+                                    resultLimit = resultLimit,
+                                    fromIndex = if (position == startPosition) {
+                                        cursor?.fromIndex ?: 0
+                                    } else {
+                                        0
+                                    }
                                 )
                             )
                         )
@@ -428,8 +471,8 @@ class BookContentSearchService(
                 }
             }
 
-            var nextToSchedule = 0
-            var nextToReport = 0
+            var nextToSchedule = startPosition
+            var nextToReport = startPosition
             val completedByPosition = HashMap<Int, ChapterSearchOutput?>(windowSize)
 
             suspend fun fillWindow() {
@@ -447,30 +490,39 @@ class BookContentSearchService(
 
             try {
                 fillWindow()
-                while (nextToReport < searchableChapters.size && !truncated) {
+                while (nextToReport < searchableChapters.size && nextCursor == null) {
                     context.ensureActive()
                     val completed = outputChannel.receive()
                     completedByPosition[completed.position] = completed.output
 
-                    while (completedByPosition.containsKey(nextToReport) && !truncated) {
+                    while (completedByPosition.containsKey(nextToReport) && nextCursor == null) {
                         val output = completedByPosition.remove(nextToReport)
                         if (output != null) {
                             for (result in output.results) {
                                 context.ensureActive()
                                 if (matchCount >= resultLimit) {
-                                    // 已达到上限后又确认存在一条结果，才算真正截断。
-                                    truncated = true
+                                    nextCursor = BookContentSearchCursor(
+                                        chapterPosition = nextToReport,
+                                        chapterIndex = searchableChapters[nextToReport].index,
+                                        fromIndex = result.queryIndexInNormalizedChapter,
+                                        resultOffset = resultOffset + matchCount
+                                    )
                                     break
                                 }
-                                pendingResults.add(result)
+                                pendingResults.add(result.webResult)
                                 matchCount++
                                 if (pendingResults.size >= BookContentSearcher.RESULT_BATCH_SIZE) {
                                     listener.onResults(pendingResults.toList())
                                     pendingResults.clear()
                                 }
                             }
-                            if (output.chapterTruncated) {
-                                truncated = true
+                            if (nextCursor == null && output.nextFromIndex != null) {
+                                nextCursor = BookContentSearchCursor(
+                                    chapterPosition = nextToReport,
+                                    chapterIndex = searchableChapters[nextToReport].index,
+                                    fromIndex = output.nextFromIndex,
+                                    resultOffset = resultOffset + matchCount
+                                )
                             }
                         }
 
@@ -486,14 +538,14 @@ class BookContentSearchService(
                         )
                     }
 
-                    if (!truncated) {
+                    if (nextCursor == null) {
                         fillWindow()
                     }
                 }
             } finally {
                 taskChannel.cancel()
                 outputChannel.cancel()
-                if (truncated) {
+                if (nextCursor != null) {
                     workers.forEach { it.cancel() }
                 }
             }
@@ -509,7 +561,9 @@ class BookContentSearchService(
                 scannedChapters = scannedChapters,
                 matchCount = matchCount,
                 skippedUncachedChapters = skippedUncachedChapters,
-                truncated = truncated
+                truncated = nextCursor != null,
+                resultOffset = resultOffset,
+                nextCursor = nextCursor
             )
         )
     }
@@ -519,7 +573,8 @@ class BookContentSearchService(
         chapter: BookChapter,
         localBook: Boolean,
         query: String,
-        resultLimit: Int
+        resultLimit: Int,
+        fromIndex: Int
     ): ChapterSearchOutput? {
         val context = currentCoroutineContext()
         context.ensureActive()
@@ -545,28 +600,37 @@ class BookContentSearchService(
         val chapterSearch = BookContentSearcher.search(
             content = processedContent,
             query = query,
-            maxResults = resultLimit
+            maxResults = resultLimit,
+            fromIndex = fromIndex
         )
-        val results = ArrayList<WebBookContentSearchResult>(chapterSearch.matches.size)
+        val results = ArrayList<ChapterSearchMatch>(chapterSearch.matches.size)
         for (match in chapterSearch.matches) {
             context.ensureActive()
             results.add(
-                WebBookContentSearchResult(
-                    chapterIndex = chapter.index,
-                    chapterTitle = chapter.title,
-                    chapterPos = match.chapterPos,
-                    queryIndexInChapter = match.queryIndexInChapter,
-                    queryIndexInSnippet = match.queryIndexInSnippet,
-                    snippet = match.snippet
+                ChapterSearchMatch(
+                    webResult = WebBookContentSearchResult(
+                        chapterIndex = chapter.index,
+                        chapterTitle = chapter.title,
+                        chapterPos = match.chapterPos,
+                        queryIndexInChapter = match.queryIndexInChapter,
+                        queryIndexInSnippet = match.queryIndexInSnippet,
+                        snippet = match.snippet
+                    ),
+                    queryIndexInNormalizedChapter = match.queryIndexInNormalizedChapter
                 )
             )
         }
-        return ChapterSearchOutput(results, chapterSearch.truncated)
+        return ChapterSearchOutput(results, chapterSearch.nextFromIndex)
     }
 
     private data class ChapterSearchOutput(
-        val results: ArrayList<WebBookContentSearchResult>,
-        val chapterTruncated: Boolean
+        val results: ArrayList<ChapterSearchMatch>,
+        val nextFromIndex: Int?
+    )
+
+    private data class ChapterSearchMatch(
+        val webResult: WebBookContentSearchResult,
+        val queryIndexInNormalizedChapter: Int
     )
 
     private data class IndexedChapterSearchOutput(
