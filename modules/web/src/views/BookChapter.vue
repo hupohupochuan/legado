@@ -1037,7 +1037,6 @@ const handleKeyPress = (event: KeyboardEvent) => {
     event.preventDefault()
     return
   }
-  if (!canJump) return
   switch (event.key) {
     case 'ArrowLeft':
       event.stopPropagation()
@@ -1053,6 +1052,7 @@ const handleKeyPress = (event: KeyboardEvent) => {
     case 'ArrowUp':
       event.stopPropagation()
       event.preventDefault()
+      if (!canJump) break
       if (document.documentElement.scrollTop === 0) {
         toast.warning('已到达页面顶部')
       } else {
@@ -1066,6 +1066,7 @@ const handleKeyPress = (event: KeyboardEvent) => {
     case 'ArrowDown':
       event.stopPropagation()
       event.preventDefault()
+      if (!canJump) break
       if (
         document.documentElement.clientHeight +
           document.documentElement.scrollTop ===

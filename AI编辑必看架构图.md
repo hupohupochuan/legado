@@ -1,10 +1,10 @@
 # AI 编辑必看架构图
 
-> 最新修订: 2026-08-07 CST
+> 最新修订: 2026-08-10 CST
 > 最近三次修订:
+> - 2026-08-10 CST: Web 阅读页左右方向键不再受上下翻屏锁误伤，书本翻页动画期间缓存一次最新左右键意图，避免章末切换需要重复按键。
 > - 2026-08-07 CST: Web 全文搜索保留单批 500 条资源边界，通过不透明游标分批继续到整本书结束，不再把 500 当作总结果上限。
 > - 2026-08-07 CST: Web 全文搜索按 `bookUrl` 的实际正文定位区分本地与远程；本地书上传 WebDAV 后仍搜索原文件，且搜索失败不得回源下载。
-> - 2026-08-03 CST: 网页传书收回 Vue 单入口，旧 `/uploadBook/index.html` 仅保留兼容跳转；上传结果必须检查手机端 `isSuccess`，不能把 HTTP 200 当成业务成功。
 
 > 本文件是第一入口；同时按 `AGENTS.md` 要求读完其余三个必读文档，再按具体任务打开 `AI编辑必看/` 子文件。
 
@@ -55,6 +55,7 @@
 - 不要只改 `modules/web/src` 而不同步 `app/src/main/assets/web`。
 - 网页传书必须用浏览器原生 `FormData` 交给浏览器生成 multipart boundary，并检查 `ReturnData.isSuccess`；`addLocalBook` 的业务失败同样返回 HTTP 200。`app/src/main/assets/web/uploadBook/index.html` 只允许作为旧地址到 `/#/uploadBook` 的兼容跳转，不得恢复第二套上传实现。
 - Web 阅读时长空闲超过 10 分钟后，本章作废状态必须保持到切章，恢复可见或再次交互不能清除；浏览器只上报 5 秒至 24 小时的章节经过时长，结束时间和自然日归属由手机端确定。
+- Web 阅读页连续滚动的 `canJump` 只允许锁住上下翻屏，不能吞掉左右切章；书本翻页动画锁期间只缓存一次最新左右键意图，动画结束后执行，取消或跨章重挂时必须清空，不能累积成多次切章。
 - 不要恢复 AGP 旧 `applicationVariants`；APK 输出命名走 `androidComponents`。
 - Gson 反射 DTO 不能只依赖 `-keepattributes Signature`；R8 full mode 还要求显式 keep/稳定字段注解。系统 TTS 持久化配置统一走 `TtsEngineSelection` 的 JSON 树编解码，不要恢复 `fromJsonObject<SelectItem<String>>`；Debug 通过后仍须验证 Release/R8 成品。
 - App 全局主题继承 `Theme.AppCompat`，布局不得直接使用会强制校验 `Theme.MaterialComponents` 的 `MaterialButton`；按钮优先使用 `AppCompatButton` 或项目现有控件。迁移主题前必须保留 `AppThemeLayoutCompatibilityTest` 构建门禁。
@@ -105,4 +106,4 @@ scripts/build-signed-release.sh
 
 脚本会强制使用 `app/gradle.properties` 中的个人签名配置和 `RELEASE_CERT_SHA256`，完成 Release/R8、五个 ABI APK、证书/包名/版本校验，再把同一批 APK、`.idsig`、metadata 原子同步到 `app/app/release/`。`app/gradle.properties` 与 keystore 必须仅所有者可读写（脚本接受 `400` 或 `600`，通常使用 `600`）。Android 64 位真机优先安装 `app/app/release/legado_arm64.apk`；不得直接复制单个 APK，也不得在签名配置缺失时接受 Gradle 的 Debug 签名回退。
 
-*文档版本: 2026-08-07*
+*文档版本: 2026-08-10*

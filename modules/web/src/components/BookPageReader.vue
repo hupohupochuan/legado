@@ -63,6 +63,10 @@ import {
   type BookPage,
   type PageBlock,
 } from '@/utils/bookPagination'
+import {
+  createPageTurnKeyBuffer,
+  type PageTurnDirection,
+} from '@/utils/pageTurnKeyBuffer'
 import type { webReadConfig } from '@/web'
 
 const store = useBookStore()
@@ -118,6 +122,10 @@ const targetExternalChapterIndex = ref<number | null>(null)
 const animating = ref(false)
 let initialized = false
 let fallbackEmitted = false
+
+const keyboardTurnBuffer = createPageTurnKeyBuffer(direction => {
+  turnPageByKeyboard(direction)
+})
 
 const currentPage = computed(() => pages.value[currentPageIndex.value])
 const targetPage = computed(
@@ -544,6 +552,7 @@ const cancelFlipAnimation = () => {
   externalFlipCanceled = null
   animating.value = false
   flipLock = false
+  keyboardTurnBuffer.clear()
   // 跨章动画取消后父组件不会再重挂，丢弃挂起的重分页避免误触发。
   pendingRepaginateAfterFlip = false
   onCancel?.()
@@ -563,6 +572,7 @@ const finishFlip = (nextIndex: number) => {
     pendingRepaginateAfterFlip = false
     scheduleRepaginate(0)
   }
+  keyboardTurnBuffer.flush()
 }
 
 const finishExternalFlip = () => {
@@ -579,6 +589,7 @@ const finishExternalFlip = () => {
   externalFlipCanceled = null
   animating.value = false
   flipLock = false
+  keyboardTurnBuffer.clear()
   // 跨章动画结束后父组件 switchBookChapter 会重挂本组件重新分页，
   // 丢弃挂起的重分页请求，避免重挂后误用旧章上下文。
   pendingRepaginateAfterFlip = false
@@ -755,15 +766,17 @@ const onReaderClick = (e: MouseEvent) => {
 // 键盘
 const onKey = (e: KeyboardEvent) => {
   if (!initialized) return
-  if (e.key === 'ArrowRight') {
-    e.stopPropagation()
-    e.preventDefault()
-    flipNext()
-  } else if (e.key === 'ArrowLeft') {
-    e.stopPropagation()
-    e.preventDefault()
-    flipPrev()
-  }
+  const direction: PageTurnDirection | null =
+    e.key === 'ArrowRight' ? 'next' : e.key === 'ArrowLeft' ? 'prev' : null
+  if (!direction) return
+  e.stopPropagation()
+  e.preventDefault()
+  keyboardTurnBuffer.request(direction, flipLock)
+}
+
+function turnPageByKeyboard(direction: PageTurnDirection) {
+  if (direction === 'next') flipNext()
+  else flipPrev()
 }
 
 // ---------- 生命周期 ----------
@@ -853,6 +866,7 @@ onUnmounted(() => {
   document.removeEventListener('load', onAnyLoad, true)
   resizeObserver?.disconnect()
   resizeObserver = null
+  keyboardTurnBuffer.clear()
   cancelFlipAnimation()
   if (paginateTimer) clearTimeout(paginateTimer)
   measureApi.reset()
