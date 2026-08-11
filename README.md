@@ -53,6 +53,7 @@ https://www.yuque.com/legado/wiki/community
 
 # API [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-)
 * 阅读3.0 提供了2种方式的API：`Web方式`和`Content Provider方式`。Content Provider 权限名为 `${applicationId}.permission.READ_WRITE`，会随目标 Debug/Release 等变体的最终 applicationId 变化；调用方必须声明目标变体权限并与该 App 使用同一签名证书，具体调用方式见 [API 文档](api.md)。
+* Android 17 上首次启用局域网 Web 服务时，需要允许“附近设备”中的局域网访问权限；拒绝或撤销后服务保持关闭。Android 16 及更低版本不受此运行时权限影响。
 * 可通过url唤起阅读进行一键导入,url格式: legado://import/{path}?src={url}
 * path类型: bookSource,rssSource,replaceRule,textTocRule,httpTTS,theme,readConfig,dictRule,[addToBookshelf](/app/src/main/java/io/legado/app/ui/association/AddToBookshelfDialog.kt)
 * path类型解释: 书源,订阅源兼容别名(已合并到书源，使用 `bookSourceType=5`),替换规则,本地 TXT 小说目录规则,在线朗读引擎,主题,阅读排版,字典规则,添加到书架

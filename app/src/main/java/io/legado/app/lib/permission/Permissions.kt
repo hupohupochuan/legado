@@ -6,6 +6,7 @@ import android.os.Build
 object Permissions {
 
     const val POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
+    const val ACCESS_LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWORK"
 
     const val READ_CALENDAR = "android.permission.READ_CALENDAR"
     const val WRITE_CALENDAR = "android.permission.WRITE_CALENDAR"

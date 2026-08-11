@@ -94,6 +94,8 @@
     <string name="retry">重试</string>
     <string name="web_service">Web 服务</string>
     <string name="web_service_desc">用浏览器写源或看书</string>
+    <string name="web_service_local_network_permission_rationale">允许“附近设备”权限，以便同一局域网中的浏览器访问 Web 服务。</string>
+    <string name="web_service_local_network_permission_denied">未授予局域网权限，Web 服务保持关闭。</string>
     <string name="web_service_data_sync_time_limit">Web 服务已达到 Android 前台服务运行时长限制，已自动关闭，请稍后再试。</string>
     <string name="web_service_foreground_start_rejected">Web 服务启动被系统限制，已自动关闭。</string>
     <string name="web_edit_source">Web 编辑书源</string>

@@ -131,7 +131,9 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
             when (key) {
                 PreferKey.webService -> {
                     if (requireContext().getPrefBoolean("webService")) {
-                        WebService.start(requireContext())
+                        if (!WebService.isRun && !WebService.isStartPending()) {
+                            WebService.start(requireContext())
+                        }
                     } else {
                         WebService.stop(requireContext())
                     }

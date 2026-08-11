@@ -94,6 +94,8 @@
     <string name="retry">Thử lại</string>
     <string name="web_service">Dịch vụ web</string>
     <string name="web_service_desc">Chỉnh sửa nguồn và đọc sách qua web</string>
+    <string name="web_service_local_network_permission_rationale">Cho phép quyền thiết bị ở gần để trình duyệt trong cùng mạng cục bộ có thể sử dụng dịch vụ web.</string>
+    <string name="web_service_local_network_permission_denied">Quyền mạng cục bộ chưa được cấp. Dịch vụ web vẫn tắt.</string>
     <string name="web_edit_source">Chỉnh sửa nguồn sách trên web</string>
     <string name="offline_cache">Bộ đệm ngoại tuyến</string>
     <string name="offline_cache_t">Bộ đệm ngoại tuyến</string>

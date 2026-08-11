@@ -1,10 +1,30 @@
 # 新功能踩坑记录 - Web 服务
 
 > 返回主题索引: [新功能踩坑记录.md](新功能踩坑记录.md)
-> 当前复核状态（2026-08-10）：Web 前端仍以 `modules/web/index.html` → `src/main.ts` 为唯一生产入口；阅读页连续滚动与书本翻页模式的左右方向键吞键窗口已收口。网页传书、全文搜索和 WebService 的其余当前边界保持 2026-08-07 结论，停机与通知移除另见 [适配踩坑记录.md 0.5](适配踩坑记录.md#05-webservice-关闭后前台通知残留)。
-> 验证边界：2026-08-10 已通过方向键缓冲 4 项测试、阅读时长 6 项测试、ESLint、Web 类型/生产构建、APK assets 字节同步和 Debug Kotlin 编译；真实浏览器单次/快速连续方向键仍待复测。2026-08-07 的全文搜索 Headless Chrome、Android 17 模拟器、全量 JVM 和 Release/R8 结论不因本次文档日期自动续期。
+> 当前复核状态（2026-08-12）：Android 17 + targetSdk 37 的 WebService 已补齐 `ACCESS_LOCAL_NETWORK` 声明、按需请求、拒绝/撤销和服务侧兜底；API 26-36 保持免请求。Web 前端仍以 `modules/web/index.html` → `src/main.ts` 为唯一生产入口，前端资源本轮未改。
+> 验证边界：2026-08-12 已通过权限边界 JVM 测试、2 项 API 37.1 仪器测试、`scripts/check-debug.sh`、Debug APK 组装，以及 emulator NAT 入站 HTTP/WebSocket、拒权、撤销、系统重启兜底和快捷磁贴允许/拒绝黑盒回归；实体 Android 17 手机与另一台同 Wi-Fi 设备互访仍待验收。2026-08-10 的方向键真实浏览器边界和 2026-08-07 的全文搜索/Release 结论不因本次复核自动续期。
 
 ---
+
+## Android 17 局域网权限门禁
+
+- 记录日期: 2026-08-12
+- 适用环境: Android 17/API 37+ 且 App targetSdk 37；WebService HTTP 端口与相邻 WebSocket 端口
+- 相关文件: `AndroidManifest.xml`、`WebServiceLocalNetworkAccess.kt`、`WebServicePermissionActivity.kt`、`WebService.kt`、`WebTileService.kt`、`OtherConfigFragment.kt`
+- 兼容细节和测试陷阱: [适配踩坑记录.md 0.12](适配踩坑记录.md#012-android-17-局域网权限阻断-webservice-入站连接)
+
+**当前设计**:
+- `WebService.start()` 是设置开关和普通启动的统一门禁；Android 17/target 37 缺少精确 `ACCESS_LOCAL_NETWORK` 时只打开非导出的透明权限 Activity，不创建 WebService。API 26-36 直接沿用原启动路径。
+- 权限 Activity 先解释同一局域网浏览器访问用途，再请求系统权限；拒绝后提供“去应用设置/取消”，拒绝、取消和设置页返回仍缺权都会写回关闭。Permission/Settings/拒绝阶段保存在实例状态中，旋转或进程重建后仍重新检查精确权限。
+- Quick Settings Tile 缺权时通过 `startActivityAndCollapse(PendingIntent)` 进入同一权限 Activity；已授权时继续保留可见 Tile 交互内的 FGS 启动路径。授权只表示可以启动，`isRun` 与 Tile 激活必须等 HTTP、WebSocket 都启动成功后再提交。
+- 服务端在创建、命令、网络变化、keep-alive、通知和定时/章节触发重建时再次检查权限。拒绝或撤销统一复用 `requestStop()/tearDown()`；同 UID 绕过 UI 直接启动 FGS 时，先用瞬时最小通知完成 foreground promotion，再立即停止并移除 ID 105，避免系统超时崩溃。
+- 端口修改使用保留启用意图的 `restart()`；Preference listener 识别正在启动状态，避免授权成功写回开关后重复发送启动命令。
+
+**回归点**:
+- 清数据后的设置开关与 Tile 分别覆盖用途说明、系统 Allow/Don’t allow、拒绝页取消、去设置后允许；只有允许后才出现 1122/1123 监听与活动 Tile。
+- 运行中从系统设置撤销权限后，原进程、两个端口和通知必须消失；若系统尝试 sticky 重启，缺权兜底只能启动一次并立即销毁，不能循环崩溃或重新显示运行。
+- 模拟器入站必须用 emulator console `redir`：授权后 HTTP 返回 200、WebSocket 握手返回 101，拒权时超时。`adb forward`、设备内 loopback 或访问设备自身 IP 在拒权时仍可能成功，不能作为权限验收。
+- 最终发布仍需实体 Android 17 手机与另一台同 Wi-Fi 设备访问手机 IP，覆盖 Web 根页面、网页传书、Web 阅读与 WebSocket 管理；模拟器 NAT 通过不等同于真实 Wi-Fi/厂商 ROM 通过。
 
 ## Web 后端地址探测与后台刷新一致性
 
@@ -773,4 +793,4 @@
 - 损坏游标和跨关键词复用均返回“搜索位置已失效，请重新搜索”；结果流首批 20 条时断开连接后，紧接的完整搜索仍能正常返回 500 条和下一批位置。
 - 桌面 Headless Chrome 通过模拟器 WebService 实测 `1–500 → 501–1000 → 1001–1500`，提示与下一批按钮范围正确，“上一批”命中缓存后立即恢复；无 WebService 或应用崩溃日志。
 
-*Last updated: 2026-08-10*
+*Last updated: 2026-08-12*

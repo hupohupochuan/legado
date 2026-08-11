@@ -3,12 +3,13 @@ package io.legado.app.service
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
-import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseService
@@ -21,6 +22,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.receiver.NetworkChangedListener
+import io.legado.app.ui.config.WebServicePermissionActivity
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.getPrefBoolean
@@ -31,7 +33,6 @@ import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.servicePendingIntent
-import io.legado.app.utils.safeStartForegroundService
 import io.legado.app.utils.startService
 import io.legado.app.utils.stopService
 import io.legado.app.utils.toastOnUi
@@ -47,6 +48,7 @@ import splitties.systemservices.notificationManager
 import splitties.systemservices.powerManager
 import splitties.systemservices.wifiManager
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 
 class WebService : BaseService() {
 
@@ -58,10 +60,15 @@ class WebService : BaseService() {
         private const val TAG = "WebService"
         private const val RESTART_INTERVAL_MS = 3 * 60 * 60 * 1000L
         private const val RESTART_CHECK_INTERVAL_MS = 30 * 60 * 1000L
+        private val startRequested = AtomicBoolean(false)
 
         fun start(context: Context) {
-            val intent = Intent(context, WebService::class.java)
-            context.safeStartForegroundService(intent, "启动Web服务出错")
+            startRequested.set(true)
+            if (!WebServiceLocalNetworkAccess.isGranted(context)) {
+                WebServicePermissionActivity.start(context)
+                return
+            }
+            startWithPermission(context)
         }
 
         fun startForeground(context: Context) {
@@ -69,16 +76,82 @@ class WebService : BaseService() {
         }
 
         fun stop(context: Context) {
+            startRequested.set(false)
+            appCtx.putPrefBoolean(PreferKey.webService, false)
             notificationManager.cancel(NotificationId.WebService)
             context.stopService<WebService>()
         }
 
+        fun restart(context: Context) {
+            startRequested.set(true)
+            notificationManager.cancel(NotificationId.WebService)
+            context.stopService<WebService>()
+            start(context)
+        }
+
         fun serve() {
             if (isRun) {
+                if (!WebServiceLocalNetworkAccess.isGranted(appCtx)) {
+                    stopForMissingLocalNetworkPermission()
+                    return
+                }
                 appCtx.startService<WebService> {
                     action = "serve"
                 }
             }
+        }
+
+        internal fun markStartRequested() {
+            startRequested.set(true)
+        }
+
+        internal fun isStartPending(): Boolean {
+            return startRequested.get() && !isRun
+        }
+
+        internal fun startIfRequested(context: Context) {
+            if (!startRequested.get() || !WebServiceLocalNetworkAccess.isGranted(context)) return
+            startWithPermission(context)
+        }
+
+        internal fun cancelPermissionRequest(context: Context, showMessage: Boolean) {
+            stop(context)
+            postEvent(EventBus.WEB_SERVICE, "")
+            if (showMessage) {
+                AppLog.put(
+                    appCtx.getString(R.string.web_service_local_network_permission_denied),
+                    toast = true
+                )
+            }
+        }
+
+        private fun startWithPermission(context: Context) {
+            if (!startRequested.get()) return
+            val appContext = context.applicationContext
+            appContext.putPrefBoolean(PreferKey.webService, true)
+            try {
+                ContextCompat.startForegroundService(
+                    appContext,
+                    Intent(appContext, WebService::class.java)
+                )
+            } catch (e: Exception) {
+                startRequested.set(false)
+                appContext.putPrefBoolean(PreferKey.webService, false)
+                AppLog.put("启动Web服务出错,${e.localizedMessage}", e, toast = true)
+            }
+        }
+
+        private fun stopForMissingLocalNetworkPermission(error: Throwable? = null) {
+            startRequested.set(false)
+            appCtx.putPrefBoolean(PreferKey.webService, false)
+            notificationManager.cancel(NotificationId.WebService)
+            appCtx.stopService<WebService>()
+            postEvent(EventBus.WEB_SERVICE, "")
+            AppLog.put(
+                appCtx.getString(R.string.web_service_local_network_permission_denied),
+                error,
+                toast = true
+            )
         }
     }
 
@@ -109,6 +182,7 @@ class WebService : BaseService() {
     private var foregroundStartRejected: Boolean = false
     @Volatile
     private var isStopping: Boolean = false
+    private var runtimeInitialized: Boolean = false
     private val restartGuard = Any()
     private var restartCheckerJob: Job? = null
     private val networkChangedListener by lazy {
@@ -118,16 +192,16 @@ class WebService : BaseService() {
     @SuppressLint("WakelockTimeout")
     override fun onCreate() {
         super.onCreate()
+        if (!hasLocalNetworkPermissionOrStop()) return
+        runtimeInitialized = true
         if (useWakeLock) {
             wakeLock.acquire()
             wifiLock?.acquire()
         }
-        isRun = true
-        startTimeMs = System.currentTimeMillis()
-        upTile(true)
         networkChangedListener.register()
         networkChangedListener.onNetworkChanged = onNetworkChanged@{
             if (isStopping || foregroundStartRejected) return@onNetworkChanged
+            if (!hasLocalNetworkPermissionOrStop()) return@onNetworkChanged
             val addressList = NetworkUtils.getLocalIPAddress()
             notificationList.clear()
             if (addressList.any()) {
@@ -165,8 +239,13 @@ class WebService : BaseService() {
 
     @SuppressLint("WakelockTimeout")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!hasLocalNetworkPermissionOrStop()) return START_NOT_STICKY
         when (intent?.action) {
-            IntentAction.stop -> requestStop()
+            IntentAction.stop -> {
+                startRequested.set(false)
+                appCtx.putPrefBoolean(PreferKey.webService, false)
+                requestStop()
+            }
             "copyHostAddress" -> sendToClip(hostAddress)
             "serve" -> if (!isStopping && useWakeLock) {
                 wakeLock.acquire()
@@ -181,6 +260,11 @@ class WebService : BaseService() {
     override fun onDestroy() {
         tearDown()
         super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        markStartFailed()
+        super.onTaskRemoved(rootIntent)
     }
 
     /**
@@ -214,12 +298,14 @@ class WebService : BaseService() {
         try {
             restartCheckerJob?.cancel()
             restartCheckerJob = null
-            try { networkChangedListener.unRegister() } catch (e: Exception) {
-                LogUtils.e(TAG, "unRegister 失败: ${e.localizedMessage}")
+            if (runtimeInitialized) {
+                try { networkChangedListener.unRegister() } catch (e: Exception) {
+                    LogUtils.e(TAG, "unRegister 失败: ${e.localizedMessage}")
+                }
             }
             stopServerSafely(httpServer, "httpServer")
             stopServerSafely(webSocketServer, "webSocketServer")
-            if (useWakeLock) {
+            if (runtimeInitialized && useWakeLock) {
                 try { wakeLock.release() } catch (e: Exception) {
                     LogUtils.e(TAG, "release wakeLock 失败: ${e.localizedMessage}")
                 }
@@ -273,6 +359,7 @@ class WebService : BaseService() {
 
     private fun tryRestartOnChapterLoaded() {
         if (isStopping || !isRun || foregroundStartRejected) return
+        if (!hasLocalNetworkPermissionOrStop()) return
         val elapsed = System.currentTimeMillis() - startTimeMs
         if (elapsed < RESTART_INTERVAL_MS) return
         LogUtils.d(TAG) {
@@ -283,6 +370,7 @@ class WebService : BaseService() {
 
     private fun upWebServer() {
         if (isStopping) return
+        if (!hasLocalNetworkPermissionOrStop()) return
         synchronized(restartGuard) {
             if (isRestarting || isStopping) return
             isRestarting = true
@@ -326,6 +414,7 @@ class WebService : BaseService() {
                         }
                         isRun = true
                         startTimeMs = System.currentTimeMillis()
+                        upTile(true)
                         postEvent(EventBus.WEB_SERVICE, hostAddress)
                         startForegroundNotification()
                         if (!foregroundStartRejected) {
@@ -335,10 +424,12 @@ class WebService : BaseService() {
                 } catch (e: IOException) {
                     toastOnUi(e.localizedMessage ?: "")
                     e.printOnDebug()
+                    markStartFailed()
                     requestStop()
                 }
             } else {
                 toastOnUi("web service cant start, no ip address")
+                markStartFailed()
                 requestStop()
             }
         } finally {
@@ -359,6 +450,7 @@ class WebService : BaseService() {
      */
     override fun startForegroundNotification() {
         if (isStopping || foregroundStartRejected) return
+        if (!hasLocalNetworkPermissionOrStop()) return
         val builder = NotificationCompat.Builder(this, AppConst.channelIdWeb)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setSmallIcon(R.drawable.ic_web_service_noti)
@@ -399,7 +491,7 @@ class WebService : BaseService() {
     private fun stopForForegroundRestriction(error: Throwable?, timeLimit: Boolean) {
         if (foregroundStartRejected) return
         foregroundStartRejected = true
-        appCtx.putPrefBoolean(PreferKey.webService, false)
+        markStartFailed()
         val message = if (timeLimit) {
             getString(R.string.web_service_data_sync_time_limit)
         } else {
@@ -407,6 +499,50 @@ class WebService : BaseService() {
         }
         AppLog.put(message, error, toast = true)
         requestStop()
+    }
+
+    private fun hasLocalNetworkPermissionOrStop(): Boolean {
+        if (WebServiceLocalNetworkAccess.isGranted(this)) return true
+        if (!isStopping) {
+            promoteBeforePermissionStop()
+            markStartFailed()
+            AppLog.put(
+                getString(R.string.web_service_local_network_permission_denied),
+                toast = true
+            )
+            requestStop()
+        }
+        return false
+    }
+
+    /**
+     * A caller inside the same UID can bypass start() and launch this foreground service directly. Android still
+     * requires the service to complete foreground promotion before it stops, even when the permission gate rejects
+     * the launch in onCreate(). The notification is removed immediately by requestStop()/tearDown().
+     */
+    private fun promoteBeforePermissionStop() {
+        if (foregroundNotificationStarted) return
+        val notification = NotificationCompat.Builder(this, AppConst.channelIdWeb)
+            .setSmallIcon(R.drawable.ic_web_service_noti)
+            .setContentTitle(getString(R.string.web_service))
+            .setContentText(getString(R.string.web_service_local_network_permission_denied))
+            .build()
+        try {
+            ServiceCompat.startForeground(
+                this,
+                NotificationId.WebService,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+            foregroundNotificationStarted = true
+        } catch (e: Exception) {
+            AppLog.put("Web服务拒权停机前创建前台通知失败,${e.localizedMessage}", e)
+        }
+    }
+
+    private fun markStartFailed() {
+        startRequested.set(false)
+        appCtx.putPrefBoolean(PreferKey.webService, false)
     }
 
     private fun Throwable.isForegroundServiceStartNotAllowed(): Boolean {

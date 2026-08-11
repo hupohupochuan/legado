@@ -7,6 +7,7 @@
         android:protectionLevel="signature" />
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -149,6 +150,12 @@
             android:launchMode="singleTask" /> <!-- 授权界面 -->
         <activity
             android:name=".lib.permission.PermissionActivity"
+            android:theme="@style/Activity.Permission" /> <!-- Web 服务局域网授权界面 -->
+        <activity
+            android:name=".ui.config.WebServicePermissionActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
             android:theme="@style/Activity.Permission" /><!-- 书源编辑 -->
         <activity
             android:name=".ui.book.source.edit.BookSourceEditActivity"

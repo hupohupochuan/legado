@@ -95,6 +95,8 @@
     <string name="retry">Reintentar</string>
     <string name="web_service">Servicio Web</string>
     <string name="web_service_desc">Fuente de edición web y lectura de libros</string>
+    <string name="web_service_local_network_permission_rationale">Permite el acceso a dispositivos cercanos para que los navegadores de la misma red local puedan usar el servicio web.</string>
+    <string name="web_service_local_network_permission_denied">No se concedió el permiso de red local. El servicio web permanece desactivado.</string>
     <string name="web_edit_source">Editar fuentes de libros en la web</string>
     <string name="offline_cache">Caché sin conexión</string>
     <string name="offline_cache_t">Caché sin conexión</string>

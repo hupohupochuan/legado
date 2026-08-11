@@ -155,8 +155,7 @@ class OtherConfigFragment : PreferenceFragment(),
             PreferKey.webPort -> {
                 upPreferenceSummary(key, AppConfig.webPort.toString())
                 if (WebService.isRun) {
-                    WebService.stop(requireContext())
-                    WebService.start(requireContext())
+                    WebService.restart(requireContext())
                 }
             }
 

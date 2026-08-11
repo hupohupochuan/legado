@@ -1,12 +1,14 @@
 # 阅读 API
 
-> 当前代码核对日期：2026-08-02。路由权威来源为 `web/HttpServer.kt`、`web/WebSocketServer.kt` 和 `api/ReaderProvider.kt`。
+> 当前代码核对日期：2026-08-12。路由权威来源为 `web/HttpServer.kt`、`web/WebSocketServer.kt` 和 `api/ReaderProvider.kt`。
 >
 > RSS 已并入 `BookSource`。Web 服务不再提供 RSS 专用 HTTP/WebSocket 接口；RSS 类型书源使用 `bookSourceType=5` 调用统一书源接口。
 
 ## 启用与地址
 
-先在 App 设置中启用“Web 服务”。HTTP 端口可配置，默认是 `1122`；WebSocket 固定使用 HTTP 端口加 1，默认是 `1123`。从其他设备访问时，把 `127.0.0.1` 换成手机局域网 IP。
+先在 App 设置中启用“Web 服务”。Android 17 且 App 以 targetSdk 37 运行时，首次启用会请求“附近设备”中的局域网访问权限；拒绝或撤销后 Web 服务保持关闭，需要重新启用并授权。Android 16 及更低版本不会为此弹出权限请求。
+
+HTTP 端口可配置，默认是 `1122`；WebSocket 固定使用 HTTP 端口加 1，默认是 `1123`。从其他设备访问时，把 `127.0.0.1` 换成手机局域网 IP。
 
 普通 JSON 接口通常返回：
 

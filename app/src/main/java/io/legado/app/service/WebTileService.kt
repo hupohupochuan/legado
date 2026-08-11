@@ -9,6 +9,7 @@ import android.service.quicksettings.TileService
 import android.view.WindowManager.BadTokenException
 import io.legado.app.R
 import io.legado.app.constant.IntentAction
+import io.legado.app.ui.config.WebServicePermissionActivity
 import io.legado.app.utils.printOnDebug
 
 
@@ -53,6 +54,19 @@ class WebTileService : TileService() {
         if (WebService.isRun) {
             WebService.stop(this)
         } else {
+            if (!WebServiceLocalNetworkAccess.isGranted(this)) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    try {
+                        startActivityAndCollapse(WebServicePermissionActivity.pendingIntent(this))
+                    } catch (e: Exception) {
+                        WebService.cancelPermissionRequest(this, showMessage = true)
+                        e.printOnDebug()
+                    }
+                } else {
+                    WebService.start(this)
+                }
+                return
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 val dialog = Dialog(this, R.style.AppTheme_Transparent)
                 dialog.setOnShowListener {

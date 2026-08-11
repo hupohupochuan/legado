@@ -77,6 +77,7 @@ https://www.yuque.com/legado/wiki/community
 # API [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-)
 
 * Legado 3.0 provides both a Web API and a Content Provider API. The permission is `${applicationId}.permission.READ_WRITE` and changes with the target variant's final applicationId; clients must request that exact permission and use the same signing certificate. See the [API documentation](api.md).
+* On Android 17, enabling the local-network Web service for the first time requires the Local Network permission under Nearby devices. If access is denied or revoked, the service remains off. Android 16 and earlier do not use this runtime permission.
 * One-click import by url recall reading, url format: legado://import/{path}?src={url}
 * Path Type: bookSource,rssSource,replaceRule,textTocRule,httpTTS,theme,readConfig,dictRule,addToBookshelf
 * Path type explanation: book source, compatibility alias for an RSS-type book source (`bookSourceType=5`), replacement rule, local TXT table-of-contents rule, online TTS engine, theme, reading layout, dictionary rule, [add to bookshelf](/app/src/main/java/io/legado/app/ui/association/AddToBookshelfDialog.kt)
