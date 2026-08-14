@@ -68,14 +68,40 @@ object AppWebDav : BookProgressSync {
 
     private enum class BookProgressCheckResult {
         CanApply,
-        IdentityMismatch,
         OutOfRange,
         LocalBookUnreadable
     }
 
+    private sealed interface BookProgressDownloadResult {
+        data class Success(val progress: BookProgress) : BookProgressDownloadResult
+        data object InvalidJson : BookProgressDownloadResult
+        data object IdentityMismatch : BookProgressDownloadResult
+    }
+
+    private data class DownloadedBookProgress(
+        val fileName: String,
+        val result: BookProgressDownloadResult
+    )
+
+    private data class PendingMigrationUploadProgress(
+        val progress: BookProgress,
+        val remoteProgressToApply: BookProgress? = null
+    )
+
+    private data class GeneratedBookProgressIdentity(
+        val progressKey: String,
+        val localFileKey: String? = null
+    )
+
+    private data class ResolvedBookProgressTarget(
+        val target: BookProgressStorageTarget,
+        val pendingIdentity: GeneratedBookProgressIdentity? = null
+    )
+
     private data class PreparedBookProgress(
         val progress: BookProgress,
-        val target: BookProgressStorageTarget
+        val resolvedTarget: ResolvedBookProgressTarget,
+        val persistedBook: Book? = null
     )
 
     private val serverWebDavUrl: String
@@ -300,17 +326,34 @@ object AppWebDav : BookProgressSync {
         onSuccess: (() -> Unit)?
     ) {
         if (shouldSkipBookProgressUpload(book.name)) return
-        val target = resolveBookProgressTarget(book)
+        val resolvedTarget = resolveBookProgressTarget(book)
+        val target = resolvedTarget.target
         val fileName = target.identityFileName ?: target.candidates.firstOrNull()
             ?: return AppLog.putDebug(
-                "WebDav uploadBookProgress skip reason=ambiguousLegacyIdentity book=${book.name}"
+                "WebDav uploadBookProgress skip reason=unavailableProgressIdentity book=${book.name}"
             )
+        val migration = selectPendingMigrationUploadProgress(
+            book = book,
+            resolvedTarget = resolvedTarget,
+            localProgress = BookProgress(book).copy(bookProgressKey = target.progressKey)
+        ).onFailure {
+            currentCoroutineContext().ensureActive()
+            AppLog.put(
+                "WebDav uploadBookProgress skip reason=migrationReadFailed book=${book.name}\n" +
+                        it.localizedMessage,
+                it
+            )
+        }.getOrNull() ?: return
         uploadBookProgressJson(
-            progress = BookProgress(book),
+            progress = migration.progress,
             fileName = fileName,
             toast = toast,
             onSuccess = onSuccess,
-            onProgressUpdate = { book.syncTime = System.currentTimeMillis() }
+            onProgressUpdate = { book.syncTime = System.currentTimeMillis() },
+            onUploaded = {
+                applyPendingMigrationRemoteProgress(book, migration.remoteProgressToApply)
+                persistPendingBookProgressIdentity(book, resolvedTarget)
+            }
         )
     }
 
@@ -329,17 +372,40 @@ object AppWebDav : BookProgressSync {
         if (shouldSkipBookProgressUpload(bookProgress.name)) return
         val prepared = prepareBookProgress(bookProgress)
             ?: return AppLog.putDebug(
-                "WebDav uploadBookProgress skip reason=ambiguousLegacyIdentity book=${bookProgress.name}"
+                "WebDav uploadBookProgress skip reason=unavailableProgressIdentity book=${bookProgress.name}"
             )
-        val fileName = prepared.target.identityFileName ?: prepared.target.candidates.firstOrNull()
+        val target = prepared.resolvedTarget.target
+        val fileName = target.identityFileName ?: target.candidates.firstOrNull()
             ?: return AppLog.putDebug(
                 "WebDav uploadBookProgress skip reason=missingProgressTarget book=${bookProgress.name}"
             )
+        val migration = prepared.persistedBook?.let { book ->
+            val migrationProgress = selectPendingMigrationUploadProgress(
+                book,
+                prepared.resolvedTarget,
+                prepared.progress
+            )
+                .onFailure {
+                    currentCoroutineContext().ensureActive()
+                    AppLog.put(
+                        "WebDav uploadBookProgress skip reason=migrationReadFailed book=${book.name}\n" +
+                                it.localizedMessage,
+                        it
+                    )
+                }
+            migrationProgress.getOrNull() ?: return
+        } ?: PendingMigrationUploadProgress(prepared.progress)
         uploadBookProgressJson(
-            progress = prepared.progress,
+            progress = migration.progress,
             fileName = fileName,
             toast = false,
-            onSuccess = onSuccess
+            onSuccess = onSuccess,
+            onUploaded = {
+                prepared.progress.bookUrl?.let(appDb.bookDao::getBook)?.let { book ->
+                    applyPendingMigrationRemoteProgress(book, migration.remoteProgressToApply)
+                    persistPendingBookProgressIdentity(book, prepared.resolvedTarget)
+                }
+            }
         )
     }
 
@@ -376,7 +442,8 @@ object AppWebDav : BookProgressSync {
         fileName: String,
         toast: Boolean,
         onSuccess: (() -> Unit)?,
-        onProgressUpdate: (() -> Unit)? = null
+        onProgressUpdate: (() -> Unit)? = null,
+        onUploaded: (() -> Unit)? = null
     ) {
         val authorization = authorization ?: return AppLog.putDebug(
             "WebDav uploadBookProgress skip reason=noAuthorization file=${fileName}"
@@ -393,6 +460,7 @@ object AppWebDav : BookProgressSync {
             WebDav(url, authorization).upload(json.toByteArray(), "application/json")
             missingBookProgressFiles.remove(fileName)
             onProgressUpdate?.invoke()
+            onUploaded?.invoke()
             AppLog.putDebug(
                 "WebDav uploadBookProgress success file=${fileName} " +
                         "chapter=${progress.durChapterIndex} pos=${progress.durChapterPos}"
@@ -408,59 +476,116 @@ object AppWebDav : BookProgressSync {
         return UrlUtil.replaceReservedChar("${name}_${author}".normalizeFileName()) + ".json"
     }
 
-    private suspend fun resolveBookProgressTarget(book: Book): BookProgressStorageTarget {
-        var progressKey = book.bookProgressKey?.takeIf { it.isNotBlank() }
-        if (progressKey != null) {
-            return BookProgressStorageTarget.forBook(
-                progressKey = progressKey,
-                legacyFileName = getLegacyProgressFileName(book.name, book.author),
-                sameNameBookCount = 1
+    private suspend fun resolveBookProgressTarget(book: Book): ResolvedBookProgressTarget {
+        val legacyFileName = getLegacyProgressFileName(book.name, book.author)
+        val existingProgressKey = book.bookProgressKey?.takeIf { it.isNotBlank() }
+        if (existingProgressKey != null) {
+            return ResolvedBookProgressTarget(
+                BookProgressStorageTarget.forBook(
+                    progressKey = existingProgressKey,
+                    legacyFileName = legacyFileName,
+                    sameNameBookCount = 1
+                )
             )
         }
         val sameNameBooks = appDb.bookDao.getBooksByNameAndAuthor(book.name, book.author)
         val sameNameBookCount = sameNameBooks.size +
                 if (sameNameBooks.any { it.bookUrl == book.bookUrl }) 0 else 1
-        if (sameNameBookCount > 1) {
-            progressKey = createMissingBookProgressKey(book)
+        val isLocalFileBook = book.isLocal && !book.bookUrl.startsWith(BookType.webDavTag)
+        if (isLocalFileBook) {
+            val generatedIdentity = generateMissingBookProgressIdentity(book)
+                ?: return ResolvedBookProgressTarget(
+                    BookProgressStorageTarget(
+                        progressKey = null,
+                        legacyFileName = legacyFileName,
+                        allowLegacyFallback = false
+                    )
+                )
+            if (sameNameBookCount > 1) {
+                persistBookProgressIdentity(book, generatedIdentity)
+                return ResolvedBookProgressTarget(
+                    BookProgressStorageTarget.forBook(
+                        progressKey = generatedIdentity.progressKey,
+                        legacyFileName = legacyFileName,
+                        sameNameBookCount = sameNameBookCount
+                    )
+                )
+            }
+            return ResolvedBookProgressTarget(
+                target = BookProgressStorageTarget.forBook(
+                    progressKey = generatedIdentity.progressKey,
+                    legacyFileName = legacyFileName,
+                    sameNameBookCount = sameNameBookCount,
+                    allowLegacyMigration = true
+                ),
+                pendingIdentity = generatedIdentity
+            )
         }
-        return BookProgressStorageTarget.forBook(
-            progressKey = progressKey,
-            legacyFileName = getLegacyProgressFileName(book.name, book.author),
-            sameNameBookCount = sameNameBookCount
+        val generatedIdentity = if (sameNameBookCount > 1) {
+            generateMissingBookProgressIdentity(book)?.also {
+                persistBookProgressIdentity(book, it)
+            }
+        } else {
+            null
+        }
+        return ResolvedBookProgressTarget(
+            BookProgressStorageTarget.forBook(
+                progressKey = generatedIdentity?.progressKey,
+                legacyFileName = getLegacyProgressFileName(book.name, book.author),
+                sameNameBookCount = sameNameBookCount
+            )
         )
     }
 
-    private suspend fun createMissingBookProgressKey(book: Book): String? {
-        var generatedLocalFileKey: String? = null
-        val progressKey = try {
+    private suspend fun generateMissingBookProgressIdentity(
+        book: Book
+    ): GeneratedBookProgressIdentity? {
+        val isLocalFileBook = book.isLocal && !book.bookUrl.startsWith(BookType.webDavTag)
+        return try {
             if (book.isLocal && !book.bookUrl.startsWith(BookType.webDavTag)) {
                 val identities = FileBook.createLocalBookIdentities(book)
-                if (book.localFileKey == null) {
-                    book.localFileKey = identities.localFileKey
-                    generatedLocalFileKey = identities.localFileKey
-                }
-                identities.bookProgressKey
+                GeneratedBookProgressIdentity(
+                    progressKey = identities.bookProgressKey,
+                    localFileKey = identities.localFileKey
+                )
             } else {
-                BookProgressIdentity.fromBookUrl(book.bookUrl)
+                val progressKey = BookProgressIdentity.fromBookUrl(book.bookUrl) ?: return null
+                GeneratedBookProgressIdentity(progressKey)
             }
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
+            val reason = if (isLocalFileBook) "localBookUnreadable" else "identityUnavailable"
             AppLog.put(
-                "WebDav progressIdentity skip reason=localBookUnreadable book=${book.name}\n" +
+                "WebDav progressIdentity skip reason=$reason book=${book.name}\n" +
                         e.localizedMessage,
                 e
             )
             null
         }
-        if (progressKey != null) {
-            book.bookProgressKey = progressKey
-            appDb.bookDao.updateBookProgressIdentity(
-                book.bookUrl,
-                progressKey,
-                generatedLocalFileKey
-            )
+    }
+
+    private fun persistBookProgressIdentity(
+        book: Book,
+        identity: GeneratedBookProgressIdentity
+    ) {
+        book.bookProgressKey = identity.progressKey
+        if (book.localFileKey == null && identity.localFileKey != null) {
+            book.localFileKey = identity.localFileKey
         }
-        return progressKey
+        appDb.bookDao.updateBookProgressIdentity(
+            book.bookUrl,
+            identity.progressKey,
+            identity.localFileKey
+        )
+    }
+
+    private fun persistPendingBookProgressIdentity(
+        book: Book,
+        resolvedTarget: ResolvedBookProgressTarget
+    ) {
+        resolvedTarget.pendingIdentity?.let {
+            persistBookProgressIdentity(book, it)
+        }
     }
 
     private suspend fun prepareBookProgress(bookProgress: BookProgress): PreparedBookProgress? {
@@ -468,7 +593,8 @@ object AppWebDav : BookProgressSync {
             ?: appDb.bookDao.getBooksByNameAndAuthor(bookProgress.name, bookProgress.author)
                 .singleOrNull()
         if (persistedBook != null) {
-            val target = resolveBookProgressTarget(persistedBook)
+            val resolvedTarget = resolveBookProgressTarget(persistedBook)
+            val target = resolvedTarget.target
             if (target.candidates.isEmpty()) return null
             return PreparedBookProgress(
                 progress = bookProgress.copy(
@@ -477,7 +603,8 @@ object AppWebDav : BookProgressSync {
                     bookProgressKey = target.progressKey,
                     bookUrl = persistedBook.bookUrl
                 ),
-                target = target
+                resolvedTarget = resolvedTarget,
+                persistedBook = persistedBook
             )
         }
         if (bookProgress.bookProgressKey == null && bookProgress.bookUrl != null) return null
@@ -486,7 +613,10 @@ object AppWebDav : BookProgressSync {
             legacyFileName = getLegacyProgressFileName(bookProgress.name, bookProgress.author),
             allowLegacyFallback = bookProgress.bookProgressKey == null
         )
-        return PreparedBookProgress(bookProgress, target)
+        return PreparedBookProgress(
+            bookProgress,
+            ResolvedBookProgressTarget(target)
+        )
     }
 
     /**
@@ -508,10 +638,11 @@ object AppWebDav : BookProgressSync {
             AppLog.putDebug("WebDav getBookProgress skip reason=noAuthorization book=${book.name}")
             return Result.success(null)
         }
-        val target = resolveBookProgressTarget(book)
+        val resolvedTarget = resolveBookProgressTarget(book)
+        val target = resolvedTarget.target
         if (target.candidates.isEmpty()) {
             AppLog.putDebug(
-                "WebDav getBookProgress skip reason=ambiguousLegacyIdentity book=${book.name}"
+                "WebDav getBookProgress skip reason=unavailableProgressIdentity book=${book.name}"
             )
             return Result.success(null)
         }
@@ -524,19 +655,43 @@ object AppWebDav : BookProgressSync {
                     continue
                 }
                 try {
-                    val progress = downloadBookProgress(progressFileName, authorization)
-                    if (progress == null) {
-                        AppLog.put(
-                            "WebDav getBookProgress skip reason=invalidJson file=${progressFileName}"
-                        )
-                        return@runCatching null
+                    val progress = when (
+                        val downloaded = downloadBookProgress(target, progressFileName, authorization)
+                    ) {
+                        BookProgressDownloadResult.InvalidJson -> {
+                            AppLog.put(
+                                "WebDav getBookProgress skip reason=invalidJson file=${progressFileName}"
+                            )
+                            if (resolvedTarget.pendingIdentity != null) continue
+                            return@runCatching null
+                        }
+
+                        BookProgressDownloadResult.IdentityMismatch -> {
+                            AppLog.put(
+                                "WebDav getBookProgress skip reason=identityMismatch file=${progressFileName}"
+                            )
+                            if (resolvedTarget.pendingIdentity != null) continue
+                            return@runCatching null
+                        }
+
+                        is BookProgressDownloadResult.Success -> downloaded.progress
                     }
-                    if (!target.accepts(progressFileName, progress)) {
-                        AppLog.put(
-                            "WebDav getBookProgress skip reason=identityMismatch file=${progressFileName}"
-                        )
-                        return@runCatching null
+                    if (resolvedTarget.pendingIdentity != null) {
+                        if (!isBookProgressInRange(book, progress)) {
+                            AppLog.put(
+                                "WebDav getBookProgress skip reason=outOfRange file=${progressFileName} " +
+                                        "book=${book.name}"
+                            )
+                            continue
+                        }
+                        // A valid v2 appears first and returns before legacy is considered.
                     }
+                    establishPendingBookProgressIdentity(
+                        book,
+                        resolvedTarget,
+                        progressFileName,
+                        progress
+                    )
                     missingBookProgressFiles.remove(progressFileName)
                     AppLog.putDebug(
                         "WebDav getBookProgress success file=${progressFileName} " +
@@ -562,6 +717,13 @@ object AppWebDav : BookProgressSync {
         logPrefix: String,
         mode: ProgressCheckMode
     ): Boolean {
+        val expectedProgressKey = book.bookProgressKey
+        if (expectedProgressKey != null && bookProgress.bookProgressKey != null &&
+            bookProgress.bookProgressKey != expectedProgressKey
+        ) {
+            AppLog.put("$logPrefix skip reason=identityMismatch book=${book.name}")
+            return false
+        }
         return checkBookProgress(book, bookProgress, logPrefix, mode) == BookProgressCheckResult.CanApply
     }
 
@@ -594,13 +756,6 @@ object AppWebDav : BookProgressSync {
         logPrefix: String,
         mode: ProgressCheckMode
     ): BookProgressCheckResult {
-        val expectedProgressKey = book.bookProgressKey
-        if (expectedProgressKey != null && bookProgress.bookProgressKey != null &&
-            bookProgress.bookProgressKey != expectedProgressKey
-        ) {
-            AppLog.put("$logPrefix skip reason=identityMismatch book=${book.name}")
-            return BookProgressCheckResult.IdentityMismatch
-        }
         val maxChapterIndex = book.simulatedTotalChapterNum()
         if (maxChapterIndex <= 0 || bookProgress.durChapterIndex !in 0 until maxChapterIndex) {
             AppLog.put(
@@ -642,15 +797,185 @@ object AppWebDav : BookProgressSync {
         target: BookProgressStorageTarget,
         progressFileName: String,
         authorization: Authorization
-    ): BookProgress? {
-        val progress = downloadBookProgress(progressFileName, authorization) ?: return null
+    ): BookProgressDownloadResult {
+        val progress = downloadBookProgress(progressFileName, authorization)
+            ?: return BookProgressDownloadResult.InvalidJson
         if (!target.accepts(progressFileName, progress)) {
-            AppLog.put(
-                "WebDav downloadBookProgress skip reason=identityMismatch file=${progressFileName}"
-            )
-            return null
+            return BookProgressDownloadResult.IdentityMismatch
         }
-        return progress
+        return BookProgressDownloadResult.Success(progress)
+    }
+
+    private suspend fun downloadAvailableBookProgress(
+        book: Book,
+        target: BookProgressStorageTarget,
+        availableFileNames: Set<String>,
+        authorization: Authorization,
+        allowLegacyMigrationFallback: Boolean
+    ): DownloadedBookProgress? {
+        var fallback: DownloadedBookProgress? = null
+        for (progressFileName in target.candidates) {
+            if (progressFileName !in availableFileNames) continue
+            val downloaded = DownloadedBookProgress(
+                progressFileName,
+                downloadBookProgress(target, progressFileName, authorization)
+            )
+            when (val result = downloaded.result) {
+                is BookProgressDownloadResult.Success -> {
+                    if (!allowLegacyMigrationFallback) {
+                        return downloaded
+                    }
+                    if (!isBookProgressInRange(book, result.progress)) {
+                        if (fallback == null) fallback = downloaded
+                        continue
+                    }
+                    // A valid v2 appears first and returns before legacy is considered.
+                    return downloaded
+                }
+
+                BookProgressDownloadResult.InvalidJson,
+                BookProgressDownloadResult.IdentityMismatch -> {
+                    if (fallback == null) fallback = downloaded
+                }
+            }
+            if (!allowLegacyMigrationFallback) return downloaded
+        }
+        return fallback
+    }
+
+    private suspend fun establishPendingBookProgressIdentity(
+        book: Book,
+        resolvedTarget: ResolvedBookProgressTarget,
+        progressFileName: String,
+        progress: BookProgress,
+        preferRemoteProgress: Boolean = false
+    ) {
+        val pendingIdentity = resolvedTarget.pendingIdentity ?: return
+        val target = resolvedTarget.target
+        if (!isBookProgressInRange(book, progress)) return
+        val currentProgress = BookProgress(book)
+        val progressToMigrate = when (progressFileName) {
+            target.identityFileName -> when {
+                BookProgressMigration.isMoreRecentThan(progress, currentProgress) -> return
+                BookProgressMigration.isMoreRecentThan(currentProgress, progress) -> currentProgress
+                else -> {
+                    persistBookProgressIdentity(book, pendingIdentity)
+                    return
+                }
+            }
+
+            target.legacyFileName -> if (preferRemoteProgress ||
+                !BookProgressMigration.isMoreRecentThan(currentProgress, progress)
+            ) {
+                progress
+            } else {
+                currentProgress
+            }
+
+            else -> return
+        }.copy(
+            name = book.name,
+            author = book.author,
+            bookProgressKey = pendingIdentity.progressKey,
+            bookUrl = book.bookUrl
+        )
+        uploadBookProgressJson(
+            progress = progressToMigrate,
+            fileName = checkNotNull(target.identityFileName),
+            toast = false,
+            onSuccess = null,
+            onUploaded = {
+                if (!BookProgressMigration.isMoreRecentThan(progressToMigrate, BookProgress(book))) {
+                    persistBookProgressIdentity(book, pendingIdentity)
+                }
+            }
+        )
+    }
+
+    /**
+     * 旧唯一本地书首次上传 v2 前，优先验证 v2；只有 v2 不可用时才读取 legacy，
+     * 再将可信远端与本地较新的有效位置写入 v2。
+     */
+    private suspend fun selectPendingMigrationUploadProgress(
+        book: Book,
+        resolvedTarget: ResolvedBookProgressTarget,
+        localProgress: BookProgress
+    ): Result<PendingMigrationUploadProgress> {
+        if (resolvedTarget.pendingIdentity == null) {
+            return Result.success(PendingMigrationUploadProgress(localProgress))
+        }
+        val authorization = authorization
+            ?: return Result.failure(NoStackTraceException("webDav没有配置"))
+        val target = resolvedTarget.target
+        var remoteProgress: BookProgress? = null
+        for (progressFileName in target.candidates) {
+            val downloaded = try {
+                downloadBookProgress(target, progressFileName, authorization)
+            } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
+                if (e.isBookProgressNotFound()) continue
+                return Result.failure(e)
+            }
+            val candidate = when (downloaded) {
+                BookProgressDownloadResult.InvalidJson -> {
+                    AppLog.put(
+                        "WebDav uploadBookProgress skip reason=invalidJson file=$progressFileName"
+                    )
+                    continue
+                }
+
+                BookProgressDownloadResult.IdentityMismatch -> {
+                    AppLog.put(
+                        "WebDav uploadBookProgress skip reason=identityMismatch file=$progressFileName"
+                    )
+                    continue
+                }
+
+                is BookProgressDownloadResult.Success -> downloaded.progress
+            }
+            if (!isBookProgressInRange(book, candidate)) {
+                AppLog.put(
+                    "WebDav uploadBookProgress skip reason=outOfRange file=$progressFileName " +
+                            "book=${book.name}"
+                )
+                continue
+            }
+            // A valid v2 appears first and prevents any legacy read.
+            remoteProgress = candidate
+            break
+        }
+        val remoteProgressToApply = remoteProgress
+            ?.takeIf { BookProgressMigration.isMoreRecentThan(it, localProgress) }
+        val progressToUpload = remoteProgressToApply ?: localProgress
+        return Result.success(
+            PendingMigrationUploadProgress(
+                progress = progressToUpload.copy(
+                    name = book.name,
+                    author = book.author,
+                    bookProgressKey = target.progressKey,
+                    bookUrl = book.bookUrl
+                ),
+                remoteProgressToApply = remoteProgressToApply
+            )
+        )
+    }
+
+    private fun isBookProgressInRange(book: Book, progress: BookProgress): Boolean {
+        val maxChapterIndex = book.simulatedTotalChapterNum()
+        return maxChapterIndex > 0 && progress.durChapterIndex in 0 until maxChapterIndex
+    }
+
+    private fun applyPendingMigrationRemoteProgress(
+        book: Book,
+        remoteProgress: BookProgress?
+    ) {
+        remoteProgress ?: return
+        book.durChapterIndex = remoteProgress.durChapterIndex
+        book.durChapterPos = remoteProgress.durChapterPos
+        book.durChapterTitle = remoteProgress.durChapterTitle
+        book.durChapterTime = remoteProgress.durChapterTime
+        book.syncTime = System.currentTimeMillis()
+        appDb.bookDao.update(book)
     }
 
     override suspend fun downloadAllBookProgress() {
@@ -670,7 +995,8 @@ object AppWebDav : BookProgressSync {
             var updatedCount = 0
             var skippedIdentity = 0
             appDb.bookDao.all.forEach { book ->
-                val target = resolveBookProgressTarget(book)
+                val resolvedTarget = resolveBookProgressTarget(book)
+                val target = resolvedTarget.target
                 val progressFileName = target.selectAvailable(map.keys)
                 if (progressFileName == null) {
                     if (target.candidates.isEmpty()) skippedIdentity++
@@ -679,30 +1005,63 @@ object AppWebDav : BookProgressSync {
                 WebBookProgressSyncCoordinator.withBook(
                     target.progressKey ?: book.bookUrl
                 ) bookLock@{
-                    val webDavFile = map[progressFileName] ?: return@bookLock
+                    val selectedWebDavFile = map[progressFileName] ?: return@bookLock
                     matchedCount++
-                    if (webDavFile.lastModify <= book.syncTime) {
+                    if (resolvedTarget.pendingIdentity == null &&
+                        selectedWebDavFile.lastModify <= book.syncTime
+                    ) {
                         //本地同步时间大于上传时间不用同步
                         return@bookLock
                     }
-                    downloadBookProgress(target, progressFileName, authorization)?.let { bookProgress ->
-                        if (!canApplyBookProgress(
-                                book,
-                                bookProgress,
-                                "WebDav downloadAllBookProgress",
-                                ProgressCheckMode.RangeOnly
+                    val downloaded = downloadAvailableBookProgress(
+                        book = book,
+                        target = target,
+                        availableFileNames = map.keys,
+                        authorization = authorization,
+                        allowLegacyMigrationFallback = resolvedTarget.pendingIdentity != null
+                    ) ?: return@bookLock
+                    when (val result = downloaded.result) {
+                        BookProgressDownloadResult.InvalidJson -> {
+                            AppLog.put(
+                                "WebDav downloadAllBookProgress skip reason=invalidJson " +
+                                        "file=${downloaded.fileName}"
                             )
-                        ) {
-                            return@bookLock
                         }
-                        if (bookProgress.compareReadPosition(book) > 0) {
-                            book.durChapterIndex = bookProgress.durChapterIndex
-                            book.durChapterPos = bookProgress.readChapterPos
-                            book.durChapterTitle = bookProgress.durChapterTitle
-                            book.durChapterTime = bookProgress.durChapterTime
-                            book.syncTime = System.currentTimeMillis()
-                            appDb.bookDao.update(book)
-                            updatedCount++
+
+                        BookProgressDownloadResult.IdentityMismatch -> {
+                            skippedIdentity++
+                            AppLog.put(
+                                "WebDav downloadAllBookProgress skip reason=identityMismatch " +
+                                        "file=${downloaded.fileName}"
+                            )
+                        }
+
+                        is BookProgressDownloadResult.Success -> {
+                            val bookProgress = result.progress
+                            if (!canApplyBookProgress(
+                                    book,
+                                    bookProgress,
+                                    "WebDav downloadAllBookProgress",
+                                    ProgressCheckMode.RangeOnly
+                                )
+                            ) {
+                                return@bookLock
+                            }
+                            if (bookProgress.compareReadPosition(book) > 0) {
+                                book.durChapterIndex = bookProgress.durChapterIndex
+                                book.durChapterPos = bookProgress.readChapterPos
+                                book.durChapterTitle = bookProgress.durChapterTitle
+                                book.durChapterTime = bookProgress.durChapterTime
+                                book.syncTime = System.currentTimeMillis()
+                                appDb.bookDao.update(book)
+                                updatedCount++
+                            }
+                            establishPendingBookProgressIdentity(
+                                book,
+                                resolvedTarget,
+                                downloaded.fileName,
+                                bookProgress
+                            )
                         }
                     }
                 }
@@ -734,17 +1093,33 @@ object AppWebDav : BookProgressSync {
             var skippedUnreadable = 0
             var skippedOutOfRange = 0
             appDb.bookDao.all.forEach { book ->
-                val target = resolveBookProgressTarget(book)
+                val resolvedTarget = resolveBookProgressTarget(book)
+                val target = resolvedTarget.target
                 val progressFileName = target.selectAvailable(map.keys)
                 if (progressFileName == null) {
                     if (target.candidates.isEmpty()) skippedIdentity++
                     return@forEach
                 }
                 matchedCount++
-                val bookProgress = downloadBookProgress(target, progressFileName, authorization)
-                if (bookProgress == null) {
-                    skippedInvalid++
-                    return@forEach
+                val downloaded = downloadAvailableBookProgress(
+                    book = book,
+                    target = target,
+                    availableFileNames = map.keys,
+                    authorization = authorization,
+                    allowLegacyMigrationFallback = resolvedTarget.pendingIdentity != null
+                ) ?: return@forEach
+                val bookProgress = when (val result = downloaded.result) {
+                    BookProgressDownloadResult.InvalidJson -> {
+                        skippedInvalid++
+                        return@forEach
+                    }
+
+                    BookProgressDownloadResult.IdentityMismatch -> {
+                        skippedIdentity++
+                        return@forEach
+                    }
+
+                    is BookProgressDownloadResult.Success -> result.progress
                 }
                 when (
                     checkBookProgress(
@@ -753,7 +1128,7 @@ object AppWebDav : BookProgressSync {
                         "WebDav restoreProgressOnly",
                         ProgressCheckMode.RangeOnly
                     )
-                ) {
+                    ) {
                     BookProgressCheckResult.CanApply -> {
                         book.durChapterIndex = bookProgress.durChapterIndex
                         book.durChapterPos = bookProgress.durChapterPos
@@ -762,9 +1137,15 @@ object AppWebDav : BookProgressSync {
                         book.syncTime = System.currentTimeMillis()
                         appDb.bookDao.update(book)
                         updatedCount++
+                        establishPendingBookProgressIdentity(
+                            book,
+                            resolvedTarget,
+                            downloaded.fileName,
+                            bookProgress,
+                            preferRemoteProgress = true
+                        )
                     }
 
-                    BookProgressCheckResult.IdentityMismatch -> skippedIdentity++
                     BookProgressCheckResult.OutOfRange -> skippedOutOfRange++
                     BookProgressCheckResult.LocalBookUnreadable -> skippedUnreadable++
                 }

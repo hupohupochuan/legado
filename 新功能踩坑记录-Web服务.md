@@ -1,8 +1,8 @@
 # 新功能踩坑记录 - Web 服务
 
 > 返回主题索引: [新功能踩坑记录.md](新功能踩坑记录.md)
-> 当前复核状态（2026-08-15）：WebDAV 阅读进度已用跨设备 `bookProgressKey` 隔离同名异书，旧书名作者文件只在身份无歧义时兼容；Web 前端资源本轮未改。Android 17 局域网权限结论沿用 2026-08-12 验证。
-> 验证边界：2026-08-15 已通过全量 168 项 JVM 测试、AndroidTest Kotlin 编译、`scripts/check-debug.sh` 和 Debug APK 打包；真实双设备 WebDAV、84→85 真机迁移仍待验收。2026-08-12 的权限黑盒、2026-08-10 的方向键真实浏览器边界和 2026-08-07 的全文搜索/Release 结论不因本次复核自动续期。
+> 当前复核状态（2026-08-15）：WebDAV 阅读进度已用跨设备 `bookProgressKey` 隔离同名异书，keyless 唯一旧书只在首次迁移窗口兼容书名作者文件；Web 前端资源本轮未改。Android 17 局域网权限结论沿用 2026-08-12 验证。
+> 验证边界：2026-08-15 已通过全量 171 项 JVM 测试、AndroidTest Kotlin 编译、`scripts/check-debug.sh` 和 Debug APK 打包；当前无连接设备，真实双设备 WebDAV、84→85 真机迁移仍待验收。2026-08-12 的权限黑盒、2026-08-10 的方向键真实浏览器边界和 2026-08-07 的全文搜索/Release 结论不因本次复核自动续期。
 
 ---
 
@@ -572,7 +572,7 @@
 - WebDAV 在线恢复入口必须让用户选择“仅恢复阅读进度”或“完整恢复备份”。
 - “仅恢复阅读进度”只读取 WebDAV `bookProgress/*.json`，不下载备份 zip，不调用 `Restore.restore(...)`，不恢复 `bookshelf.json`。
 - v2 进度按 `bookProgressKey` 匹配：本地书用不含设备路径的内容 SHA-1；同名冲突的在线书惰性使用 `bookUrl` SHA-256。匹配不到时跳过，不创建本地书。
-- 旧书名作者进度文件只在当前书 `bookProgressKey` 为空且本地同名同作者仅一册时读取；有 key 后只读 v2。同名旧记录无法生成 key 时跳过，不能猜测映射。
+- keyless 唯一本地旧书首次恢复先验证 v2，只有 v2 缺失、无效、身份错或越界时才读取旧书名作者文件；v2 写入当前有效位置后才持久化 key，有 key 后只读 v2。同名旧记录无法生成 key 时跳过，不能猜测映射。
 - 写入字段仅限 `durChapterIndex`、`durChapterPos`、`durChapterTitle`、`durChapterTime`、`syncTime`。
 - 写入前继续校验章节范围；仅恢复阅读进度使用 `ProgressCheckMode.RangeOnly`，不得因为本地 SAF URI 当前不可读而跳过。只有真正加载本地书内容的 `ReadableRequired` 路径才调用 `FileBook.checkBookReadable()`。
 - 不要把 `primary:yuedu` 之类 SAF URI 字符串替换成另一个目录名。
@@ -582,7 +582,7 @@
 - 备份设置页手动选择 WebDAV 备份文件后，应弹出恢复模式选择。
 - 跨设备场景选择“仅恢复阅读进度”时，不修改本地书 `bookUrl`。
 - 选择“完整恢复备份”时，仍走原 `restoreWebDav(name)` 完整恢复行为。
-- 已有 `bookProgressKey` 的本地书即使 SAF URI 暂不可读，仍可恢复范围有效的进度；旧同名记录缺 key 时必须先读取精确文件补齐身份，失权则安全跳过。章节越界或身份不匹配同样跳过，不误报为 WebDAV 配置失败。
+- 已有 `bookProgressKey` 的本地书即使 SAF URI 暂不可读，仍可恢复范围有效的进度；keyless 唯一旧书必须先读取精确文件补齐身份，失权则安全跳过。章节越界或身份不匹配同样跳过，不误报为 WebDAV 配置失败。
 
 
 ---

@@ -32,6 +32,16 @@ object BookProgressIdentity {
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 }
 
+/** One-time legacy-to-v2 migration compares the trusted remote and local positions. */
+internal object BookProgressMigration {
+
+    fun isMoreRecentThan(candidate: BookProgress, current: BookProgress): Boolean {
+        val chapterCompare = candidate.durChapterIndex.compareTo(current.durChapterIndex)
+        return chapterCompare > 0 ||
+                chapterCompare == 0 && candidate.readChapterPos > current.readChapterPos
+    }
+}
+
 /**
  * 一册书可读取的 WebDAV 进度文件集合。是否允许读取旧版书名作者文件
  * 由调用方按本地身份是否明确决定。
@@ -65,11 +75,13 @@ data class BookProgressStorageTarget(
         fun forBook(
             progressKey: String?,
             legacyFileName: String,
-            sameNameBookCount: Int
+            sameNameBookCount: Int,
+            allowLegacyMigration: Boolean = false
         ) = BookProgressStorageTarget(
             progressKey = progressKey,
             legacyFileName = legacyFileName,
-            allowLegacyFallback = progressKey == null && sameNameBookCount <= 1
+            allowLegacyFallback = sameNameBookCount <= 1 &&
+                    (progressKey == null || allowLegacyMigration)
         )
     }
 }

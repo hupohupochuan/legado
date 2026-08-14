@@ -48,6 +48,44 @@ class BookProgressIdentityTest {
     }
 
     @Test
+    fun `keyless local migration prefers v2 and falls back to legacy once`() {
+        val target = BookProgressStorageTarget.forBook(
+            progressKey = "content-sha1:book-a",
+            legacyFileName = "legacy.json",
+            sameNameBookCount = 1,
+            allowLegacyMigration = true
+        )
+        val identityFile = checkNotNull(target.identityFileName)
+
+        assertEquals(listOf(identityFile, "legacy.json"), target.candidates)
+        assertEquals(identityFile, target.selectAvailable(setOf(identityFile, "legacy.json")))
+        assertEquals("legacy.json", target.selectAvailable(setOf("legacy.json")))
+        assertTrue(target.accepts("legacy.json", progress(null)))
+    }
+
+    @Test
+    fun `legacy migration is unavailable when same-name identity is ambiguous`() {
+        val target = BookProgressStorageTarget.forBook(
+            progressKey = "content-sha1:book-a",
+            legacyFileName = "legacy.json",
+            sameNameBookCount = 2,
+            allowLegacyMigration = true
+        )
+
+        assertEquals(listOf(target.identityFileName), target.candidates)
+        assertFalse(target.accepts("legacy.json", progress(null)))
+    }
+
+    @Test
+    fun `migration compares normalized chapter positions`() {
+        val earlier = progress(null).copy(durChapterPos = -80)
+        val later = progress(null).copy(durChapterPos = 100)
+
+        assertTrue(BookProgressMigration.isMoreRecentThan(later, earlier))
+        assertFalse(BookProgressMigration.isMoreRecentThan(earlier, later))
+    }
+
+    @Test
     fun `ambiguous legacy file is never selected`() {
         val target = BookProgressStorageTarget.forBook(
             progressKey = null,

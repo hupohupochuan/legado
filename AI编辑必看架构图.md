@@ -2,7 +2,7 @@
 
 > 最新修订: 2026-08-15 CST
 > 最近三次修订:
-> - 2026-08-15 CST: WebDAV 阅读进度新增跨设备 `bookProgressKey` 和 v2 文件名；同名异书不再共用书名作者进度文件，旧文件只在身份无歧义时兼容。
+> - 2026-08-15 CST: WebDAV 阅读进度新增跨设备 `bookProgressKey` 和 v2 文件名；同名异书不再共用书名作者进度文件，旧唯一本地书会在首次同步完成 legacy→v2 迁移。
 > - 2026-08-12 CST: Android 17 WebService 新增 `ACCESS_LOCAL_NETWORK` 按需授权门禁；设置、快捷磁贴、端口重启和服务内部重建统一复核，拒绝或撤销后收口为关闭。
 > - 2026-08-10 CST: Web 阅读页左右方向键不再受上下翻屏锁误伤，书本翻页动画期间缓存一次最新左右键意图，避免章末切换需要重复按键。
 
@@ -50,7 +50,7 @@
 - 不要把 WebDAV 账号、密码、Authorization、URL query/fragment 写入日志。
 - 不要把本地 SAF 路径跨设备自动替换；`content://.../tree/...` 失效时必须提示用户重新授权。
 - 本地书不得以书名、作者或文件名作为唯一身份；`bookUrl` 保留可读 URI/路径，`localFileKey` 使用 `SHA1(URI/路径 + 内容 SHA1)`。文件列表的“已在书架”和点击打开必须先按精确 URI 定位，不得回退到同文件名后改写另一本书的路径。
-- WebDAV 进度不得再只用书名/作者区分同名书。本地书的 `bookProgressKey` 使用不含设备路径的内容 SHA-1，新进度写入哈希化 v2 文件名；旧书名作者文件仅可用于尚无 key 且本地匹配唯一的旧记录。同名记录无法生成 key 时必须跳过，不能猜测套用旧进度。
+- WebDAV 进度不得再只用书名/作者区分同名书。本地书的 `bookProgressKey` 使用不含设备路径的内容 SHA-1，新进度写入哈希化 v2 文件名；keyless 唯一本地旧书只在 v2 缺失、无效、身份错或越界的迁移窗口读取 legacy，v2 写入当前有效位置后持久化 key，此后只读 v2。同名记录或不可读文件不得猜测套用旧进度。
 - Web 全文搜索判断正文能否从手机原文件读取时必须看 `bookUrl`，不能只看 `origin`：上传 WebDAV 会把本地书 `origin` 改成 `webDav::`，但不会移走本地 `bookUrl`。只有实际远程定位或在线书才限制为已有缓存；本地文件读取失败时仍不得借 `origin` 回源下载。
 - Web 全文搜索单批最多 500 条，更多结果必须使用手机端返回的不透明游标精确续搜；不得直接放大单批上限、从第一章按 offset 重扫，或在浏览器循环 `/getBookContent`。旧 `truncated` 字段继续兼容，新增客户端以 `hasMore + nextCursor` 判断下一批。
 - 不要只改 `modules/web/src` 而不同步 `app/src/main/assets/web`。
