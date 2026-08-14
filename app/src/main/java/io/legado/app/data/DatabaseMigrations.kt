@@ -22,7 +22,7 @@ object DatabaseMigrations {
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_76_77, migration_79_80, migration_80_81, migration_81_82,
-            migration_82_83, migration_83_84
+            migration_82_83, migration_83_84, migration_84_85
         )
     }
 
@@ -697,6 +697,15 @@ object DatabaseMigrations {
                 "CREATE UNIQUE INDEX IF NOT EXISTS `index_books_localFileKey` " +
                     "ON `books` (`localFileKey`)"
             )
+        }
+    }
+
+    /**
+     * WebDAV 阅读进度增加独立跨设备身份；旧记录按需惰性补齐。
+     */
+    private val migration_84_85 = object : Migration(84, 85) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `books` ADD COLUMN `bookProgressKey` TEXT")
         }
     }
 

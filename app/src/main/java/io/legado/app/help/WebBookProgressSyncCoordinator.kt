@@ -9,8 +9,7 @@ object WebBookProgressSyncCoordinator {
 
     private val locks = ConcurrentHashMap<String, Mutex>()
 
-    suspend fun <T> withBook(name: String, author: String, block: suspend () -> T): T {
-        val key = "$name\u0000$author"
+    suspend fun <T> withBook(key: String, block: suspend () -> T): T {
         return locks.getOrPut(key) { Mutex() }.withLock { block() }
     }
 }

@@ -6,7 +6,9 @@ data class BookProgress(
     val durChapterIndex: Int,
     val durChapterPos: Int,
     val durChapterTime: Long,
-    val durChapterTitle: String?
+    val durChapterTitle: String?,
+    val bookProgressKey: String? = null,
+    @Transient val bookUrl: String? = null
 ) {
 
     constructor(book: Book) : this(
@@ -15,8 +17,13 @@ data class BookProgress(
         durChapterIndex = book.durChapterIndex,
         durChapterPos = book.durChapterPos,
         durChapterTime = book.durChapterTime,
-        durChapterTitle = book.durChapterTitle
+        durChapterTitle = book.durChapterTitle,
+        bookProgressKey = book.bookProgressKey,
+        bookUrl = book.bookUrl
     )
+
+    val syncKey: String
+        get() = bookProgressKey ?: bookUrl ?: "$name\u0000$author"
 
     val readChapterPos: Int
         get() = normalizePos(durChapterPos)

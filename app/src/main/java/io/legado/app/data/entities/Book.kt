@@ -122,7 +122,9 @@ data class Book(
     @ColumnInfo(defaultValue = "0")
     var syncTime: Long = 0L,
     // 本地文件身份：SHA1(URI/路径 + 内容 SHA1)；在线书和待重新导入的旧记录可为空
-    var localFileKey: String? = null
+    var localFileKey: String? = null,
+    // WebDAV 进度跨设备身份；本地书使用内容 SHA-1，同名冲突的在线书使用 bookUrl SHA-256
+    var bookProgressKey: String? = null
 ) : Parcelable, BaseBook {
 
     override fun equals(other: Any?): Boolean {

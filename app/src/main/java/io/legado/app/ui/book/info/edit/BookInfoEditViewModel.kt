@@ -23,9 +23,12 @@ class BookInfoEditViewModel(application: Application) : BaseViewModel(applicatio
                 ReadBook.book = book
             }
             if (bookUrl != null && bookUrl != book.bookUrl) {
-                appDb.bookDao.relocate(book, bookUrl, null)
+                appDb.bookDao.relocate(book, bookUrl, null, null)
             } else {
-                if (!book.isLocal) book.localFileKey = null
+                if (!book.isLocal) {
+                    book.localFileKey = null
+                    book.bookProgressKey = null
+                }
                 appDb.bookDao.update(book)
             }
         }.onSuccess {

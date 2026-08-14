@@ -16,7 +16,7 @@ class WebBookProgressUploadScheduler(
     private val uploadDelayMillis: Long = 60_000L,
     private val uploader: suspend (BookProgress) -> Boolean = { progress ->
         var uploaded = false
-        WebBookProgressSyncCoordinator.withBook(progress.name, progress.author) {
+        WebBookProgressSyncCoordinator.withBook(progress.syncKey) {
             BookProgressSyncProvider.current.uploadBookProgress(progress) {
                 uploaded = true
             }
@@ -123,11 +123,10 @@ class WebBookProgressUploadScheduler(
         return job
     }
 
-    private fun bookKey(progress: BookProgress) = "${progress.name}\u0000${progress.author}"
+    private fun bookKey(progress: BookProgress) = progress.syncKey
 
     internal fun progressKey(progress: BookProgress) = listOf(
-        progress.name,
-        progress.author,
+        progress.syncKey,
         progress.durChapterIndex,
         progress.readChapterPos,
         progress.durChapterTitle

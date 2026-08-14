@@ -83,11 +83,16 @@ class BookInfoViewModel(application: Application) : BaseReadViewModel(applicatio
                 val uri = bookWebDav.downloadRemoteBook(remoteBook)
                 val fileDoc = FileDoc.fromUri(uri, false)
                 val newBookUrl = if (uri.isContentScheme()) uri.toString() else uri.path!!
-                val localFileKey = fileDoc.openInputStream().getOrThrow().use {
-                    LocalBookIdentity.create(newBookUrl, it)
+                val identities = fileDoc.openInputStream().getOrThrow().use {
+                    LocalBookIdentity.createIdentities(newBookUrl, it)
                 }
                 book.lastCheckTime = remoteBook.lastModify
-                appDb.bookDao.relocate(book, newBookUrl, localFileKey)
+                appDb.bookDao.relocate(
+                    book,
+                    newBookUrl,
+                    identities.localFileKey,
+                    identities.bookProgressKey
+                )
             }
         }
     }

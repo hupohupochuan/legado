@@ -62,13 +62,15 @@ object BookController {
         val durChapterTime: Long,
         val durChapterTitle: String?
     ) {
-        fun toBookProgress() = BookProgress(
-            name,
-            author,
-            durChapterIndex,
-            durChapterPos,
-            durChapterTime,
-            durChapterTitle
+        fun toBookProgress(book: Book) = BookProgress(
+            name = book.name,
+            author = book.author,
+            durChapterIndex = durChapterIndex,
+            durChapterPos = durChapterPos,
+            durChapterTime = durChapterTime,
+            durChapterTitle = durChapterTitle,
+            bookProgressKey = book.bookProgressKey,
+            bookUrl = book.bookUrl
         )
     }
 
@@ -312,7 +314,9 @@ object BookController {
         val book = appDb.bookDao.getBook(request.bookUrl)
             ?: return returnData.setErrorMsg("未找到书籍")
         var finalProgress: BookProgress? = null
-        val syncResult = WebBookProgressSyncCoordinator.withBook(book.name, book.author) {
+        val syncResult = WebBookProgressSyncCoordinator.withBook(
+            book.bookProgressKey ?: book.bookUrl
+        ) {
             val localBook = appDb.bookDao.getBook(request.bookUrl)
                 ?: return@withBook returnData.setErrorMsg("未找到书籍")
             if (!AppConfig.syncBookProgress || !AppWebDav.isOk) {
@@ -366,19 +370,23 @@ object BookController {
         val payload = GSON.fromJsonObject<WebBookProgressPayload>(postData)
             .onFailure { it.printOnDebug() }
             .getOrNull() ?: return returnData.setErrorMsg("格式不对")
-        val bookProgress = payload.toBookProgress()
-        if (bookProgress.durChapterIndex < 0) {
+        if (payload.durChapterIndex < 0) {
             return returnData.setErrorMsg("durChapterIndex 不能为负数")
         }
-        if (bookProgress.durChapterPos == Int.MIN_VALUE) {
+        if (payload.durChapterPos == Int.MIN_VALUE) {
             return returnData.setErrorMsg("durChapterPos 非法")
         }
+        val initialBook = payload.bookUrl?.let(appDb.bookDao::getBook)
+            ?: appDb.bookDao.getBooksByNameAndAuthor(payload.name, payload.author).singleOrNull()
+            ?: return returnData.setErrorMsg("格式不对")
         var finalProgress: BookProgress? = null
         var changed = false
-        val saveResult = WebBookProgressSyncCoordinator.withBook(bookProgress.name, bookProgress.author) {
-            val book = payload.bookUrl?.let(appDb.bookDao::getBook)
-                ?: appDb.bookDao.getBook(bookProgress.name, bookProgress.author)
-                ?: return@withBook returnData.setErrorMsg("格式不对")
+        val saveResult = WebBookProgressSyncCoordinator.withBook(
+            initialBook.bookProgressKey ?: initialBook.bookUrl
+        ) {
+            val book = appDb.bookDao.getBook(initialBook.bookUrl)
+                ?: return@withBook returnData.setErrorMsg("未找到书籍")
+            val bookProgress = payload.toBookProgress(book)
             val chapterCount = appDb.bookChapterDao.getChapterCount(book.bookUrl)
             if (chapterCount <= 0) {
                 return@withBook returnData.setErrorMsg("未找到章节")

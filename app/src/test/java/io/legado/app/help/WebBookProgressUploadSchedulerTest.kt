@@ -97,6 +97,24 @@ class WebBookProgressUploadSchedulerTest {
         assertEquals(2, attempts)
     }
 
+    @Test
+    fun sameNameBooksWithDifferentProgressKeysUploadIndependently() = runBlocking {
+        val uploaded = Collections.synchronizedList(mutableListOf<BookProgress>())
+        val scheduler = scheduler(20) {
+            uploaded += it
+            true
+        }
+
+        scheduler.enqueue(progress(1, progressKey = "content-sha1:first"))
+        scheduler.enqueue(progress(2, progressKey = "content-sha1:second"))
+        delay(45)
+
+        assertEquals(
+            setOf("content-sha1:first", "content-sha1:second"),
+            uploaded.mapNotNull { it.bookProgressKey }.toSet()
+        )
+    }
+
     private fun scheduler(
         delayMillis: Long,
         uploader: suspend (BookProgress) -> Boolean
@@ -106,12 +124,17 @@ class WebBookProgressUploadSchedulerTest {
         uploader = uploader
     )
 
-    private fun progress(pos: Int, time: Long = 0) = BookProgress(
+    private fun progress(
+        pos: Int,
+        time: Long = 0,
+        progressKey: String? = null
+    ) = BookProgress(
         name = "book",
         author = "author",
         durChapterIndex = 1,
         durChapterPos = pos,
         durChapterTime = time,
-        durChapterTitle = "chapter"
+        durChapterTitle = "chapter",
+        bookProgressKey = progressKey
     )
 }

@@ -41,7 +41,9 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
 import io.legado.app.utils.hasReadableContent
+import io.legado.app.utils.inputStream
 import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.isUri
 import io.legado.app.utils.openInputStream
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
@@ -146,6 +148,7 @@ object FileBook : BaseFileBook {
                 this.originName = book.originName
                 this.origin = book.origin
                 this.localFileKey = book.localFileKey
+                this.bookProgressKey = book.bookProgressKey
                 if (book.originName.endsWith(".txt", true)) {
                     this.charset = null
                     this.tocUrl = ""
@@ -206,8 +209,8 @@ object FileBook : BaseFileBook {
             else -> {}
         }
         val bookUrl = fileDoc.uri.toString()
-        val localFileKey = fileDoc.openInputStream().getOrThrow().use {
-            LocalBookIdentity.create(bookUrl, it)
+        val identities = fileDoc.openInputStream().getOrThrow().use {
+            LocalBookIdentity.createIdentities(bookUrl, it)
         }
         return importBook(
             Book(
@@ -219,9 +222,22 @@ object FileBook : BaseFileBook {
                 order = appDb.bookDao.minOrder - 1,
                 origin = bookUrl,
                 type = type,
-                localFileKey = localFileKey
+                localFileKey = identities.localFileKey,
+                bookProgressKey = identities.bookProgressKey
             )
         )
+    }
+
+    /** 只读取当前精确 bookUrl，不进行按文件名查找或 WebDAV 回源。 */
+    fun createLocalBookIdentities(book: Book): LocalBookIdentity.Identities {
+        val uri = if (book.bookUrl.isUri()) {
+            book.bookUrl.toUri()
+        } else {
+            Uri.fromFile(File(book.bookUrl))
+        }
+        return uri.inputStream(appCtx).getOrThrow().use {
+            LocalBookIdentity.createIdentities(book.bookUrl, it)
+        }
     }
 
     suspend fun importRemoteBook(
@@ -421,6 +437,7 @@ object FileBook : BaseFileBook {
         val fileUri = runBlocking { saveBookFile(webDavUrl, fileName) }
         val newBookUrl: String
         val newLocalFileKey: String?
+        val newBookProgressKey: String?
         if (book.isArchive) {
             val newBook = importFromArchive(fileUri, book.originName) { name ->
                 name.contains(book.originName)
@@ -428,14 +445,17 @@ object FileBook : BaseFileBook {
             book.origin = newBook.origin
             newBookUrl = newBook.bookUrl
             newLocalFileKey = newBook.localFileKey
+            newBookProgressKey = newBook.bookProgressKey
         } else {
             val fileDoc = FileDoc.fromUri(fileUri, false)
             newBookUrl = fileDoc.toString()
-            newLocalFileKey = fileDoc.openInputStream().getOrThrow().use {
-                LocalBookIdentity.create(newBookUrl, it)
+            val identities = fileDoc.openInputStream().getOrThrow().use {
+                LocalBookIdentity.createIdentities(newBookUrl, it)
             }
+            newLocalFileKey = identities.localFileKey
+            newBookProgressKey = identities.bookProgressKey
         }
-        appDb.bookDao.relocate(book, newBookUrl, newLocalFileKey)
+        appDb.bookDao.relocate(book, newBookUrl, newLocalFileKey, newBookProgressKey)
         return true
     }
 

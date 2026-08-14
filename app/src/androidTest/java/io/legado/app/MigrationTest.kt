@@ -126,4 +126,35 @@ class MigrationTest {
             roomDb.close()
         }
     }
+
+    @Test
+    @Throws(IOException::class)
+    fun migrate84To85AddsNullableBookProgressKey() {
+        val dbName = "migration-test-84-85"
+        helper.createDatabase(dbName, 84).apply {
+            execSQL(
+                "INSERT INTO books(bookUrl, originName, name, author, localFileKey) " +
+                    "VALUES(?, ?, ?, ?, ?)",
+                arrayOf(
+                    "file:///books/legacy.txt",
+                    "legacy.txt",
+                    "同名书",
+                    "同一作者",
+                    "sha1:legacy"
+                )
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(dbName, 85, true, *ALL_MIGRATIONS).use { db ->
+            db.query(
+                "SELECT localFileKey, bookProgressKey FROM books WHERE bookUrl = ?",
+                arrayOf("file:///books/legacy.txt")
+            ).use { cursor ->
+                assertEquals(true, cursor.moveToFirst())
+                assertEquals("sha1:legacy", cursor.getString(0))
+                assertNull(cursor.getString(1))
+            }
+        }
+    }
 }

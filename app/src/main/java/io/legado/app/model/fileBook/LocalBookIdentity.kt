@@ -1,5 +1,6 @@
 package io.legado.app.model.fileBook
 
+import io.legado.app.help.BookProgressIdentity
 import java.io.InputStream
 import java.security.MessageDigest
 
@@ -14,7 +15,15 @@ object LocalBookIdentity {
     private const val PREFIX = "sha1:"
     private const val BUFFER_SIZE = 8192
 
-    fun create(bookUrl: String, inputStream: InputStream): String {
+    data class Identities(
+        val localFileKey: String,
+        val bookProgressKey: String
+    )
+
+    fun create(bookUrl: String, inputStream: InputStream): String =
+        createIdentities(bookUrl, inputStream).localFileKey
+
+    fun createIdentities(bookUrl: String, inputStream: InputStream): Identities {
         val contentDigest = MessageDigest.getInstance(ALGORITHM)
         val buffer = ByteArray(BUFFER_SIZE)
         while (true) {
@@ -23,11 +32,17 @@ object LocalBookIdentity {
             if (read > 0) contentDigest.update(buffer, 0, read)
         }
 
+        val contentSha1 = contentDigest.digest()
         val identityDigest = MessageDigest.getInstance(ALGORITHM).apply {
             update(bookUrl.toByteArray(Charsets.UTF_8))
             update(0)
-            update(contentDigest.digest())
+            update(contentSha1)
         }
-        return PREFIX + identityDigest.digest().joinToString("") { "%02x".format(it) }
+        return Identities(
+            localFileKey = PREFIX + identityDigest.digest().toHex(),
+            bookProgressKey = BookProgressIdentity.fromContentSha1(contentSha1)
+        )
     }
+
+    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 }

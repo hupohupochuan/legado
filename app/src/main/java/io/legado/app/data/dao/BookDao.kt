@@ -109,6 +109,12 @@ interface BookDao {
     )
     fun getBook(name: String, author: String): Book?
 
+    @Query(
+        "SELECT * FROM books WHERE name = :name and author = :author " +
+            "ORDER BY durChapterTime DESC, bookUrl ASC"
+    )
+    fun getBooksByNameAndAuthor(name: String, author: String): List<Book>
+
     @Query("""select distinct bs.* from books, book_sources bs 
         where origin == bookSourceUrl and origin not like '${BookType.localTag}%' 
         and origin not like '${BookType.webDavTag}%'""")
@@ -191,18 +197,25 @@ interface BookDao {
      * 再用当前书籍状态覆盖目标行；旧主键在同一事务内删除。
      */
     @Transaction
-    fun relocate(book: Book, newBookUrl: String, newLocalFileKey: String?) {
+    fun relocate(
+        book: Book,
+        newBookUrl: String,
+        newLocalFileKey: String?,
+        newBookProgressKey: String? = book.bookProgressKey
+    ) {
         if (book.bookUrl == newBookUrl) {
             if (newLocalFileKey != null) {
                 book.localFileKey = newLocalFileKey
             }
+            book.bookProgressKey = newBookProgressKey
             update(book)
             return
         }
         val oldBook = book.copy()
         val relocatedBook = book.copy(
             bookUrl = newBookUrl,
-            localFileKey = newLocalFileKey
+            localFileKey = newLocalFileKey,
+            bookProgressKey = newBookProgressKey
         )
         if (has(newBookUrl)) {
             update(relocatedBook)
@@ -212,6 +225,7 @@ interface BookDao {
         delete(oldBook)
         book.bookUrl = newBookUrl
         book.localFileKey = newLocalFileKey
+        book.bookProgressKey = newBookProgressKey
     }
 
     @Transaction
@@ -222,6 +236,16 @@ interface BookDao {
 
     @Query("update books set durChapterPos = :pos where bookUrl = :bookUrl")
     fun upProgress(bookUrl: String, pos: Int)
+
+    @Query(
+        "UPDATE books SET bookProgressKey = :bookProgressKey, " +
+            "localFileKey = COALESCE(localFileKey, :localFileKey) WHERE bookUrl = :bookUrl"
+    )
+    fun updateBookProgressIdentity(
+        bookUrl: String,
+        bookProgressKey: String,
+        localFileKey: String?
+    )
 
     @Query("update books set `group` = :newGroupId where `group` = :oldGroupId")
     fun upGroup(oldGroupId: Long, newGroupId: Long)

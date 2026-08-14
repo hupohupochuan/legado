@@ -25,9 +25,27 @@ class LocalBookIdentityTest {
         assertNotEquals(original, identity("file:///books/a.txt", "不同正文"))
     }
 
+    @Test
+    fun `content progress identity is stable across paths`() {
+        val first = identities("file:///books/a.txt", "正文")
+        val second = identities("file:///other/copied.txt", "正文")
+        val different = identities("file:///books/a.txt", "不同正文")
+
+        assertNotEquals(first.localFileKey, second.localFileKey)
+        assertEquals(first.bookProgressKey, second.bookProgressKey)
+        assertNotEquals(first.bookProgressKey, different.bookProgressKey)
+        assertTrue(first.bookProgressKey.matches(Regex("content-sha1:[0-9a-f]{40}")))
+    }
+
     private fun identity(path: String, content: String): String {
         return ByteArrayInputStream(content.toByteArray()).use {
             LocalBookIdentity.create(path, it)
+        }
+    }
+
+    private fun identities(path: String, content: String): LocalBookIdentity.Identities {
+        return ByteArrayInputStream(content.toByteArray()).use {
+            LocalBookIdentity.createIdentities(path, it)
         }
     }
 }
