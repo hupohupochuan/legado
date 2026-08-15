@@ -467,6 +467,8 @@ open class WebDav(
                 }
             }
 
+            webDavStatusException(safeLogUrl(url.toString()), response.code)?.let { throw it }
+
             if (response.message.isNotBlank() || body.isBlank()) {
                 throw WebDavException("${safeLogUrl(url.toString())}\n${response.code}:${response.message}")
             }

@@ -1,8 +1,8 @@
 # 新功能踩坑记录 - Web 服务
 
 > 返回主题索引: [新功能踩坑记录.md](新功能踩坑记录.md)
-> 当前复核状态（2026-08-15）：WebDAV 阅读进度已用跨设备 `bookProgressKey` 隔离同名异书，keyless 唯一旧书只在首次迁移窗口兼容书名作者文件；Web 前端资源本轮未改。Android 17 局域网权限结论沿用 2026-08-12 验证。
-> 验证边界：2026-08-15 已通过全量 171 项 JVM 测试、AndroidTest Kotlin 编译、`scripts/check-debug.sh` 和 Debug APK 打包；当前无连接设备，真实双设备 WebDAV、84→85 真机迁移仍待验收。2026-08-12 的权限黑盒、2026-08-10 的方向键真实浏览器边界和 2026-08-07 的全文搜索/Release 结论不因本次复核自动续期。
+> 当前复核状态（2026-08-16）：WebDAV 阅读进度已用跨设备 `bookProgressKey` 隔离同名异书，v2 GET 的 HTTP 404 不再因缺少标准错误体阻断首次上传；Web 前端资源本轮未改。Android 17 局域网权限结论沿用 2026-08-12 验证。
+> 验证边界：2026-08-16 已通过全量 173 项 JVM 测试、AndroidTest Kotlin 编译、`scripts/check-debug.sh` 和 Debug APK 打包；当前无连接设备，两台都安装修复包的真实双设备 WebDAV 仍待验收。2026-08-12 的权限黑盒、2026-08-10 的方向键真实浏览器边界和 2026-08-07 的全文搜索/Release 结论不因本次复核自动续期。
 
 ---
 
@@ -573,6 +573,7 @@
 - “仅恢复阅读进度”只读取 WebDAV `bookProgress/*.json`，不下载备份 zip，不调用 `Restore.restore(...)`，不恢复 `bookshelf.json`。
 - v2 进度按 `bookProgressKey` 匹配：本地书用不含设备路径的内容 SHA-1；同名冲突的在线书惰性使用 `bookUrl` SHA-256。匹配不到时跳过，不创建本地书。
 - keyless 唯一本地旧书首次恢复先验证 v2，只有 v2 缺失、无效、身份错或越界时才读取旧书名作者文件；v2 写入当前有效位置后才持久化 key，有 key 后只读 v2。同名旧记录无法生成 key 时跳过，不能猜测映射。
+- WebDAV GET 返回 HTTP 404 时不依赖 response message 或 XML body，统一视为远端文件缺失；这既保证“仅恢复”可安全跳过不存在的进度，也让单书同步能继续上传本地位置并建立首个 v2。旧版只识别 legacy，参与同步的所有设备必须升级到支持 v2 的版本。
 - 写入字段仅限 `durChapterIndex`、`durChapterPos`、`durChapterTitle`、`durChapterTime`、`syncTime`。
 - 写入前继续校验章节范围；仅恢复阅读进度使用 `ProgressCheckMode.RangeOnly`，不得因为本地 SAF URI 当前不可读而跳过。只有真正加载本地书内容的 `ReadableRequired` 路径才调用 `FileBook.checkBookReadable()`。
 - 不要把 `primary:yuedu` 之类 SAF URI 字符串替换成另一个目录名。
@@ -794,4 +795,4 @@
 - 损坏游标和跨关键词复用均返回“搜索位置已失效，请重新搜索”；结果流首批 20 条时断开连接后，紧接的完整搜索仍能正常返回 500 条和下一批位置。
 - 桌面 Headless Chrome 通过模拟器 WebService 实测 `1–500 → 501–1000 → 1001–1500`，提示与下一批按钮范围正确，“上一批”命中缓存后立即恢复；无 WebService 或应用崩溃日志。
 
-*Last updated: 2026-08-15*
+*Last updated: 2026-08-16*

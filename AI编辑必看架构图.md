@@ -1,10 +1,10 @@
 # AI 编辑必看架构图
 
-> 最新修订: 2026-08-15 CST
+> 最新修订: 2026-08-16 CST
 > 最近三次修订:
+> - 2026-08-16 CST: WebDAV GET 返回无标准错误体的 HTTP 404 时统一视为远端文件缺失，恢复首个 v2 进度文件的自动建立。
 > - 2026-08-15 CST: WebDAV 阅读进度新增跨设备 `bookProgressKey` 和 v2 文件名；同名异书不再共用书名作者进度文件，旧唯一本地书会在首次同步完成 legacy→v2 迁移。
 > - 2026-08-12 CST: Android 17 WebService 新增 `ACCESS_LOCAL_NETWORK` 按需授权门禁；设置、快捷磁贴、端口重启和服务内部重建统一复核，拒绝或撤销后收口为关闭。
-> - 2026-08-10 CST: Web 阅读页左右方向键不再受上下翻屏锁误伤，书本翻页动画期间缓存一次最新左右键意图，避免章末切换需要重复按键。
 
 > 本文件是第一入口；同时按 `AGENTS.md` 要求读完其余三个必读文档，再按具体任务打开 `AI编辑必看/` 子文件。
 
@@ -51,6 +51,7 @@
 - 不要把本地 SAF 路径跨设备自动替换；`content://.../tree/...` 失效时必须提示用户重新授权。
 - 本地书不得以书名、作者或文件名作为唯一身份；`bookUrl` 保留可读 URI/路径，`localFileKey` 使用 `SHA1(URI/路径 + 内容 SHA1)`。文件列表的“已在书架”和点击打开必须先按精确 URI 定位，不得回退到同文件名后改写另一本书的路径。
 - WebDAV 进度不得再只用书名/作者区分同名书。本地书的 `bookProgressKey` 使用不含设备路径的内容 SHA-1，新进度写入哈希化 v2 文件名；keyless 唯一本地旧书只在 v2 缺失、无效、身份错或越界的迁移窗口读取 legacy，v2 写入当前有效位置后持久化 key，此后只读 v2。同名记录或不可读文件不得猜测套用旧进度。
+- WebDAV 读取进度遇到 HTTP 404 必须统一表示“远端文件尚不存在”，不能因服务器缺少标准错误体就上报通用失败；单书同步应继续上传本地位置并创建首个 v2 文件。已进入 v2 身份后不为兼容旧客户端恢复 legacy 回读，同步设备必须一并升级。
 - Web 全文搜索判断正文能否从手机原文件读取时必须看 `bookUrl`，不能只看 `origin`：上传 WebDAV 会把本地书 `origin` 改成 `webDav::`，但不会移走本地 `bookUrl`。只有实际远程定位或在线书才限制为已有缓存；本地文件读取失败时仍不得借 `origin` 回源下载。
 - Web 全文搜索单批最多 500 条，更多结果必须使用手机端返回的不透明游标精确续搜；不得直接放大单批上限、从第一章按 offset 重扫，或在浏览器循环 `/getBookContent`。旧 `truncated` 字段继续兼容，新增客户端以 `hasMore + nextCursor` 判断下一批。
 - 不要只改 `modules/web/src` 而不同步 `app/src/main/assets/web`。
@@ -108,4 +109,4 @@ scripts/build-signed-release.sh
 
 脚本会强制使用 `app/gradle.properties` 中的个人签名配置和 `RELEASE_CERT_SHA256`，完成 Release/R8、五个 ABI APK、证书/包名/版本校验，再把同一批 APK、`.idsig`、metadata 原子同步到 `app/app/release/`。`app/gradle.properties` 与 keystore 必须仅所有者可读写（脚本接受 `400` 或 `600`，通常使用 `600`）。Android 64 位真机优先安装 `app/app/release/legado_arm64.apk`；不得直接复制单个 APK，也不得在签名配置缺失时接受 Gradle 的 Debug 签名回退。
 
-*文档版本: 2026-08-15*
+*文档版本: 2026-08-16*
