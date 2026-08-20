@@ -25,6 +25,7 @@ import io.legado.app.help.book.isUpError
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.sync
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.webdav.isWebDavDnsResolutionFailure
 import io.legado.app.model.CacheBook
 import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
@@ -335,7 +336,11 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             context.toastOnUi(R.string.restore_book_progress_only_success)
         }.onError {
             AppLog.put("WebDav仅恢复阅读进度出错\n${it.localizedMessage}", it)
-            context.toastOnUi("WebDav仅恢复阅读进度出错\n${it.localizedMessage}")
+            if (it.isWebDavDnsResolutionFailure()) {
+                context.toastOnUi(R.string.webdav_dns_resolution_failed)
+            } else {
+                context.toastOnUi("WebDav仅恢复阅读进度出错\n${it.localizedMessage}")
+            }
         }
     }
 

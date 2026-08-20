@@ -1,8 +1,8 @@
 # 新功能踩坑记录 - Web 服务
 
 > 返回主题索引: [新功能踩坑记录.md](新功能踩坑记录.md)
-> 当前复核状态（2026-08-16）：WebDAV 阅读进度已用跨设备 `bookProgressKey` 隔离同名异书，v2 GET 的 HTTP 404 不再因缺少标准错误体阻断首次上传；Web 前端资源本轮未改。Android 17 局域网权限结论沿用 2026-08-12 验证。
-> 验证边界：2026-08-16 已通过全量 173 项 JVM 测试、AndroidTest Kotlin 编译、`scripts/check-debug.sh` 和 Debug APK 打包；当前无连接设备，两台都安装修复包的真实双设备 WebDAV 仍待验收。2026-08-12 的权限黑盒、2026-08-10 的方向键真实浏览器边界和 2026-08-07 的全文搜索/Release 结论不因本次复核自动续期。
+> 当前复核状态（2026-08-21）：WebDAV 仅恢复阅读进度遇 `UnknownHostException`/Cronet `ERR_NAME_NOT_RESOLVED` 时改为明确的网络/DNS 提示，完整异常仍写日志；WebService 启动和每次访问续期 90 秒短时唤醒租约。Web 前端资源本轮未改。
+> 验证边界：2026-08-21 已通过 WebDAV 错误分类定向测试、全量 177 项 JVM 测试和 `scripts/check-debug.sh`；当前无连接设备，DNS 弹窗文案和 WebService 熄屏短时租约仍待真机验收。2026-08-16 的 WebDAV v2/404 和双设备边界、2026-08-12 的权限黑盒、2026-08-10 的方向键真实浏览器边界不因本次复核自动续期。
 
 ---
 
@@ -608,6 +608,21 @@
 - 跨设备场景选择“仅恢复阅读进度”时，不修改本地书 `bookUrl`。
 - 选择“完整恢复备份”时，仍走原 `restoreWebDav(name)` 完整恢复行为。
 - 已有 `bookProgressKey` 的本地书即使 SAF URI 暂不可读，仍可恢复范围有效的进度；keyless 唯一旧书必须先读取精确文件补齐身份，失权则安全跳过。章节越界或身份不匹配同样跳过，不误报为 WebDAV 配置失败。
+
+### 2. DNS 解析失败只改用户提示
+
+- 记录/验证日期: 2026-08-21（用户日志与调用链复核；错误分类定向测试、全量 177 项 JVM 测试和 `scripts/check-debug.sh` 通过；真机弹窗待验收）
+- 适用环境: 书架页与备份设置页的“仅恢复阅读进度”入口
+- 相关文件: `WebDavException.kt`、`MainViewModel.kt`、`ConfigViewModel.kt`、各语言 `strings.xml`
+
+**当前结论**:
+- 2026-08-20 11:58:39 日志记录了多次 Cronet `ERR_NAME_NOT_RESOLVED`，11:59:28 手动恢复失败；当时手机亮屏，且 12:28 WebDAV GET/PUT 已恢复，应解释为临时网络或 DNS 故障，不归因于休眠、WebService 或永久配置错误。
+- 仅异常链中出现 `UnknownHostException` 或消息含 `ERR_NAME_NOT_RESOLVED` 时，用户看到“暂时无法连接 WebDAV，请检查网络或 DNS 后重试，本地阅读进度未受影响。”超时、鉴权和未配置等其他错误继续显示原异常，不扩大归类。
+- 这是用户可读性改动，不是隐藏故障：`AppLog.put` 仍保留完整异常和堆栈，不改 WebDAV 请求、本地进度应用顺序，不加自动重试。
+
+**回归点**:
+- 直接、被 cause 包装的 `UnknownHostException` 及 Cronet 文本都要命中；无关的 `IOException` 必须不命中。
+- 两个手动入口使用同一多语言资源，日志仍可用原始错误排查；用户手动重试前不产生新请求。
 
 
 ---

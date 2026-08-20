@@ -12,6 +12,7 @@ import io.legado.app.help.BookProgressSyncProvider
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.Restore
+import io.legado.app.lib.webdav.isWebDavDnsResolutionFailure
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.restart
 import io.legado.app.utils.toastOnUi
@@ -106,7 +107,11 @@ class ConfigViewModel(application: Application) : BaseViewModel(application) {
             context.toastOnUi(R.string.restore_book_progress_only_success)
         }.onError {
             AppLog.put("WebDav仅恢复阅读进度出错\n${it.localizedMessage}", it)
-            appCtx.toastOnUi("WebDav仅恢复阅读进度出错\n${it.localizedMessage}")
+            if (it.isWebDavDnsResolutionFailure()) {
+                appCtx.toastOnUi(R.string.webdav_dns_resolution_failed)
+            } else {
+                appCtx.toastOnUi("WebDav仅恢复阅读进度出错\n${it.localizedMessage}")
+            }
         }.onFinally {
             backupRestoreState.value = null
         }

@@ -148,6 +148,7 @@
     <string name="restore_webdav_full_backup">完整恢复备份</string>
     <string name="restore_book_progress_only_running">正在恢复阅读进度…</string>
     <string name="restore_book_progress_only_success">阅读进度恢复完成</string>
+    <string name="webdav_dns_resolution_failed">暂时无法连接 WebDAV，请检查网络或 DNS 后重试，本地阅读进度未受影响。</string>
     <string name="backup_success">备份成功</string>
     <string name="backup_fail">备份失败\n%s</string>
     <string name="on_restore">正在恢复</string>

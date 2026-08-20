@@ -150,6 +150,7 @@
     <string name="restore_webdav_full_backup">Restore full backup</string>
     <string name="restore_book_progress_only_running">Restoring reading progress...</string>
     <string name="restore_book_progress_only_success">Reading progress restored</string>
+    <string name="webdav_dns_resolution_failed">Unable to connect to WebDAV right now. Check your network or DNS and try again. Local reading progress is unaffected.</string>
     <string name="backup_success">Backup succeed</string>
     <string name="backup_fail">Backup failed\n%s</string>
     <string name="on_restore">Restoring</string>
