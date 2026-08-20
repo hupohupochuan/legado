@@ -60,6 +60,7 @@ class WebService : BaseService() {
         private const val TAG = "WebService"
         private const val RESTART_INTERVAL_MS = 3 * 60 * 60 * 1000L
         private const val RESTART_CHECK_INTERVAL_MS = 30 * 60 * 1000L
+        private const val WEB_ACTIVITY_POWER_LOCK_LEASE_MS = 90_000L
         private val startRequested = AtomicBoolean(false)
 
         fun start(context: Context) {
@@ -185,19 +186,16 @@ class WebService : BaseService() {
     private var runtimeInitialized: Boolean = false
     private val restartGuard = Any()
     private var restartCheckerJob: Job? = null
+    private var powerLockReleaseJob: Job? = null
     private val networkChangedListener by lazy {
         NetworkChangedListener(this)
     }
 
-    @SuppressLint("WakelockTimeout")
     override fun onCreate() {
         super.onCreate()
         if (!hasLocalNetworkPermissionOrStop()) return
         runtimeInitialized = true
-        if (useWakeLock) {
-            wakeLock.acquire()
-            wifiLock?.acquire()
-        }
+        renewWebActivityPowerLock()
         networkChangedListener.register()
         networkChangedListener.onNetworkChanged = onNetworkChanged@{
             if (isStopping || foregroundStartRejected) return@onNetworkChanged
@@ -237,7 +235,6 @@ class WebService : BaseService() {
         }
     }
 
-    @SuppressLint("WakelockTimeout")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!hasLocalNetworkPermissionOrStop()) return START_NOT_STICKY
         when (intent?.action) {
@@ -247,10 +244,7 @@ class WebService : BaseService() {
                 requestStop()
             }
             "copyHostAddress" -> sendToClip(hostAddress)
-            "serve" -> if (!isStopping && useWakeLock) {
-                wakeLock.acquire()
-                wifiLock?.acquire()
-            }
+            "serve" -> if (!isStopping) renewWebActivityPowerLock()
 
             else -> if (!isStopping) upWebServer()
         }
@@ -298,6 +292,8 @@ class WebService : BaseService() {
         try {
             restartCheckerJob?.cancel()
             restartCheckerJob = null
+            powerLockReleaseJob?.cancel()
+            powerLockReleaseJob = null
             if (runtimeInitialized) {
                 try { networkChangedListener.unRegister() } catch (e: Exception) {
                     LogUtils.e(TAG, "unRegister 失败: ${e.localizedMessage}")
@@ -305,14 +301,7 @@ class WebService : BaseService() {
             }
             stopServerSafely(httpServer, "httpServer")
             stopServerSafely(webSocketServer, "webSocketServer")
-            if (runtimeInitialized && useWakeLock) {
-                try { wakeLock.release() } catch (e: Exception) {
-                    LogUtils.e(TAG, "release wakeLock 失败: ${e.localizedMessage}")
-                }
-                try { wifiLock?.release() } catch (e: Exception) {
-                    LogUtils.e(TAG, "release wifiLock 失败: ${e.localizedMessage}")
-                }
-            }
+            if (runtimeInitialized) releasePowerLocks()
             try { postEvent(EventBus.WEB_SERVICE, "") } catch (e: Exception) {
                 LogUtils.e(TAG, "postEvent 失败: ${e.localizedMessage}")
             }
@@ -331,6 +320,38 @@ class WebService : BaseService() {
                 LogUtils.e(TAG, "cancel 通知失败: ${e.localizedMessage}")
             }
             foregroundNotificationStarted = false
+        }
+    }
+
+    /**
+     * Web 服务启动和收到请求时短时保持 CPU/Wi-Fi 活跃，避免熄屏后的首次响应在传输中停滞。
+     * 永久保活开关开启时不安排释放；关闭时以最后一次访问为起点，空闲 90 秒后释放。
+     */
+    @SuppressLint("WakelockTimeout")
+    private fun renewWebActivityPowerLock() {
+        if (!wakeLock.isHeld) wakeLock.acquire()
+        if (wifiLock?.isHeld != true) wifiLock?.acquire()
+        powerLockReleaseJob?.cancel()
+        powerLockReleaseJob = null
+        if (!useWakeLock) {
+            powerLockReleaseJob = lifecycleScope.launch {
+                delay(WEB_ACTIVITY_POWER_LOCK_LEASE_MS)
+                if (!isStopping) releasePowerLocks()
+            }
+        }
+    }
+
+    private fun releasePowerLocks() {
+        if (wakeLock.isHeld) {
+            try { wakeLock.release() } catch (e: Exception) {
+                LogUtils.e(TAG, "release wakeLock 失败: ${e.localizedMessage}")
+            }
+        }
+        val currentWifiLock = wifiLock
+        if (currentWifiLock?.isHeld == true) {
+            try { currentWifiLock.release() } catch (e: Exception) {
+                LogUtils.e(TAG, "release wifiLock 失败: ${e.localizedMessage}")
+            }
         }
     }
 

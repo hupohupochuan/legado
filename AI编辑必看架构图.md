@@ -1,10 +1,10 @@
 # AI 编辑必看架构图
 
-> 最新修订: 2026-08-16 CST
+> 最新修订: 2026-08-21 CST
 > 最近三次修订:
+> - 2026-08-21 CST: WebService 启动及每次入站访问续期 90 秒 CPU/Wi-Fi 活跃租约，降低熄屏后首次打开长时间无数据的概率，空闲后自动释放。
 > - 2026-08-16 CST: WebDAV GET 返回无标准错误体的 HTTP 404 时统一视为远端文件缺失，恢复首个 v2 进度文件的自动建立。
 > - 2026-08-15 CST: WebDAV 阅读进度新增跨设备 `bookProgressKey` 和 v2 文件名；同名异书不再共用书名作者进度文件，旧唯一本地书会在首次同步完成 legacy→v2 迁移。
-> - 2026-08-12 CST: Android 17 WebService 新增 `ACCESS_LOCAL_NETWORK` 按需授权门禁；设置、快捷磁贴、端口重启和服务内部重建统一复核，拒绝或撤销后收口为关闭。
 
 > 本文件是第一入口；同时按 `AGENTS.md` 要求读完其余三个必读文档，再按具体任务打开 `AI编辑必看/` 子文件。
 
@@ -67,6 +67,7 @@
 - 在线书导出只允许读取已经落盘的章节缓存；导出前必须明确选择“要求完整”或“仅已有缓存”，缓存缺失或导出中途丢失时不得写入 `null` 等占位正文。
 - 缓存完成通知只允许自然收尾路径发布；收到用户停止/移除请求或服务开始销毁时，必须先关闭完成通知门闩并取消下载协程。详见 [`新功能踩坑记录-基础设施.md`](新功能踩坑记录-基础设施.md)。
 - 前台服务（WebService 等）销毁时必须显式 `ServiceCompat.stopForeground(...STOP_FOREGROUND_REMOVE)` 并 `notificationManager.cancel(id)` 移除通知，同时设置 `isStopping` 门闩短路所有网络回调、后台重启检查和通知刷新；不得依赖系统自动清理前台通知，也不得在停机后再 `notify()`。详见 [`适配踩坑记录.md` 0.5](适配踩坑记录.md#05-webservice-关闭后前台通知残留)。
+- WebService 在启动及每次 HTTP/WebSocket 入站访问时续期 90 秒 CPU `PARTIAL_WAKE_LOCK` 与 Wi-Fi 高性能锁；默认配置下以最后一次访问为起点空闲 90 秒自动释放，`webServiceWakeLock=true` 时才保持到服务停止。停机必须取消释放任务并按 `isHeld` 清锁；不得把永久保活默认值改为开启。详见 [`适配踩坑记录.md` 0.14](适配踩坑记录.md#014-webservice-熄屏后首次打开长时间无数据)。
 - Android 17 且 targetSdk 37 时，WebService 设置开关、快捷磁贴、端口重启及服务内部重建必须精确检查 `ACCESS_LOCAL_NETWORK`；未授权只能进入专用权限 Activity，拒绝、取消或撤销后必须回退关闭。绕过 UI 直接启动 FGS 的缺权兜底要先完成一次最小 foreground promotion 再统一停机，不能在 `onCreate()` 中直接停止。详见 [`适配踩坑记录.md` 0.12](适配踩坑记录.md#012-android-17-局域网权限阻断-webservice-入站连接)。
 - `values/strings.xml` 新增可翻译界面字符串时，必须同步越南语、巴西葡萄牙语、日语、西班牙语和三个中文资源目录，并保持格式占位符一致。详见 [`适配踩坑记录.md` 0.3](适配踩坑记录.md#03-新增缓存导出字符串未同步全部语言导致-lint-错误增加)。
 - API 30+ 系统栏显隐和图标明暗统一走 `WindowInsetsControllerCompat`；API 26-29 才保留旧 `systemUiVisibility` 分支。Android 16+、宽度不小于 600dp 的大屏不再强制阅读页方向。历史细节见 [`适配踩坑记录-2026-07-15.md` 0.3](文档归档/适配踩坑记录-2026-07-15.md#03-链式协程回调竞态与系统栏兼容-api-迁移)。
@@ -109,4 +110,4 @@ scripts/build-signed-release.sh
 
 脚本会强制使用 `app/gradle.properties` 中的个人签名配置和 `RELEASE_CERT_SHA256`，完成 Release/R8、五个 ABI APK、证书/包名/版本校验，再把同一批 APK、`.idsig`、metadata 原子同步到 `app/app/release/`。`app/gradle.properties` 与 keystore 必须仅所有者可读写（脚本接受 `400` 或 `600`，通常使用 `600`）。Android 64 位真机优先安装 `app/app/release/legado_arm64.apk`；不得直接复制单个 APK，也不得在签名配置缺失时接受 Gradle 的 Debug 签名回退。
 
-*文档版本: 2026-08-16*
+*文档版本: 2026-08-21*
