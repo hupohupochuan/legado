@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build --force",
+    "test:chapter-progress": "node ./scripts/chapter-reading-progress.test.mjs",
     "test:page-turn-keys": "node ./scripts/page-turn-key-buffer.test.mjs",
     "test:read-time": "node ./scripts/read-time-tracker.test.mjs",
     "lint:fix": "eslint . --fix",

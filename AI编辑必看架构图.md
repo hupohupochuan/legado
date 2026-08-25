@@ -1,10 +1,10 @@
 # AI 编辑必看架构图
 
-> 最新修订: 2026-08-21 CST
+> 最新修订: 2026-08-26 CST
 > 最近三次修订:
+> - 2026-08-26 CST: Web 阅读页新增按手机已保存章节索引计算的总进度；只展示百分比和当前章/总章，不混入浏览器分页或章内位置。
 > - 2026-08-21 CST: WebService 启动及每次入站访问续期 90 秒 CPU/Wi-Fi 活跃租约；WebDAV 仅恢复进度遇 DNS 解析失败时改为明确的网络/DNS 提示，完整异常仍保留在日志。
 > - 2026-08-16 CST: WebDAV GET 返回无标准错误体的 HTTP 404 时统一视为远端文件缺失，恢复首个 v2 进度文件的自动建立。
-> - 2026-08-15 CST: WebDAV 阅读进度新增跨设备 `bookProgressKey` 和 v2 文件名；同名异书不再共用书名作者进度文件，旧唯一本地书会在首次同步完成 legacy→v2 迁移。
 
 > 本文件是第一入口；同时按 `AGENTS.md` 要求读完其余三个必读文档，再按具体任务打开 `AI编辑必看/` 子文件。
 
@@ -58,6 +58,7 @@
 - 不要只改 `modules/web/src` 而不同步 `app/src/main/assets/web`。
 - 网页传书必须用浏览器原生 `FormData` 交给浏览器生成 multipart boundary，并检查 `ReturnData.isSuccess`；`addLocalBook` 的业务失败同样返回 HTTP 200。`app/src/main/assets/web/uploadBook/index.html` 只允许作为旧地址到 `/#/uploadBook` 的兼容跳转，不得恢复第二套上传实现。
 - Web 阅读时长空闲超过 10 分钟后，本章作废状态必须保持到切章，恢复可见或再次交互不能清除；浏览器只上报 5 秒至 24 小时的章节经过时长，结束时间和自然日归属由手机端确定。
+- Web 阅读页可见总进度只按手机已保存的 `durChapterIndex + 1` 和当前目录总章数派生，展示百分比与当前章/总章；不得混入 `chapterPos`、Web 分页、字体或视口，也不得另存布局相关百分比。全文搜索预览期间保持显示跳转前进度，确认保留当前位置后才切换。
 - Web 阅读页连续滚动的 `canJump` 只允许锁住上下翻屏，不能吞掉左右切章；书本翻页动画锁期间只缓存一次最新左右键意图，动画结束后执行，取消或跨章重挂时必须清空，不能累积成多次切章。
 - 不要恢复 AGP 旧 `applicationVariants`；APK 输出命名走 `androidComponents`。
 - Gson 反射 DTO 不能只依赖 `-keepattributes Signature`；R8 full mode 还要求显式 keep/稳定字段注解。系统 TTS 持久化配置统一走 `TtsEngineSelection` 的 JSON 树编解码，不要恢复 `fromJsonObject<SelectItem<String>>`；Debug 通过后仍须验证 Release/R8 成品。

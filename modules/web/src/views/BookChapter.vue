@@ -62,6 +62,19 @@
     </div>
 
     <div
+      v-if="readingProgress.totalChapters > 0"
+      class="reading-progress"
+      :class="{
+        'reading-progress--toolbar-visible': miniInterface && showToolBar,
+        'reading-progress--preview': searchPreviewOrigin,
+      }"
+      role="status"
+      aria-live="polite"
+    >
+      {{ readingProgress.label }}
+    </div>
+
+    <div
       v-if="popCataVisible"
       class="web-dialog-overlay"
       @click.self="popCataVisible = false"
@@ -201,6 +214,7 @@ import { useLoading } from '@/hooks/loading'
 import { isNullOrBlank } from '@/utils/utils'
 import { finishReaderPerf, startReaderPerf } from '@/utils/readerPerformance'
 import { readTimeTracker } from '@/utils/readTimeTracker'
+import { getChapterReadingProgress } from '@/utils/chapterReadingProgress'
 import { toast } from '@/utils/toast'
 import { msgbox } from '@/utils/toast'
 import BookContentSearch from '@/components/BookContentSearch.vue'
@@ -269,6 +283,12 @@ type SearchPreviewOrigin = {
   progress: BookProgress
 }
 const searchPreviewOrigin = ref<SearchPreviewOrigin | null>(null)
+const readingProgress = computed(() =>
+  getChapterReadingProgress(
+    searchPreviewOrigin.value?.chapterIndex ?? chapterIndex.value,
+    catalog.value.length,
+  ),
+)
 const isSearchBook = computed({
   get: () => store.readingBook.isSearchBook,
   set: value => (store.readingBook.isSearchBook = value),
@@ -1399,6 +1419,29 @@ onBeforeRouteLeave(async (to, from, next) => {
   opacity: 0.55;
 }
 
+.reading-progress {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 90;
+  padding: 6px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  background: v-bind(popupColor);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.reading-progress--preview {
+  top: 16px;
+  bottom: auto;
+}
+
 .day {
   .popup {
     box-shadow:
@@ -1414,6 +1457,10 @@ onBeforeRouteLeave(async (to, from, next) => {
     .icon-text {
       color: rgba(0, 0, 0, 0.4);
     }
+  }
+
+  .reading-progress {
+    color: #60656d;
   }
 
   .chapter {
@@ -1442,6 +1489,11 @@ onBeforeRouteLeave(async (to, from, next) => {
     .icon-text {
       color: #666;
     }
+  }
+
+  .reading-progress {
+    border-color: #555;
+    color: #aaa;
   }
 
   .chapter {
@@ -1523,6 +1575,25 @@ onBeforeRouteLeave(async (to, from, next) => {
 
   .search-preview-bar__button {
     flex: 1;
+  }
+
+  .reading-progress {
+    right: 10px;
+    bottom: 10px;
+  }
+
+  .reading-progress--toolbar-visible {
+    bottom: 54px;
+  }
+
+  .reading-progress--preview {
+    top: 10px;
+    bottom: auto;
+  }
+
+  .reading-progress--preview.reading-progress--toolbar-visible {
+    top: 64px;
+    bottom: auto;
   }
 }
 </style>
