@@ -73,6 +73,7 @@
 - Android 17 且 targetSdk 37 时，WebService 设置开关、快捷磁贴、端口重启及服务内部重建必须精确检查 `ACCESS_LOCAL_NETWORK`；未授权只能进入专用权限 Activity，拒绝、取消或撤销后必须回退关闭。绕过 UI 直接启动 FGS 的缺权兜底要先完成一次最小 foreground promotion 再统一停机，不能在 `onCreate()` 中直接停止。详见 [`适配踩坑记录.md` 0.12](适配踩坑记录.md#012-android-17-局域网权限阻断-webservice-入站连接)。
 - `values/strings.xml` 新增可翻译界面字符串时，必须同步越南语、巴西葡萄牙语、日语、西班牙语和三个中文资源目录，并保持格式占位符一致。详见 [`适配踩坑记录.md` 0.3](适配踩坑记录.md#03-新增缓存导出字符串未同步全部语言导致-lint-错误增加)。
 - API 30+ 系统栏显隐和图标明暗统一走 `WindowInsetsControllerCompat`；API 26-29 才保留旧 `systemUiVisibility` 分支。Android 16+、宽度不小于 600dp 的大屏不再强制阅读页方向。历史细节见 [`适配踩坑记录-2026-07-15.md` 0.3](文档归档/适配踩坑记录-2026-07-15.md#03-链式协程回调竞态与系统栏兼容-api-迁移)。
+- 平板主界面单列内容统一调用 `AdaptiveContentWidth` 按 View 当前实际宽度居中限宽；不得用设备物理宽度或 `smallestScreenWidthDp` 判断分屏。书架网格保持全宽，当前范围不包含双栏和工作台自由窗口。详见 [`新功能踩坑记录-基础设施.md`](新功能踩坑记录-基础设施.md#十三平板横屏单列内容宽度)。
 - 原生文本阅读页用普通 `scaledTouchSlop` 取消长按和启动文本扩选，用 `scaledPagingTouchSlop`（或用户显式配置）判定整页拖动；不要再用普通阈值直接否决抬手单击。动画中止可以消费翻页等非菜单动作，但不得吞掉已配置的菜单动作。详见 [`适配踩坑记录.md` 0.2](适配踩坑记录.md#02-阅读页点击阈值死区在-android-81-老平板表现为点击失效)。
 - 本地 SDK、IDE、签名和产物文件不得提交；完整拦截清单以 `scripts/check-staged-local-files.sh` 为准，尤其不要提交 `.sdk/`、`local.properties`、`app/gradle.properties`、`app/signing/`、`app/app/`、`release签名/`、证书/keystore、`AGENTS.md` 和 `opencode.json`。
 

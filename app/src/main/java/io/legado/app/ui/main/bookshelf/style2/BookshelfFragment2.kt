@@ -23,12 +23,14 @@ import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
+import io.legado.app.utils.applyCenteredContentPadding
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
+import io.legado.app.utils.updateCenteredContentPadding
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -80,6 +82,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     private fun updateLayoutManager() {
         val spanCount = getSpanCount()
+        binding.rvBookshelf.updateCenteredContentPadding(enabled = spanCount == 0)
         val layoutManager = binding.rvBookshelf.layoutManager
         if (spanCount == 0) {
             if (layoutManager !is LinearLayoutManager) {
@@ -96,6 +99,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     private fun initRecyclerView() {
         binding.rvBookshelf.setEdgeEffectColor(primaryColor)
+        binding.rvBookshelf.applyCenteredContentPadding { getSpanCount() == 0 }
         binding.refreshLayout.setColorSchemeColors(accentColor)
         binding.refreshLayout.setOnRefreshListener {
             binding.refreshLayout.isRefreshing = false

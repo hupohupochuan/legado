@@ -27,11 +27,13 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.main.MainViewModel
 import io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1
+import io.legado.app.utils.applyCenteredContentPadding
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
+import io.legado.app.utils.updateCenteredContentPadding
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -96,6 +98,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun updateLayoutManager() {
         val spanCount = getSpanCount()
+        binding.rvBookshelf.updateCenteredContentPadding(enabled = spanCount == 0)
         val layoutManager = binding.rvBookshelf.layoutManager
         if (spanCount == 0) {
             if (layoutManager !is LinearLayoutManager) {
@@ -112,6 +115,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun initRecyclerView() {
         binding.rvBookshelf.setEdgeEffectColor(primaryColor)
+        binding.rvBookshelf.applyCenteredContentPadding { getSpanCount() == 0 }
         upFastScrollerBar()
         binding.refreshLayout.setColorSchemeColors(accentColor)
         binding.refreshLayout.setOnRefreshListener {

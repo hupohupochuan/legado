@@ -41,6 +41,7 @@ import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.main.MainFragmentInterface
+import io.legado.app.utils.applyCenteredContentPadding
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.observeEvent
@@ -212,6 +213,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun initRecyclerView() {
         binding.rvFind.setEdgeEffectColor(primaryColor)
+        binding.rvFind.applyCenteredContentPadding(minimumHorizontalPaddingDp = 12)
         binding.rvFind.layoutManager = linearLayoutManager
         binding.rvFind.adapter = adapter
         adapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {

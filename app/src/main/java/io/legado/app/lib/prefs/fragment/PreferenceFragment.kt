@@ -12,6 +12,7 @@ import androidx.preference.PreferenceFragmentCompat
 import io.legado.app.lib.prefs.EditTextPreferenceDialog
 import io.legado.app.lib.prefs.ListPreferenceDialog
 import io.legado.app.lib.prefs.MultiSelectListPreferenceDialog
+import io.legado.app.utils.applyCenteredContentPadding
 import io.legado.app.utils.applyNavigationBarPadding
 
 abstract class PreferenceFragment : PreferenceFragmentCompat() {
@@ -22,6 +23,7 @@ abstract class PreferenceFragment : PreferenceFragmentCompat() {
         super.onViewCreated(view, savedInstanceState)
         listView.clipToPadding = false
         listView.applyNavigationBarPadding()
+        listView.applyCenteredContentPadding()
     }
 
     @SuppressLint("RestrictedApi")
