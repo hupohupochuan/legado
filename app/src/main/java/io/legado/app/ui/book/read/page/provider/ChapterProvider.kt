@@ -1,7 +1,6 @@
 package io.legado.app.ui.book.read.page.provider
 
 import android.graphics.RectF
-import androidx.core.os.postDelayed
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
@@ -120,7 +119,18 @@ object ChapterProvider {
         buildMainHandler()
     }
 
-    private var upViewSizeRunnable: Runnable? = null
+    private val viewSizeUpdateCoordinator by lazy {
+        ViewSizeUpdateCoordinator(
+            currentSize = { ViewSizeUpdateCoordinator.Size(viewWidth, viewHeight) },
+            scheduleDelayed = { delayMillis, action ->
+                val runnable = Runnable(action)
+                handler.postDelayed(runnable, delayMillis)
+                val cancelAction: () -> Unit = { handler.removeCallbacks(runnable) }
+                cancelAction
+            },
+            applySize = { size -> notifyViewSizeChange(size.width, size.height) },
+        )
+    }
 
     init {
         upStyle()
@@ -162,22 +172,7 @@ object ChapterProvider {
      * 更新View尺寸
      */
     fun upViewSize(width: Int, height: Int) {
-        if (width <= 0 || height <= 0) {
-            return
-        }
-        if (width != viewWidth || height != viewHeight) {
-            if (width == viewWidth) {
-                upViewSizeRunnable = handler.postDelayed(300) {
-                    upViewSizeRunnable = null
-                    notifyViewSizeChange(width, height)
-                }
-            } else {
-                notifyViewSizeChange(width, height)
-            }
-        } else if (upViewSizeRunnable != null) {
-            handler.removeCallbacks(upViewSizeRunnable!!)
-            upViewSizeRunnable = null
-        }
+        viewSizeUpdateCoordinator.update(width, height)
     }
 
     private fun notifyViewSizeChange(width: Int, height: Int) {

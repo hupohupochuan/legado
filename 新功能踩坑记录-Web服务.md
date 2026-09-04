@@ -29,7 +29,7 @@
 - 记录日期: 2026-08-12
 - 适用环境: Android 17/API 37+ 且 App targetSdk 37；WebService HTTP 端口与相邻 WebSocket 端口
 - 相关文件: `AndroidManifest.xml`、`WebServiceLocalNetworkAccess.kt`、`WebServicePermissionActivity.kt`、`WebService.kt`、`WebTileService.kt`、`OtherConfigFragment.kt`
-- 兼容细节和测试陷阱: [适配踩坑记录.md 0.12](适配踩坑记录.md#012-android-17-局域网权限阻断-webservice-入站连接)
+- 兼容细节和测试陷阱: [适配踩坑记录-2026-09-05.md 0.12](文档归档/适配踩坑记录-2026-09-05.md#012-android-17-局域网权限阻断-webservice-入站连接)
 
 **当前设计**:
 - `WebService.start()` 是设置开关和普通启动的统一门禁；Android 17/target 37 缺少精确 `ACCESS_LOCAL_NETWORK` 时只打开非导出的透明权限 Activity，不创建 WebService。API 26-36 直接沿用原启动路径。
