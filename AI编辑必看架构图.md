@@ -29,6 +29,7 @@
 - 模块: `settings.gradle` 只包含 `app`、`modules/book`、`modules/rhino`；`modules/web/src` 是含网页传书在内的 Web 服务浏览器端 Vue 源码，不是 Gradle 子模块
 - 资源边界: `modules/web/src/` 是 Web 源码，`app/src/main/assets/web/` 是 APK 实际加载资源
 - 外部接口边界: `ReaderProvider` 保持导出但受 `${applicationId}.permission.READ_WRITE` 签名级权限保护；外部调用方必须声明对应变体权限并使用同一签名证书
+- 网络播放依赖（2026-09-05）: OkHttp 5.5.0、Media3 1.11.0、Protobuf Javalite 4.36.1；不因依赖升级自动启用 ECH 或更换 DNS/TLS 策略。
 - Cronet 版本边界: 构建 API 与下载兜底由 `gradle/libs.versions.toml` 固定为 `143.7445.0`；运行时优先使用系统/GMS 外部 Provider，实际引擎版本可能随设备变化
 
 ---
