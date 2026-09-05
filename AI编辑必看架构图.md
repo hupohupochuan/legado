@@ -1,10 +1,10 @@
 # AI 编辑必看架构图
 
-> 最新修订: 2026-09-05 CST
+> 最新修订: 2026-09-06 CST
 > 最近三次修订:
+> - 2026-09-06 CST: 完成基础、界面、网络播放及 Web 依赖升级；适配 OkHttp 重定向 API，复核 Debug / Release-R8 构建及 APK 内 Web 资源一致性。
 > - 2026-09-05 CST: 阅读页尺寸更新改为 latest-wins；主界面列表限宽延后到布局完成后应用，避免已有条目和滚动复用条目左右错位。
 > - 2026-08-26 CST: Web 阅读页新增按手机已保存章节索引计算的总进度；只展示百分比和当前章/总章，不混入浏览器分页或章内位置。
-> - 2026-08-21 CST: WebService 启动及每次入站访问续期 90 秒 CPU/Wi-Fi 活跃租约；WebDAV 仅恢复进度遇 DNS 解析失败时改为明确的网络/DNS 提示，完整异常仍保留在日志。
 
 > 本文件是第一入口；同时按 `AGENTS.md` 要求读完其余三个必读文档，再按具体任务打开 `AI编辑必看/` 子文件。
 
@@ -27,6 +27,7 @@
 - 技术栈: Kotlin + 少量 Java, MVVM + Room, ViewBinding, Coroutines/Flow
 - 界面依赖（2026-09-05）: AppCompat 1.8.0、Fragment 1.9.0、ConstraintLayout 2.2.2、WebKit 1.17.0；沿用 AppCompat 主题及现有系统版本分支，验证范围见 `适配踩坑记录.md` 0.3。
 - 模块: `settings.gradle` 只包含 `app`、`modules/book`、`modules/rhino`；`modules/web/src` 是含网页传书在内的 Web 服务浏览器端 Vue 源码，不是 Gradle 子模块
+- Web 依赖（2026-09-05）: Vue 3.5.42 / Router 5.3.1 / VueUse 14.4.0 / Vite 8.2.2；Pinia 3.0.4、TypeScript 5.9.3 和单文件入口保留，锁文件、类型声明与 APK assets 同步提交。
 - 资源边界: `modules/web/src/` 是 Web 源码，`app/src/main/assets/web/` 是 APK 实际加载资源
 - 外部接口边界: `ReaderProvider` 保持导出但受 `${applicationId}.permission.READ_WRITE` 签名级权限保护；外部调用方必须声明对应变体权限并使用同一签名证书
 - 网络播放依赖（2026-09-05）: OkHttp 5.5.0、Media3 1.11.0、Protobuf Javalite 4.36.1；不因依赖升级自动启用 ECH 或更换 DNS/TLS 策略。
@@ -117,4 +118,4 @@ scripts/build-signed-release.sh
 
 脚本会强制使用 `app/gradle.properties` 中的个人签名配置和 `RELEASE_CERT_SHA256`，完成 Release/R8、五个 ABI APK、证书/包名/版本校验，再把同一批 APK、`.idsig`、metadata 原子同步到 `app/app/release/`。`app/gradle.properties` 与 keystore 必须仅所有者可读写（脚本接受 `400` 或 `600`，通常使用 `600`）。Android 64 位真机优先安装 `app/app/release/legado_arm64.apk`；不得直接复制单个 APK，也不得在签名配置缺失时接受 Gradle 的 Debug 签名回退。
 
-*文档版本: 2026-09-05*
+*文档版本: 2026-09-06*

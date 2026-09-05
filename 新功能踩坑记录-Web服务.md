@@ -1,8 +1,8 @@
 # 新功能踩坑记录 - Web 服务
 
 > 返回主题索引: [新功能踩坑记录.md](新功能踩坑记录.md)
-> 当前复核状态（2026-08-26）：Web 阅读页新增按手机已保存章节索引计算的总进度，显示百分比和当前章/总章；不改进度保存、WebDAV 或数据库协议。
-> 验证边界：2026-08-26 已通过进度计算测试、Web 既有定向测试、类型/ESLint、生产构建、assets 字节同步、`scripts/check-debug.sh`、Debug APK 组装及 APK 内 assets 字节检查；Headless Chrome 桌面/窄屏生产页显示通过，实体手机和真实移动浏览器仍待验收。2026-08-21 的 WebService/DNS、2026-08-16 的 WebDAV v2/404、2026-08-12 的权限黑盒和 2026-08-10 的方向键真实浏览器边界不因本次复核自动续期。
+> 当前复核状态（2026-09-06）：Web 同主版本依赖升级完成，保留按章显示总进度、进度保存、WebDAV 和数据库协议。
+> 验证边界：本轮 frozen 安装、15 项状态测试、类型/ESLint、生产构建和固定 API 响应的桌面/窄屏 Headless Chrome 冒烟通过；2026-09-06 复核 Debug / Release-R8 构建成功，10 个 APK 内 Web 资源与 dist、assets 字节一致。实体手机和真实移动浏览器仍待验收。2026-08-21 的 WebService/DNS、2026-08-16 的 WebDAV v2/404、2026-08-12 的权限黑盒和 2026-08-10 的方向键真实浏览器边界不因本次复核自动续期。
 
 ---
 
@@ -85,6 +85,15 @@
 **回归点**:
 - `/#/`、`/#/shelf`、`/#/chapter`、`/#/bookSource`、`/#/replaceRule` 必须继续由统一 SPA 路由进入。
 - Web 构建配置不得再依赖 `src/pages/*` 或 Element Plus；文档只能把它们作为已删除的历史边界说明，不能当作现存入口；类型检查和生产构建必须保持通过。
+
+## 同主版本依赖更新（2026-09-05）
+
+- 记录/验证日期: 2026-09-05；适用环境: Node 22.22.1、pnpm 9.15.9，Vue 3.5.42 / Router 5.3.1 / VueUse 14.4.0 / hotkeys-js 4.0.7 / Vite 8.2.2。
+- 同步 `package.json`、`pnpm-lock.yaml`、auto-import 生成声明与 APK assets；Pinia 3.0.4、TypeScript 5.9.3、npm-run-all2 8.0.4 和既有浏览器目标保留。本轮 manifest 的 @types/node、Vue ESLint config 下限只是对齐原已锁版本。
+- frozen 安装、类型检查、生产构建（149 模块）、15 项状态机测试及 ESLint（前后均无错误/告警）通过。生成声明的变化仅为 unplugin 新增忽略注释，未修改业务 API 或路由结构。
+- 本地固定响应的 Chrome 冒烟覆盖桌面/窄屏下欢迎页→书架→阅读、直接刷新、ArrowRight 切到第二章、离开时提交 `durChapterIndex=1`，以及网页传书、书源和替换规则路由；无未处理页面异常。
+- 保留 Hash Router、5 秒进度合并/离开 flush、阅读时长空闲作废、分页键缓存和单入口。未连接手机，实际局域网、WebDAV、文件上传和真实书源读章仍待验证，不能把固定响应替代手机验收。
+- 生产资源手动同步 `app/src/main/assets/web/index.html` / `favicon.ico` 并作字节比较；2026-09-06 收尾复核 5 个 Debug 与 5 个 Release APK 内对应资源，全部与本次 dist 一致。
 
 ## Web 运行时依赖迁移
 
