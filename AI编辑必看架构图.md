@@ -25,6 +25,7 @@
 - 构建: Gradle 9.6.1, AGP 9.3.0, Kotlin 2.4.10, KSP 2.3.11, JDK 17
 - SDK: `app` minSdk 26 / targetSdk 37；`modules/book` minSdk 21 / targetSdk 36；`modules/rhino` minSdk 26 / targetSdk 36；三个 Android 模块均 compileSdk 37
 - 技术栈: Kotlin + 少量 Java, MVVM + Room, ViewBinding, Coroutines/Flow
+- 界面依赖（2026-09-05）: AppCompat 1.8.0、Fragment 1.9.0、ConstraintLayout 2.2.2、WebKit 1.17.0；沿用 AppCompat 主题及现有系统版本分支，验证范围见 `适配踩坑记录.md` 0.3。
 - 模块: `settings.gradle` 只包含 `app`、`modules/book`、`modules/rhino`；`modules/web/src` 是含网页传书在内的 Web 服务浏览器端 Vue 源码，不是 Gradle 子模块
 - 资源边界: `modules/web/src/` 是 Web 源码，`app/src/main/assets/web/` 是 APK 实际加载资源
 - 外部接口边界: `ReaderProvider` 保持导出但受 `${applicationId}.permission.READ_WRITE` 签名级权限保护；外部调用方必须声明对应变体权限并使用同一签名证书
