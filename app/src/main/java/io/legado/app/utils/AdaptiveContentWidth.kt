@@ -49,20 +49,33 @@ fun View.applyCenteredContentPadding(
     minimumHorizontalPaddingDp: Int = 0,
     enabled: () -> Boolean = { true },
 ) {
-    addOnLayoutChangeListener { view, left, _, right, _, oldLeft, _, oldRight, _ ->
-        if (right - left != oldRight - oldLeft) {
-            view.updateCenteredContentPadding(
-                maxContentWidthDp = maxContentWidthDp,
-                minimumHorizontalPaddingDp = minimumHorizontalPaddingDp,
-                enabled = enabled(),
-            )
-        }
-    }
-    post {
+    val updatePadding = Runnable {
+        // Read the current size and mode, not an intermediate layout's captured values.
         updateCenteredContentPadding(
             maxContentWidthDp = maxContentWidthDp,
             minimumHorizontalPaddingDp = minimumHorizontalPaddingDp,
             enabled = enabled(),
         )
     }
+    fun scheduleUpdate() {
+        removeCallbacks(updatePadding)
+        post(updatePadding)
+    }
+    addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+        if (right - left != oldRight - oldLeft) {
+            // View.layout clears FORCE_LAYOUT after these listeners. Changing padding here
+            // can lose requestLayout and leave existing RecyclerView children at old bounds.
+            scheduleUpdate()
+        }
+    }
+    addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+        override fun onViewAttachedToWindow(view: View) {
+            scheduleUpdate()
+        }
+
+        override fun onViewDetachedFromWindow(view: View) {
+            removeCallbacks(updatePadding)
+        }
+    })
+    scheduleUpdate()
 }
