@@ -8,6 +8,53 @@ import org.junit.Test
 class ViewSizeUpdateCoordinatorTest {
 
     @Test
+    fun landscapeToPortraitRejectsDelayedLandscapeHeight() {
+        var currentSize = Size(width = 2400, height = 1500)
+        val appliedSizes = mutableListOf<Size>()
+        val scheduledTasks = mutableListOf<ScheduledTask>()
+        val coordinator = createCoordinator(
+            currentSize = { currentSize },
+            onApply = {
+                currentSize = it
+                appliedSizes.add(it)
+            },
+            scheduledTasks = scheduledTasks,
+        )
+
+        coordinator.update(width = 2400, height = 2300)
+        coordinator.update(width = 1600, height = 2300)
+        scheduledTasks.single().action.invoke()
+
+        assertTrue(scheduledTasks.single().cancelled)
+        assertEquals(listOf(Size(1600, 2300)), appliedSizes)
+    }
+
+    @Test
+    fun rapidRotationRoundTripKeepsFinalPortraitSize() {
+        var currentSize = Size(width = 1600, height = 2300)
+        val appliedSizes = mutableListOf<Size>()
+        val scheduledTasks = mutableListOf<ScheduledTask>()
+        val coordinator = createCoordinator(
+            currentSize = { currentSize },
+            onApply = {
+                currentSize = it
+                appliedSizes.add(it)
+            },
+            scheduledTasks = scheduledTasks,
+        )
+
+        coordinator.update(width = 1600, height = 1500)
+        coordinator.update(width = 2400, height = 1500)
+        coordinator.update(width = 2400, height = 2300)
+        coordinator.update(width = 1600, height = 2300)
+        scheduledTasks.reversed().forEach { it.action.invoke() }
+
+        assertTrue(scheduledTasks.all { it.cancelled })
+        assertEquals(listOf(Size(2400, 1500), Size(1600, 2300)), appliedSizes)
+        assertEquals(Size(1600, 2300), currentSize)
+    }
+
+    @Test
     fun staleHeightOnlyUpdateCannotOverwriteNewOrientationSize() {
         var currentSize = Size(width = 1600, height = 2400)
         val appliedSizes = mutableListOf<Size>()

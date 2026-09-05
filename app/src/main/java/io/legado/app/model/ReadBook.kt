@@ -145,13 +145,13 @@ object ReadBook : CoroutineScope by MainScope() {
             durChapterPos = 0
         }
         if (!isDiffBook){
-            if (curTextChapter?.isCompleted == false) {
+            if (curTextChapter?.let { !it.isCompleted || !hasCurrentPageSize(it) } == true) {
                 curTextChapter = null
             }
-            if (nextTextChapter?.isCompleted == false) {
+            if (nextTextChapter?.let { !it.isCompleted || !hasCurrentPageSize(it) } == true) {
                 nextTextChapter = null
             }
-            if (prevTextChapter?.isCompleted == false) {
+            if (prevTextChapter?.let { !it.isCompleted || !hasCurrentPageSize(it) } == true) {
                 prevTextChapter = null
             }
         }else{
@@ -235,9 +235,32 @@ object ReadBook : CoroutineScope by MainScope() {
 
     fun clearTextChapter() {
         clearExpiredChapterLoadingJob(true)
+        prevTextChapter?.cancelLayout()
+        curTextChapter?.cancelLayout()
+        nextTextChapter?.cancelLayout()
         prevTextChapter = null
         curTextChapter = null
         nextTextChapter = null
+    }
+
+    /** Called on the main thread after the actual content View's size has been applied. */
+    fun onPageSizeChanged() {
+        clearTextChapter()
+        callBack?.upContent(resetPageOffset = false)
+        if (callBack?.isInitFinish == true) {
+            loadContent(resetPageOffset = false)
+        }
+    }
+
+    private fun hasCurrentPageSize(chapter: TextChapter): Boolean {
+        return chapter.layoutSizeGeneration == ChapterProvider.sizeGeneration
+    }
+
+    internal fun requireCurrentPageSize(chapter: TextChapter) {
+        if (!hasCurrentPageSize(chapter)) {
+            chapter.cancelLayout()
+            throw CancellationException("Pagination belongs to an obsolete View size")
+        }
     }
 
     fun clearSearchResult() {
@@ -632,10 +655,9 @@ object ReadBook : CoroutineScope by MainScope() {
                 success?.invoke()
             } catch (e: Exception) {
                 contentLoadStarts.remove(index)
-                if (e !is CancellationException) {
-                    failed = true
-                    markLoadingFailed(index)
-                }
+                if (e is CancellationException) throw e
+                failed = true
+                markLoadingFailed(index)
                 AppLog.put("加载正文出错\n${e.localizedMessage}")
             } finally {
                 if (!failed) {
@@ -761,11 +783,13 @@ object ReadBook : CoroutineScope by MainScope() {
                     0 -> curChapterLoadingLock.withLock {
                         withContext(Main) {
                             ensureActive()
+                            requireCurrentPageSize(textChapter)
                             curTextChapter = textChapter
                         }
                         callBack?.upMenuView()
                         var available = false
                         for (page in textChapter.layoutChannel) {
+                            requireCurrentPageSize(textChapter)
                             val index = page.index
                             if (!available && page.containPos(durChapterPos)) {
                                 if (upContent) {
@@ -780,6 +804,7 @@ object ReadBook : CoroutineScope by MainScope() {
                             }
                             callBack?.onLayoutPageCompleted(index, page)
                         }
+                        requireCurrentPageSize(textChapter)
                         if (upContent) callBack?.upContent(offset, !available && resetPageOffset)
                         curPageChanged()
                         callBack?.contentLoadFinish()
@@ -788,18 +813,22 @@ object ReadBook : CoroutineScope by MainScope() {
                     -1 -> prevChapterLoadingLock.withLock {
                         withContext(Main) {
                             ensureActive()
+                            requireCurrentPageSize(textChapter)
                             prevTextChapter = textChapter
                         }
                         textChapter.layoutChannel.receiveAsFlow().collect()
+                        requireCurrentPageSize(textChapter)
                         if (upContent) callBack?.upContent(offset, resetPageOffset)
                     }
 
                     1 -> nextChapterLoadingLock.withLock {
                         withContext(Main) {
                             ensureActive()
+                            requireCurrentPageSize(textChapter)
                             nextTextChapter = textChapter
                         }
                         for (page in textChapter.layoutChannel) {
+                            requireCurrentPageSize(textChapter)
                             if (page.index > 1) {
                                 continue
                             }
@@ -855,13 +884,16 @@ object ReadBook : CoroutineScope by MainScope() {
                 val textChapter = processContent(book, chapter, content)
                 when (val offset = chapter.index - durChapterIndex) {
                     0 -> {
-                        curTextChapter?.cancelLayout()
                         withContext(Main) {
+                            ensureActive()
+                            requireCurrentPageSize(textChapter)
+                            curTextChapter?.cancelLayout()
                             curTextChapter = textChapter
                         }
                         callBack?.upMenuView()
                         var available = false
                         for (page in textChapter.layoutChannel) {
+                            requireCurrentPageSize(textChapter)
                             val index = page.index
                             if (!available && page.containPos(durChapterPos)) {
                                 if (upContent) {
@@ -876,26 +908,33 @@ object ReadBook : CoroutineScope by MainScope() {
                             }
                             callBack?.onLayoutPageCompleted(index, page)
                         }
+                        requireCurrentPageSize(textChapter)
                         if (upContent) callBack?.upContent(offset, !available && resetPageOffset)
                         curPageChanged()
                         callBack?.contentLoadFinish()
                     }
 
                     -1 -> {
-                        prevTextChapter?.cancelLayout()
                         withContext(Main) {
+                            ensureActive()
+                            requireCurrentPageSize(textChapter)
+                            prevTextChapter?.cancelLayout()
                             prevTextChapter = textChapter
                         }
                         textChapter.layoutChannel.receiveAsFlow().collect()
+                        requireCurrentPageSize(textChapter)
                         if (upContent) callBack?.upContent(offset, resetPageOffset)
                     }
 
                     1 -> {
-                        nextTextChapter?.cancelLayout()
                         withContext(Main) {
+                            ensureActive()
+                            requireCurrentPageSize(textChapter)
+                            nextTextChapter?.cancelLayout()
                             nextTextChapter = textChapter
                         }
                         for (page in textChapter.layoutChannel) {
+                            requireCurrentPageSize(textChapter)
                             if (page.index > 1) {
                                 continue
                             }
@@ -913,14 +952,14 @@ object ReadBook : CoroutineScope by MainScope() {
             }
         }.onFailure {
             if (it is CancellationException) {
-                return@onFailure
+                throw it
             }
             AppLog.put("ChapterProvider ERROR", it)
             appCtx.toastOnUi("ChapterProvider ERROR:\n${it.stackTraceStr}")
         }
     }
 
-    private fun CoroutineScope.processContent(
+    private suspend fun CoroutineScope.processContent(
         book: Book, chapter: BookChapter, content: String
     ): TextChapter {
         val contentProcessor = ContentProcessor.get(book.name, book.origin)
@@ -931,9 +970,14 @@ object ReadBook : CoroutineScope by MainScope() {
         val contents = contentProcessor
             .getContent(book, chapter, content, includeTitle = false)
         ensureActive()
-        return ChapterProvider.getTextChapterAsync(
-            this, book, chapter, displayTitle, contents, simulatedChapterSize
-        )
+        // Capture all layout dimensions on the same thread that updates ChapterProvider.
+        // Keep the outer loading scope: withContext must not wait for the whole pagination job.
+        val loadingScope = this
+        return withContext(Main) {
+            ChapterProvider.getTextChapterAsync(
+                loadingScope, book, chapter, displayTitle, contents, simulatedChapterSize
+            )
+        }
     }
 
     @Synchronized
@@ -1101,6 +1145,8 @@ object ReadBook : CoroutineScope by MainScope() {
     }
 
     interface CallBack : LayoutProgressListener {
+        val isInitFinish: Boolean
+
         fun upMenuView()
 
         fun loadChapterList(book: Book)

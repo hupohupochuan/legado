@@ -2,7 +2,6 @@ package io.legado.app.ui.book.read.page.provider
 
 import android.graphics.RectF
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookContent
@@ -13,7 +12,6 @@ import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.isPad
-import io.legado.app.utils.postEvent
 import kotlinx.coroutines.CoroutineScope
 import splitties.init.appCtx
 
@@ -35,6 +33,10 @@ object ChapterProvider {
 
     @JvmStatic
     var viewHeight = 0
+        private set
+
+    @Volatile
+    var sizeGeneration = 0L
         private set
 
     @JvmStatic
@@ -154,6 +156,7 @@ object ChapterProvider {
             bookChapter.isPay,
             bookContent.effectiveReplaceRules
         ).apply {
+            layoutSizeGeneration = sizeGeneration
             createLayout(scope, book, bookContent)
         }
 
@@ -176,10 +179,18 @@ object ChapterProvider {
     }
 
     private fun notifyViewSizeChange(width: Int, height: Int) {
+        val previousSize = "${viewWidth}x${viewHeight}"
         viewWidth = width
         viewHeight = height
         upLayout()
-        postEvent(EventBus.UP_CONFIG, arrayListOf(5))
+        sizeGeneration++
+        AppLog.put(
+            "阅读页尺寸 $previousSize -> ${width}x${height}, " +
+                "visible=${visibleWidth}x${visibleHeight}, doublePage=$doublePage, generation=$sizeGeneration"
+        )
+        // Size changes invalidate pagination even while Activity initialization is incomplete.
+        // A one-shot UP_CONFIG event can otherwise be ignored while old chapters stay cached.
+        ReadBook.onPageSizeChanged()
     }
 
     /**

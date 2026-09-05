@@ -35,6 +35,9 @@ data class TextChapter(
 
     private var layout: TextChapterLayout? = null
 
+    var layoutSizeGeneration: Long = -1L
+        internal set
+
     val layoutChannel get() = layout!!.channel
 
     fun getPage(index: Int): TextPage? {
