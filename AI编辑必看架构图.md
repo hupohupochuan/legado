@@ -22,7 +22,7 @@
 ## 项目概览
 
 - 项目: Legado (阅读) Android 电子书阅读器
-- 构建: Gradle 9.6.1, AGP 9.3.0, Kotlin 2.4.10, JDK 17
+- 构建: Gradle 9.6.1, AGP 9.3.0, Kotlin 2.4.10, KSP 2.3.11, JDK 17
 - SDK: `app` minSdk 26 / targetSdk 37；`modules/book` minSdk 21 / targetSdk 36；`modules/rhino` minSdk 26 / targetSdk 36；三个 Android 模块均 compileSdk 37
 - 技术栈: Kotlin + 少量 Java, MVVM + Room, ViewBinding, Coroutines/Flow
 - 模块: `settings.gradle` 只包含 `app`、`modules/book`、`modules/rhino`；`modules/web/src` 是含网页传书在内的 Web 服务浏览器端 Vue 源码，不是 Gradle 子模块
